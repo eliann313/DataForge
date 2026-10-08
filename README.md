@@ -262,7 +262,7 @@ DataForge/
 
 ![Mockup vectorial del workspace de DataForge](docs/design/workspace-reference.svg)
 
-> **Referencia visual**, no captura de una aplicación ya implementada. [Guía de UI y mockups](docs/design/README.md). Los tres PNG exploratorios originales permanecen en la conversación hasta que se incorporen como archivos binarios al repositorio.
+> **Referencia visual**, no captura de una aplicación ya implementada. [Guía de UI y mockups](docs/design/README.md). Los [tres PNG originales](docs/design/mockups/README.md) ya están incorporados y documentados en el repositorio como referencias visuales, no capturas de la aplicación.
 
 Se elaboraron **borradores no publicables**, sujetos a completar identidad/contacto y revisión jurídica antes del lanzamiento con cuentas o procesamiento remoto:
 
