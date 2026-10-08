@@ -1,185 +1,245 @@
 # DataForge
 
-**Browser-native self-service data analytics workspace** — explore, clean, combine, analyze, visualize and export your own datasets without uploading them to an application backend.
+**Plataforma de análisis de datos autoservicio, local-first y ejecutada directamente en el navegador.**
 
-> \*\*Status: planning / architecture validation.\*\* This repository documents a proposed product. Features below are \*\*planned\*\*, not yet implemented. No performance claims have been validated.
+DataForge busca que cualquier persona pueda **importar, explorar, limpiar, combinar, analizar, visualizar y exportar datos** sin configurar un entorno científico ni subir sus archivos a un backend de procesamiento. Un usuario puede analizar una planilla; otro puede construir pipelines reproducibles, trabajar con varios datasets y aplicar análisis estadístico avanzado.
 
-## Product vision
+> **Estado: planificación y validación arquitectónica.** Las características que se describen a continuación están **previstas, no implementadas**. El repositorio actualmente contiene documentación; no hay aún aplicación desplegada ni benchmarks que certifiquen el rendimiento.
 
-DataForge is designed for anyone who needs useful answers from CSV, Excel, JSON or Parquet files without installing a data-science stack or sending private datasets to a processing server. A casual user can upload a spreadsheet and receive a transparent data-quality report and suggested visualizations. An analyst can build reproducible transformations, join datasets, inspect statistics and export reports. Advanced modules will support Python-based statistics and time-series algorithms implemented in Rust.
+**Documentación:** [Roadmap completo](docs/roadmap.md) · [Arquitectura de software](docs/architecture.md)
 
-**Principles**
+## ¿Para quién es?
 
-* **Local-first:** computation and data analysis occur in the user's browser; static assets may be hosted on Vercel. No application processing backend is required for the planned core features.
-* **Progressive complexity:** useful releases from early phases, with optional engines loaded only when needed.
-* **One engine per job:** DuckDB-Wasm for tabular SQL/ELT; Pyodide for Python scientific workflows; Rust/Wasm for specialized intensive algorithms; TypeScript for UI, orchestration, and interactive charts.
-* **Trustworthy results:** report lineage, assumptions, formulas, data coverage and limitations; never infer causation from correlation.
-* **Reproducibility:** configurations, pipeline steps, analysis parameters and exports are versionable.
+Personas que desean respuestas simples de sus archivos, estudiantes e investigadores, profesionales, analistas de datos y desarrolladores. La complejidad de la interfaz crece según la tarea: análisis rápido para principiantes y workspace avanzado para usuarios técnicos.
 
-## Core workflows (planned)
+**Sin registro obligatorio · En español · Procesamiento local por defecto · Proyecto de portfolio sin infraestructura paga prevista.**
 
-1. **Import:** CSV, XLSX, JSON and Parquet. Inspect sheets, headers, delimiter/encoding, inferred types, and a bounded preview.
-2. **Profile:** row/column counts, missingness, duplicate candidates, unique values, ranges, and quality warnings.
-3. **Analyze:** descriptive statistics, category frequencies, distributions, group comparisons, correlations and suitable visualizations.
-4. **Prepare:** non-destructive filters, type conversions, null handling, deduplication, calculated columns and reusable SQL-backed transformation pipelines.
-5. **Combine:** append compatible files, join related tables using confirmed keys, compare datasets, and retain analysis snapshots and lineage.
-6. **Report:** explanatory findings with traceable evidence, chosen charts, methodology and limitations; export HTML and processed CSV/Parquet.
-7. **Advanced analytics (later):** statistical inference, forecasting/backtesting, time-series similarity (DTW), and constrained optimization scenarios.
+## Funcionalidades planificadas
 
-## Target architecture (subject to Phase 0 validation)
+| Capacidad | ¿Qué permitirá hacer? |
+|---|---|
+| **Importar y explorar** | CSV, XLSX, JSON tabular, Parquet; vista previa, paginación, schema y calidad |
+| **Analizar** | Estadística descriptiva, correlaciones, distribuciones y comparaciones |
+| **Visualizar** | Gráficos interactivos y sugerencias basadas en roles semánticos |
+| **Preparar** | Limpieza, filtros, deduplicación, tipos, columnas calculadas y pipelines |
+| **Combinar** | Múltiples archivos, APPEND/UNION, JOIN validado y comparación |
+| **Organizar** | Carpetas, proyectos, datasets versionados y análisis guardados |
+| **Informar** | Report Builder, hallazgos explicables, metodología y exportaciones |
+| **Investigar** | Estadística Python, forecasting, DTW/Rust y optimización limitada en fases avanzadas |
 
-```mermaid
+**Principios:** no modificar fuentes originales; preservar el linaje de datos; mostrar supuestos y limitaciones; no atribuir causalidad a correlaciones; validar resultados contra referencias independientes.
+
+## Plantillas especializadas
+
+Las plantillas **no son aplicaciones independientes**: reutilizan los motores de análisis, el modelo de proyectos, los gráficos y la exportación.
+
+| Plantilla | Capacidades previstas |
+|---|---|
+| **Análisis libre** | Analizar datasets genéricos desde cero |
+| **Finanzas personales** | Registrar movimientos **a mano** o importar archivos, cuentas, ingresos, gastos, presupuestos y reportes |
+| **Ventas y negocios** | Facturación, productos, descuentos, devoluciones, evolución y rendimiento |
+| **Encuestas e investigación** | Preguntas, frecuencias, escalas Likert, cruces, distribuciones e informes |
+
+### Finanzas personales: registro manual y archivos
+
+El usuario no necesitará crear un CSV para registrar un gasto: contará con formularios de ingresos, egresos, transferencias y movimientos recurrentes. Se contemplarán importaciones bancarias por archivo con mapeo de columnas y detección de posibles duplicados.
+
+Se utilizarán **ARS y USD** inicialmente, con extensibilidad a otras monedas. Las conversiones ARS/USD se plantean con dólar **oficial, MEP, CCL o cotización manual**, incluyendo referencia temporal, fuente y criterio utilizado. No se promediarán cotizaciones de mercados distintos automáticamente.
+
+La contabilidad distinguirá transferencias propias, pagos de tarjeta, reintegros y gastos para evitar dobles conteos. No habrá conexión bancaria automática en el alcance inicial.
+
+### Ventas y negocios
+
+La plantilla contemplará análisis de facturación, productos, categorías, volumen, descuentos y devoluciones; se evitará calcular rentabilidad cuando no existan costos confiables o sumar ventas duplicadas por un JOIN incorrecto.
+
+### Encuestas e investigación
+
+Permitirá analizar respuestas de formularios, selección múltiple, escalas y cruces por segmentos, informando número de respuestas válidas, faltantes y limitaciones metodológicas.
+
+## Experiencia de usuario prevista
+
+- **Landing pública** con explicación del producto y acceso sin cuenta.
+- **Probar un ejemplo:** datasets de demostración para evaluar la aplicación al instante.
+- **Comenzar con mis datos:** carga de archivos o formulario manual en Finanzas.
+- **Workspace:** sidebar de navegación, panel central, inspector contextual, gráficos y tablas.
+- **Idioma:** español exclusivamente.
+- **Diseño:** interfaz clara, moderna, accesible, responsive, inicialmente con tema claro.
+
+Los datos locales estarán sujetos a las cuotas y políticas de limpieza del navegador. Habrá opciones para exportar y recuperar proyectos.
+
+## Arquitectura propuesta
+
+**Monolito modular client-side, organizado por funcionalidades (Screaming Architecture / feature-first), con capas y principios hexagonales pragmáticos.**
+
+Los módulos expresarán capacidades del producto —\`projects\`, \`datasets\`, \`analysis\`, \`pipelines\`, \`reports\`, \`finance\`, \`sales\`, \`surveys\`—, no solamente frameworks o adaptadores.
+
+Los módulos complejos separarán:
+- **Dominio:** entidades, invariantes y reglas de negocio sin dependencias técnicas.
+- **Aplicación:** casos de uso, DTO y puertos.
+- **Infraestructura:** repositorios y adaptadores concretos.
+- **Presentación:** componentes y vistas React.
+
+Los componentes UI sencillos no necesitan una jerarquía hexagonal completa.
+
+### Motores analíticos
+
+\`\`\`mermaid
 flowchart TD
-    A\["React + TypeScript + Vite"] --> B\["Analytics orchestrator"]
-    B --> C\["DuckDB-Wasm worker"]
-    B --> D\["Pyodide Python worker - lazy loaded"]
-    B --> E\["Rust/Wasm worker - lazy loaded"]
-    C --> F\["Normalized results and chart data"]
-    D --> F
-    E --> F
-    F --> G\["ECharts + Report Builder + Export"]
-    H\["Local files CSV / XLSX / JSON / Parquet"] --> C
-    I\["XLSX parser in worker"] --> C
-    H --> I
-```
+  UI["Next.js + React + TypeScript"] --> APP["Módulos y casos de uso"]
+  APP --> ORCH["Adaptadores / orquestador analítico"]
+  ORCH --> DUCK["DuckDB-Wasm / Worker"]
+  ORCH --> PY["Pyodide / Worker, carga diferida"]
+  ORCH --> RUST["Rust-Wasm / Worker, carga diferida"]
+  DUCK --> OUT["Resultados tipados y visualización ECharts"]
+  PY --> OUT
+  RUST --> OUT
+  LOCAL["Archivos y almacenamiento local"] --> DUCK
+  OUT --> REPORT["Report Builder / exportación"]
+\`\`\`
 
-**DuckDB-Wasm:** primary tabular engine, ingestion, SQL, descriptive statistics, aggregation, ELT, multi-file workspace. **TypeScript:** feature orchestration, worker lifecycle, file controls, visualization. **Pyodide:** Pandas/NumPy/SciPy/statsmodels for specialized analysis and forecasting. **Rust/Wasm (wasm-bindgen):** exact/constraint-window Dynamic Time Warping and pairwise distances, preceded by correctness checks and benchmarks against baselines.
+- **DuckDB-Wasm:** motor principal de datos tabulares, SQL, agregaciones, importación, profiling, ELT.
+- **Pyodide:** Python científico y modelos estadísticos especializados, cargado solo cuando se necesita.
+- **Rust/Wasm:** DTW y distancias temporales especializadas, validadas y medidas frente a alternativas.
+- **TypeScript + ECharts:** orquestación, UI y gráficos.
 
-Exchange metadata as JSON, tables via an explicitly specified transfer format such as Arrow IPC, and time-series vectors as typed arrays. **Do not assume zero-copy** between independent WASM runtimes. Avoid copying entire datasets into every engine; select required columns and subsets first. The team will evaluate a Pyodide-hosted DuckDB option if dual SQL/Python runtime overhead is too high.
+La comunicación entre runtimes se realizará mediante formatos de intercambio tipados; **no se asumirá zero-copy** entre memorias WebAssembly independientes. La fase 0 determinará viabilidad y estrategia final.
 
-## Initial capability targets — not guarantees
+Más información: [Arquitectura](docs/architecture.md).
 
-|Item|Planning target|Validation needed|
-|-|-|-|
-|Core input formats|CSV, XLSX, JSON, Parquet|Complex/nested documents handled explicitly|
-|Typical dataset|Up to \~100,000 rows|Vary width, cardinality and cell length|
-|Initial CSV / Parquet upload cap|20 MB|Benchmark across desktop/mobile|
-|Initial XLSX upload cap|10 MB|Compressed-size and decompressed-memory checks|
-|Later stress target|500,000 rows / 100 MB (select formats)|No promise of universal support|
-|Processing|Worker-based, bounded and cancelable when possible|Heap use, latency, browser stability|
-|Deployment|Static Vercel hosting|Build and asset-size checks|
+## Stack objetivo
 
-**Pagination is not streaming ingestion.** Virtualized tables should avoid rendering every row; ingestion should use DuckDB's native capabilities where suitable. For Excel, loading ranges from ZIP-contained XML requires special handling and memory limits. A file's row count alone is insufficient to predict memory use.
+| Área | Tecnologías |
+|---|---|
+| Web | **Next.js**, React, TypeScript strict |
+| UI | **Tailwind CSS**, **shadcn/ui**, **Lucide React** |
+| Tablas | TanStack Table, TanStack Virtual |
+| Estado y validación | Zustand cuando haga falta, Zod |
+| Gráficos y flujos | Apache ECharts, React Flow cuando se incorpore el editor visual |
+| Datos | DuckDB-Wasm |
+| Ciencia de datos | Pyodide (Python, NumPy, Pandas, SciPy y paquetes compatibles) |
+| Algoritmos | Rust, wasm-bindgen y WebAssembly |
+| Persistencia local | IndexedDB + OPFS |
+| Pruebas | Vitest, Playwright, tests de Python y Rust |
+| Despliegue / CI | Vercel, GitHub Actions |
+| Nube futura opcional | Autenticación y Neon PostgreSQL para metadatos |
 
-## Analysis catalog (planned)
+**No está previsto instalar todas las dependencias desde el comienzo.** Cada incorporación deberá justificarse por una funcionalidad y aprobar las pruebas correspondientes.
 
-|Module|Example outputs|Primary engine|
-|-|-|-|
-|Data profiling|inferred types, null counts, duplicate checks, completeness|DuckDB-Wasm|
-|Descriptive statistics|mean, median, mode, quantiles, variance, standard deviation, IQR, skewness|DuckDB-Wasm|
-|Visual analytics|bar, line, histogram, box plot, scatter, heatmap, pie for few categories|DuckDB + ECharts|
-|Relationships|pivot/crosstab, Pearson correlation, grouped distributions|DuckDB-Wasm|
-|Statistical analysis|confidence intervals, Spearman, hypothesis tests, diagnostics|Pyodide + SciPy|
-|Forecasting|naive/seasonal baselines, time-series backtesting, error measures, optional models|Pyodide|
-|Time-series similarity|Euclidean distance, DTW, restricted DTW, alignment and pairwise matrices|Rust/Wasm|
-|Optimization|small linear or mixed-integer resource allocation models|Pyodide + SciPy|
-|Report building|HTML report, provenance, evidence, limitations, export|TypeScript + chart snapshots|
+## Privacidad y persistencia
 
-**Automatic recommendations must be rule-based and explainable.** A numeric identifier must not be treated automatically as a meaningful metric. Statistical tests and forecasts require user confirmation, adequate data and clear assumptions. Optimization needs an objective, decision variables, and constraints; it cannot be inferred from an arbitrary dataset.
+**Modo local (primera etapa):**
+- Sin cuenta ni backend analítico.
+- Archivos procesados en el navegador mediante Web Workers.
+- Proyectos y configuraciones guardados localmente con IndexedDB/OPFS, sujetos a compatibilidad y cuotas.
+- Copias de seguridad mediante exportación/importación portable.
 
-## Multi-dataset workspace
+**Modo conectado (opcional, futuro):**
+- Cuentas y carpetas sincronizadas.
+- Neon PostgreSQL para metadatos, nunca como depósito principal de archivos grandes.
+- Subida explícita y voluntaria a almacenamiento privado si se desarrolla sincronización completa.
+- Datos y ejecución locales por defecto, también para personas registradas.
 
-A workspace contains immutable **source datasets**, versioned **derived datasets**, saved **pipelines**, and **analysis snapshots** recording source versions, transformations, filters, metrics, and chart settings.
+Se empezará con **Next.js con exportación estática** para landing y aplicación. Una futura autenticación dinámica obligará a revisar el modo de despliegue; no forma parte del MVP.
 
-* **Append / union:** compatible schemas or confirmed mappings; missing columns handled explicitly.
-* **Join:** the user chooses keys, join type and expected cardinality; guard against multiplicative joins.
-* **Compare:** analyze two periods or datasets using matching definitions.
-* **Incremental updates:** recompute where necessary; means/medians/statistics are not generally combined by averaging earlier summaries.
-* **Persistence (later):** OPFS subject to browser support and quotas; workspace export/import is the portable fallback.
+## Objetivos de capacidad (no garantías)
 
-## Delivery roadmap
+| Escenario | Objetivo provisional |
+|---|---|
+| Dataset moderado | ~100.000 filas, según ancho, tipos y navegador |
+| CSV / Parquet | Límite inicial orientativo de 20 MB por archivo |
+| Excel XLSX | Límite inicial orientativo de 10 MB por archivo |
+| Estrés posterior | Hasta 500.000 filas / 100 MB en escenarios adecuados |
+| Rendimiento | Workers, lazy loading, paginación, virtualización y agregación |
 
-Every phase ends with documented acceptance criteria, tests, a working build and a demo where applicable.
+Estos números requieren benchmarks. **Paginación de tabla no equivale a ingesta por lotes.** Excel comprimido puede expandirse mucho más en memoria.
 
-|Phase|Focus|Definition of done (high level)|
-|-|-|-|
-|**0**|Architecture spike|Static Vercel proof-of-concept: XLSX → DuckDB; optional Pyodide and Rust module can execute; measure transfer overhead and memory|
-|**1**|Data Explorer|Import CSV/XLSX/JSON/Parquet; bounded previews; schema inspection; data profiling; safe error handling|
-|**2**|Visual Analytics|Chart recommendations, configurable aggregations and graphs, basic correlations and cross-tabs|
-|**3**|Cleaning \& Pipelines|Non-destructive transformations; ordered steps; previews; export and replayable definitions|
-|**4**|Multi-Dataset Workspace|Multiple inputs, append/join/compare, versioned derived datasets and lineage|
-|**5**|Insights \& Reports|Explainable findings, HTML reports, selected visuals and data exports|
-|**6**|Python Statistics|Lazy Pyodide, reproducible statistical analyses, verified results and worker cancellation/limits|
-|**7**|Forecasting \& Time Series|Baseline forecasts + backtests; DTW Rust/Wasm; alignment visualization; performance guardrails|
-|**8**|Optimization \& Modeling|Limited resource-allocation templates and regression diagnostics, only if valuable after user testing|
-|**9**|Hardening \& Release|Accessibility, E2E, dataset safety, benchmark reports, optional local persistence, portfolio polish|
+## Roadmap resumido
 
-**Priority order:** robust ingestion → useful profiling → reproducible transformations → multi-dataset analysis → informative reports → specialized analytics. Future functionality requires an explicit product/technical rationale, not technology accumulation.
+| Fase | Alcance |
+|---|---|
+| **0** | Validar Next.js, DuckDB-Wasm, Pyodide y Rust/Wasm |
+| **1** | Landing, UI y gestión de proyectos locales |
+| **2** | Importación multiformato, Data Explorer y profiling |
+| **3** | Estadística descriptiva, gráficos e insights básicos |
+| **4** | Pipelines, limpieza y múltiples datasets |
+| **5** | Report Builder y exportación de proyectos |
+| **6** | Finanzas personales y registro manual |
+| **7** | Finanzas avanzadas, cotizaciones ARS/USD |
+| **7B** | Plantillas Ventas y Encuestas |
+| **8** | Python científico y forecasting |
+| **9** | Rust/Wasm y DTW |
+| **10** | Optimización matemática y modelado (opcional) |
+| **11** | Hardening, E2E, benchmarks y publicación |
+| **Cloud C1–C2** | Cuentas y sincronización opcionales, sin bloquear las fases anteriores |
 
-## Security, privacy and reliability requirements
+[Consultar roadmap completo y criterios de aceptación](docs/roadmap.md).
 
-* No processing uploads to a remote backend in the planned core product. Clearly disclose third-party assets/telemetry and disable unnecessary analytics.
-* Bound memory, time, compressed input expansion, table widths, chart point counts and the number of simultaneous jobs.
-* Run heavy operations in workers, provide progress or honest indeterminate states and cancellation where supported.
-* Treat all uploaded files as untrusted; protect against malformed XLSX/ZIP/XML, formulas on spreadsheet export, hostile text in HTML reports, and SQL injection via dynamically generated identifiers/expressions.
-* Prefer prepared queries and validated/escaped identifiers; never directly execute untrusted AI-generated SQL or Python.
-* Perform numerical correctness tests against independent reference implementations and well-understood fixture datasets.
-* Make statistical method, missing-data treatment, sample sizes and assumptions visible in reports.
-* Mobile capability may be constrained; explain limits instead of silently crashing.
+## Estructura prevista
 
-## Engineering and quality gates
+\`\`\`text
+DataForge/
+├── src/
+│   ├── app/                   # Landing y rutas de Next.js
+│   ├── modules/               # Dominio por funcionalidades
+│   │   ├── projects/
+│   │   ├── datasets/
+│   │   ├── analysis/
+│   │   ├── pipelines/
+│   │   ├── reports/
+│   │   ├── finance/
+│   │   ├── sales/
+│   │   ├── surveys/
+│   │   ├── forecasting/
+│   │   └── time-series/
+│   ├── platform/              # Workers, motores, persistencia
+│   └── shared/                # UI y utilidades realmente compartidas
+├── python/
+├── rust/
+├── tests/
+├── e2e/
+├── benchmarks/
+├── docs/
+│   ├── roadmap.md
+│   └── architecture.md
+└── .github/workflows/
+\`\`\`
 
-* TypeScript strict mode; modular feature/engine contracts; separate workers from UI.
-* Tests: parser/validation fixtures, profiling, transformation idempotence where appropriate, join cardinality, statistics and Rust DTW edge cases; Playwright E2E with small representative files.
-* CI: lint, typecheck, frontend tests, Python tests (when present), `cargo test` and WASM build (when present), production build and smoke tests.
-* Benchmarks: report hardware, browser/version, file format, rows, columns, peak memory, import time, profiling time, query latency, worker/bootstrap times and chart rendering.
-* Benchmark matrices: 1,000×10; 10,000×20; 100,000×30; 100,000×100; optional 500,000×30. Vary numeric/text/date distributions and XLSX/CSV/Parquet representations.
-* No invented speedup goals; report positive and negative outcomes.
+**Es una estructura objetivo, no carpetas ya existentes.** Se creará gradualmente al implementar cada fase.
 
-## Proposed repository layout
+## Calidad y trabajo con agentes
 
-```text
-dataforge/
-  src/
-    app/
-    features/{importer,explorer,profiling,visualizations,pipelines,workspace,reports,statistics,time-series,optimization}/
-    engines/{duckdb,python,rust,orchestrator}/
-    workers/
-    shared/
-  python/{statistics,forecasting,modeling}/
-  rust/src/{lib.rs,dtw.rs,distances.rs}
-  tests/
-  e2e/
-  benchmarks/
-  docs/{prd,architecture,adr,roadmap,qa,agent-handoff}/
-  .github/workflows/
-```
+- Revisar el estado real del repositorio y respetar la fase activa.
+- Dominio desacoplado de React, Next.js, IndexedDB, DuckDB, Pyodide y Rust.
+- Pruebas unitarias de negocio, pruebas de contrato para adaptadores y E2E de recorridos reales.
+- Validar cálculos estadísticos, financieros y DTW con implementaciones independientes.
+- Proteger frente a archivos malformados, inyección SQL, exportaciones peligrosas y errores de memoria.
+- Mostrar límites y metodología; no prometer rendimiento o funciones no verificadas.
+- Documentar decisiones arquitectónicas (ADR) y actualizar el roadmap conforme se avance.
+- Priorizar releases útiles y mantener una separación honesta entre planificado e implementado.
 
-The folders represent a **proposed layout**, not currently existing implementation.
+## Próximos pasos
 
-## Working with AI coding agents
+- [x] Crear repositorio.
+- [x] Consolidar roadmap y arquitectura de planificación.
+- [ ] Fase 0: esqueleto Next.js y build estático.
+- [ ] Fase 0: importar XLSX con DuckDB-Wasm y mostrar preview.
+- [ ] Fase 0: prueba de Pyodide bajo demanda.
+- [ ] Fase 0: compilación e integración mínima Rust/Wasm.
+- [ ] Medir interoperabilidad y consumo de recursos.
+- [ ] Registrar ADR de las decisiones validadas.
+- [ ] Publicar la primera demo funcional.
 
-For an incoming agent or LLM:
+## Documentación y referencias
 
-1. Read this README, inspect the actual repository, and explicitly distinguish implemented functionality from planned scope.
-2. Start with Phase 0. Do not bootstrap all engines, packages, databases or cloud services at once.
-3. Propose a bounded change with observable acceptance criteria, files affected, data/compute risks and tests.
-4. Ask for evidence before adding libraries or infrastructure. Keep processing in-browser unless the project's owner changes that constraint.
-5. Never claim a capability, performance figure, deployment or test run unless verified.
-6. Run available tests, document failures and tradeoffs, update changelog/ADR as decisions change.
-7. Keep the user in charge of domain decisions and statistical interpretation. AI-generated code must be reviewable and reproducible.
+- [Roadmap detallado](docs/roadmap.md)
+- [Arquitectura de software](docs/architecture.md)
+- [Next.js](https://nextjs.org/docs)
+- [DuckDB-Wasm](https://duckdb.org/docs/stable/clients/wasm/overview)
+- [Pyodide](https://pyodide.org/)
+- [wasm-bindgen](https://rustwasm.github.io/docs/wasm-bindgen/)
+- [Apache ECharts](https://echarts.apache.org/)
+- [shadcn/ui](https://ui.shadcn.com/)
 
-## Immediate next actions
+---
 
-* \[ ] Create the repository and protect the main branch as appropriate.
-* \[ ] Set up a Vite/React/TypeScript skeleton and a static deployment.
-* \[ ] Phase 0: XLSX import to DuckDB-Wasm with a safe row preview.
-* \[ ] Phase 0: load a small Pyodide function only on demand; measure its startup overhead.
-* \[ ] Phase 0: compile a minimal Rust/Wasm function and call it from a worker.
-* \[ ] Measure cross-engine data transfer, memory use and browser support.
-* \[ ] Decide whether to retain separate DuckDB-Wasm and Pyodide runtimes before expanding scope.
-* \[ ] Write ADR-0001 documenting measured architectural choice.
-
-## Reference documentation
-
-* [DuckDB-Wasm](https://duckdb.org/docs/stable/clients/wasm/overview)
-* [DuckDB-Wasm file ingestion](https://duckdb.org/docs/stable/clients/wasm/data_ingestion)
-* [Pyodide](https://pyodide.org/en/stable/)
-* [wasm-bindgen](https://rustwasm.github.io/docs/wasm-bindgen/)
-* [Vite static deployment](https://vite.dev/guide/static-deploy)
-* [Apache ECharts](https://echarts.apache.org/)
-
-\---
-
-**Project type:** portfolio + educational open-source product. **License, final branding, dependency versions, and deployment URL:** to be determined.
-
+**Proyecto educativo, open-source y de portfolio.** Licencia y URL de demo por definir. Objetivo: crear análisis útiles, explicables y reproducibles sin infraestructura paga de procesamiento.
