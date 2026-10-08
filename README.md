@@ -71,7 +71,7 @@ Los datos locales estarán sujetos a las cuotas y políticas de limpieza del nav
 
 **Monolito modular client-side, organizado por funcionalidades (Screaming Architecture / feature-first), con capas y principios hexagonales pragmáticos.**
 
-Los módulos expresarán capacidades del producto —\`projects\`, \`datasets\`, \`analysis\`, \`pipelines\`, \`reports\`, \`finance\`, \`sales\`, \`surveys\`—, no solamente frameworks o adaptadores.
+Los módulos expresarán capacidades del producto —`projects`, `datasets`, `analysis`, `pipelines`, `reports`, `finance`, `sales`, `surveys`—, no solamente frameworks o adaptadores.
 
 Los módulos complejos separarán:
 - **Dominio:** entidades, invariantes y reglas de negocio sin dependencias técnicas.
@@ -83,7 +83,7 @@ Los componentes UI sencillos no necesitan una jerarquía hexagonal completa.
 
 ### Motores analíticos
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
   UI["Next.js + React + TypeScript"] --> APP["Módulos y casos de uso"]
   APP --> ORCH["Adaptadores / orquestador analítico"]
@@ -95,7 +95,7 @@ flowchart TD
   RUST --> OUT
   LOCAL["Archivos y almacenamiento local"] --> DUCK
   OUT --> REPORT["Report Builder / exportación"]
-\`\`\`
+```
 
 - **DuckDB-Wasm:** motor principal de datos tabulares, SQL, agregaciones, importación, profiling, ELT.
 - **Pyodide:** Python científico y modelos estadísticos especializados, cargado solo cuando se necesita.
@@ -176,7 +176,7 @@ Estos números requieren benchmarks. **Paginación de tabla no equivale a ingest
 
 ## Estructura prevista
 
-\`\`\`text
+```text
 DataForge/
 ├── src/
 │   ├── app/                   # Landing y rutas de Next.js
@@ -202,7 +202,7 @@ DataForge/
 │   ├── roadmap.md
 │   └── architecture.md
 └── .github/workflows/
-\`\`\`
+```
 
 **Es una estructura objetivo, no carpetas ya existentes.** Se creará gradualmente al implementar cada fase.
 
