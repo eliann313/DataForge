@@ -242,3 +242,16 @@ Las plantillas de finanzas contienen información potencialmente sensible. Evita
 - Seguridad de origen compartido, CORS y aislamiento si se requiere multihilo.
 
 **Principio rector:** arquitectura visible por funcionalidades, dominio independiente, casos de uso comprobables y adaptadores sustituibles, sin sacrificar la simplicidad del producto inicial.
+
+## 12. Extensiones opcionales: identidad, IA e integraciones
+
+Estas extensiones **no forman parte del núcleo local** y no justifican desplazar DuckDB/Pyodide/Rust al backend.
+
+- **Autenticación:** módulos de cuenta, sesión y permisos; Neon Auth/Better Auth evaluados; email gestionado; verificación y recuperación con controles antiabuso. Detalles en [authentication.md](authentication.md).
+- **DataForge Connect:** `integrations` como dominio para fuentes, permisos, ingestas e idempotencia; adaptadores REST import y API entrante. Los metadatos de recepción pueden vivir en Neon y los archivos grandes en objetos privados. [integrations.md](integrations.md).
+- **DataForge AI:** `ai-assistant` como dominio para solicitudes, evidencias, chats e informes. Puerto de proveedor con adaptadores reglas/Chrome Built-in AI/Gateway/BYOK. Contextos minimizados y consentidos; nada de SQL arbitrario ni escritura de datasets. [ai-assistant.md](ai-assistant.md).
+- **Identidades y secretos:** claves de ingesta verificables como digest y scopes; BYOK reversibles bajo AES-256-GCM, clave maestra solo servidor; claves globales en variables privadas/OIDC de Vercel.
+- **Estrategia de renderizado:** estático + CSR para MVP; habilitar funciones de servidor solamente cuando se implemente autenticación, IA remota o bandeja de datos. No introducir SSR generalizado en el workspace.
+- **Legal:** la privacidad local no elimina obligaciones sobre sesiones, proveedores, menores, datos sensibles ni seguridad cuando existan servicios conectados. Borradores legales en [legal/](legal/).
+
+**Referencia visual:** [Guía de diseño](design/README.md) con maqueta vectorial versionada. No confundir referencias generadas con pantallas implementadas.
