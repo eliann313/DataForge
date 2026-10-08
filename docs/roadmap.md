@@ -4,7 +4,8 @@
 
 **Objetivo:** construir una plataforma de análisis de datos autoservicio, en español, con procesamiento local en el navegador, proyectos persistentes, visualizaciones, pipelines reproducibles e instrumentos científicos especializados.  
 **Alcance:** proyecto educativo y de portfolio; objetivo de infraestructura sin servicios pagos.  
-**Arquitectura prevista:** Next.js + TypeScript, arquitectura gritona por dominio con capas y puertos/adaptadores. DuckDB-Wasm, Pyodide y Rust/Wasm se validarán en fase 0 antes de adoptarse formalmente.
+**Arquitectura prevista:** Next.js + TypeScript como candidato principal (Vite + React como alternativa evaluada en el [ADR-0001](adr/0001-framework-y-exportacion-estatica.md)), arquitectura gritona por dominio con capas y puertos/adaptadores aplicados según la complejidad de cada módulo. DuckDB-Wasm, Pyodide y Rust/Wasm se validarán en la fase 0 ([ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md)) antes de adoptarse formalmente.  
+**Prioridad de ejecución:** este roadmap conserva la visión completa del producto. Lo que se construye primero está acotado en [MVP.md](MVP.md).
 
 ## 1. Visión y alcance
 
@@ -65,26 +66,43 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 ### Fase 0 — Prueba de viabilidad arquitectónica
 
-**Objetivo:** validar la convivencia de los motores dentro del navegador y el despliegue estático.
+**Objetivo:** validar, con mediciones, la convivencia de los motores dentro del navegador y el despliegue estático. Se divide en tres spikes que pueden cerrarse por separado. Los umbrales y el protocolo de medición están en el [ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md).
+
+#### Fase 0A — Fundamento tabular (prioridad inmediata)
 
 **Alcance**
-- Crear esqueleto Next.js/React/TS strict y sistema visual básico.
-- Validar generación estática y despliegue Vercel.
-- Worker DuckDB-Wasm: importar un XLSX tabular, consultar y devolver vista previa.
-- Pyodide: cargar bajo demanda y ejecutar una función Python mínima.
-- Rust/Wasm: compilar y ejecutar una función de prueba desde TypeScript.
-- Probar transferencia de metadatos JSON, buffers/Arrow y arreglos numéricos; medir copias y uso de memoria.
-- Evaluar alternativa DuckDB dentro de Pyodide si mantener dos runtimes resulta demasiado costoso.
-- Comprobar políticas de seguridad, aislamiento, CSP y compatibilidad básica de navegador.
+- Esqueleto Next.js/React/TS strict y, si el esfuerzo es acotado, el mismo spike en Vite para comparar ([ADR-0001](adr/0001-framework-y-exportacion-estatica.md)).
+- Generación estática y despliegue en Vercel.
+- Worker con DuckDB-Wasm: importar CSV y XLSX, consultar con SQL y devolver vista previa.
+- XLSX por dos rutas: lectura directa con DuckDB-Wasm (a comprobar) o parser JavaScript en un Worker.
+- Medir tiempos, memoria y bloqueo de la interfaz con el protocolo del ADR-0002.
+- Comprobar CSP, headers necesarios y compatibilidad básica de navegador.
 
 **Criterios de aceptación**
-- Los tres motores ejecutan pruebas mínimas en navegador sin bloquear la UI.
-- El Excel llega al motor tabular y produce resultados correctos.
-- Se documentan tiempos de inicio, transferencia, errores y memoria.
-- Existe build estático funcional y smoke test.
-- ADR-0001 (renderizado) y ADR-0002 (motores) registran resultados y decisiones.
+- Un archivo real se importa, se consulta con SQL y se muestra sin bloquear la UI.
+- Los resultados coinciden con una referencia independiente.
+- Existe build estático funcional, smoke test y despliegue en Vercel.
+- Las mediciones quedan registradas en el ADR-0002 y el ADR-0001 refleja la decisión de framework.
 
-**Entrega:** spike técnico, CI inicial, ADR y mediciones. No iniciar todos los módulos definitivos.
+#### Fase 0B — Python científico (investigación acotada)
+
+**Alcance**
+- Pyodide con carga diferida en un Worker y una función Python mínima.
+- Transferencia de un subconjunto de datos desde DuckDB (Arrow o arreglos tipados); medir copias y memoria.
+- Evaluar DuckDB dentro de Pyodide como alternativa si mantener dos runtimes resulta demasiado costoso.
+
+**Criterios de aceptación:** calcular una métrica y compararla con una referencia independiente; medir el arranque en frío, en caliente y tras cargar paquetes; comprobar que Pyodide no se carga al iniciar la aplicación.
+
+#### Fase 0C — Rust y WebAssembly (investigación acotada)
+
+**Alcance**
+- Compilar con wasm-bindgen e integrar una función desde TypeScript en un Worker.
+- DTW exacto frente a una implementación en TypeScript; intercambio de vectores numéricos.
+- Definir el caso de uso que justifica DTW (ver ADR-0002).
+
+**Criterios de aceptación:** resultados dentro de tolerancia; tiempo y memoria medidos **incluyendo transferencia e inicialización**; decisión con evidencia sobre si Rust es obligatorio, opcional o se descarta para ese cálculo.
+
+**Entrega de la fase 0:** spikes técnicos, CI inicial, ADR-0001 y ADR-0002 con resultados y decisiones. No iniciar todos los módulos definitivos. Las fases 0B y 0C no bloquean el MVP (0A hasta 3B).
 
 ### Fase 1 — Fundamentos del producto y gestión local
 
@@ -141,7 +159,19 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Criterios de aceptación:** cálculos cotejados con fixtures de referencia; no media de identificadores; no inferencia causal por correlación; resúmenes, no millones de puntos en el gráfico.
 
-**Hito R1:** MVP de exploración y visualización, público y usable.
+### Fase 3B — Finanzas Lite (primer caso real)
+
+**Objetivo:** demostrar temprano un caso de uso real sobre las fases 1–3, sin esperar a la plataforma completa.
+
+**Alcance**
+- Registro manual de ingresos y gastos: fecha, descripción, importe, moneda (ARS/USD), categoría y notas; alta, edición y baja.
+- Proyecto local, saldo por período, resumen mensual y gráficos básicos.
+- Importes sin coma flotante binaria, con redondeo explícito.
+- **Fuera de esta fase:** cuentas, transferencias, cotizaciones y conversión ARS/USD, recurrencias, presupuestos, predicciones, importación bancaria e inflación. Cada moneda se muestra por separado.
+
+**Criterios de aceptación:** registro manual sin archivo; los datos persisten tras recargar; totales por moneda coinciden con fixtures de referencia; ARS y USD nunca se suman ni se convierten implícitamente.
+
+**Hito R1:** MVP de exploración, visualización y Finanzas Lite, público y usable. Ver [MVP.md](MVP.md).
 
 ### Fase 4 — Limpieza, pipelines y múltiples datasets
 
@@ -175,7 +205,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 ### Fase 6 — Plantilla Finanzas Personales: entrada manual y análisis
 
-**Objetivo:** primer caso de uso especializado, con registro manual real.
+**Objetivo:** ampliar [Finanzas Lite](#fase-3b--finanzas-lite-primer-caso-real) con cuentas, transferencias, importación por archivo, detección de duplicados y dashboard completo.
 
 **Alcance**
 - Entidades de cuentas, categorías, ingresos, gastos, transferencias, reintegros, presupuestos y movimientos.
@@ -188,7 +218,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Criterios de aceptación:** registro manual sin archivo; una transferencia propia no es gasto; pago de tarjeta no duplica consumo; totales coinciden con fixtures de referencia; se conserva moneda original.
 
-**Hito R3:** Finanzas Personales básica, utilizable sin cuenta.
+**Hito R3:** Finanzas Personales completas, utilizables sin cuenta.
 
 ### Fase 7 — Finanzas avanzadas y cotizaciones
 
@@ -200,9 +230,10 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 - Fecha histórica por movimiento o última fecha disponible, fuente, compra/venta, criterio de fecha faltante y snapshot utilizado.
 - Evaluar APIs públicas: DolarAPI, ArgentinaDatos, BCRA según coberturas, CORS y términos.
 - Operación offline/degradada: conservar cotizaciones consultadas o permitir tasa manual.
+- Ajuste por inflación mediante IPC: indicar fuente, período base y metodología, y distinguir montos nominales de montos ajustados. Un análisis multianual de importes en pesos sin este ajuste puede inducir a conclusiones engañosas.
 - Sin sincronización bancaria ni asesoramiento financiero automatizado.
 
-**Criterios de aceptación:** conversiones reproducibles; no doble cómputo de recurrencias; proveedor de cotizaciones caído no bloquea el producto; precisión monetaria validada.
+**Criterios de aceptación:** conversiones reproducibles; no doble cómputo de recurrencias; proveedor de cotizaciones caído no bloquea el producto; precisión monetaria validada; ajuste por IPC con fuente y metodología documentadas.
 
 ### Fase 7B — Plantillas Ventas y Negocios / Encuestas e Investigación
 
@@ -290,6 +321,8 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 ## 5. Línea opcional Cloud (no bloquea R1–R5)
 
+> **Visión futura, fuera del MVP.** No se implementa nada de esta línea antes de cerrar R1 y aprobar expresamente su inicio.
+
 ### Cloud C1 — Cuentas y sincronización ligera
 - Next.js con funciones de servidor cuando se justifique; revisar salida estática.
 - Proveedor de autenticación evaluado; Neon PostgreSQL para cuentas y metadatos.
@@ -328,10 +361,10 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 | Release | Fases | Valor |
 |---|---|---|
-| R0 | 0 | Viabilidad técnica |
-| R1 | 1–3 | Exploración y visualización |
+| R0 | 0A–0C | Viabilidad técnica (0A es prioritaria; 0B y 0C no bloquean R1) |
+| R1 | 1–3B | MVP: exploración, visualización y Finanzas Lite |
 | R2 | 4–5 | Pipelines, múltiples datos e informes |
-| R3 | 6–7 | Finanzas personales |
+| R3 | 6–7 | Finanzas completas y avanzadas |
 | R3B | 7B | Ventas y encuestas |
 | R4 | 8–9 | Python científico y Rust/DTW |
 | R5 | 11 | Calidad y portfolio |
@@ -351,18 +384,23 @@ Fase 10 no bloquea R5.
 
 ## 10. Próximas acciones
 
-- [ ] Publicar README y documentación en español.
+- [x] Publicar README y documentación en español.
 - [ ] Crear PRD y flujos de usuario.
-- [ ] Documentar sistema de diseño y mockups como referencias.
-- [ ] ADR-0001: Next.js y exportación estática.
-- [ ] ADR-0002: contratos DuckDB/Pyodide/Rust.
-- [ ] Preparar issues acotados de fase 0.
-- [ ] Implementar el spike técnico, medir y decidir.
+- [x] Documentar sistema de diseño y mockups como referencias.
+- [x] Redactar ADR-0001 y ADR-0002 (estado «Propuesto», pendientes de resultados).
+- [x] Definir el MVP acotado ([MVP.md](MVP.md)) y mover las reglas de agentes a [AGENTS.md](../AGENTS.md).
+- [ ] Preparar issues acotados de la fase 0A.
+- [ ] Implementar el spike 0A, medir y cerrar el ADR-0001.
+- [ ] Spikes 0B y 0C; cerrar el ADR-0002 con resultados.
 - [ ] Registrar límites reales antes de ampliar el producto.
 
 **Regla rectora:** primero una plataforma que resuelva correctamente análisis comunes; después profundizar con plantillas y ciencia de datos especializada.
 
+**Regla de ejecución:** no se agregan herramientas ni fases al roadmap antes de completar la fase 0A; la siguiente decisión surge de resultados técnicos observables.
+
 ## 11. Extensiones aprobadas para planificación (sin bloquear el MVP)
+
+> **Visión futura, fuera del MVP.** Se documentan para conservar la dirección del producto, no como compromiso de implementación.
 
 ### Fase 4B — Conectores REST de lectura
 
@@ -383,11 +421,18 @@ Fase 10 no bloquea R5.
 ### Fase 5B-B — IA remota opcional
 
 - Vercel AI Gateway + AI SDK, streaming de chatbot e informes estructurados.
-- Cuota global con límites y kill switch; BYOK cifrado AES-256-GCM en servidor, compatible con cuentas conectadas.
+- Cuota global con límites y kill switch. El almacenamiento persistente de claves BYOK en el servidor (AES-256-GCM) se difiere hasta que existan cuentas conectadas; no se ofrece una clave global a usuarios anónimos sin defensas reales contra abuso.
 - Consentimiento informado y vista previa del contexto a compartir; respetar tratamiento de datos de los proveedores.
 - Requiere API segura de Next.js: **no compatible con exportación puramente estática**.
 - Validar límites reales del nivel gratuito antes de habilitar clave global pública.
 - **Documento:** [DataForge AI](ai-assistant.md).
+
+### Fase 5B-C — Consultas asistidas (text-to-SQL controlado)
+
+- La IA propone una consulta; el usuario la ve y la aprueba antes de ejecutarla.
+- Ejecución de solo lectura sobre tablas autorizadas, con límites de tiempo y memoria y sin acceso a archivos ni funciones externas. Que una consulta comience con `SELECT` no basta para considerarla segura.
+- **Criterio:** ninguna consulta modifica datasets ni accede a recursos no autorizados; los resultados se identifican como generados por una consulta asistida.
+- Funcionalidad avanzada: **no pertenece al MVP**.
 
 ### Cloud C3 — API entrante de integración
 
@@ -416,4 +461,5 @@ Fase 10 no bloquea R5.
 ### Diseño aprobado
 
 - Guía UI versionada: [Mockup y decisiones de interfaz](design/README.md).
-- La maqueta vectorial está subida; los tres PNG originales generados durante planificación permanecen en la conversación hasta que se incorporen explícitamente.
+- La maqueta vectorial y los tres PNG originales están versionados en [`design/mockups`](design/mockups/README.md).
+- La navegación documentada en la guía de diseño prevalece sobre los textos de los mockups.

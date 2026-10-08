@@ -1,6 +1,6 @@
 # DataForge — Autenticación y cuentas
 
-> **Estado:** planificación. Las cuentas son opcionales. DataForge continúa funcionando sin registro y sin backend de análisis.
+> **Estado:** planificación. Las cuentas son opcionales y quedan **fuera del [MVP](MVP.md)**. DataForge continúa funcionando sin registro y sin backend de análisis.
 
 ## Estrategia
 
