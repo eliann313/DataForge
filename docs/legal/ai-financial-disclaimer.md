@@ -23,7 +23,7 @@ Las plantillas financieras son informativas y educativas. DataForge no presta as
 ## Mensajes visibles en UI
 
 - «Los cálculos se generan con los motores de DataForge. Las explicaciones de IA pueden contener errores».
-- «Vas a compartir las métricas seleccionadas con un proveedor externo. Revisá el contenido antes de continuar».
+- «Vas a compartir las métricas seleccionadas con un proveedor externo. Revisa el contenido antes de continuar».
 - «Los datos permanecen en tu navegador salvo que actives una función conectada».
 - «La información financiera no sustituye la evaluación de un profesional».
 

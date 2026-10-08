@@ -1,6 +1,6 @@
 # DataForge AI — Informes y chatbot analítico
 
-> **Estado:** propuesta. El análisis matemático sigue siendo determinista; la IA interpreta métricas verificadas.
+> **Estado:** propuesta. El análisis matemático sigue siendo determinista; la IA interpreta métricas verificadas. Funcionalidad futura, fuera del [MVP](MVP.md).
 
 ## 1. Capacidades
 
@@ -43,6 +43,8 @@ El texto de archivos y etiquetas es **no confiable**: evitar prompt injection. N
 
 **BYOK**: AES-256-GCM con IV único y tag; clave maestra privada del servidor, formato versionado, rotación; desencriptación solo con autorización. Usuario ve estado «clave configurada», jamás el secreto recuperado.
 
+**Decisión actual sobre BYOK:** el almacenamiento persistente de claves en el servidor se difiere hasta que existan cuentas conectadas. Mantener la clave solo en la memoria del navegador evita que el backend la guarde, pero no es automáticamente más seguro (XSS, extensiones maliciosas) ni vuelve local al proveedor: los datos seleccionados igualmente viajan a un servicio remoto. Las alternativas por defecto son análisis determinista sin IA y, cuando exista soporte, IA nativa del navegador.
+
 **API key de ingesta** no es BYOK: se guarda como hash por ser un token verificable y no recuperable.
 
 En AI Gateway los budgets de plataforma no sustituyen límites de la aplicación y pueden no cubrir BYOK. Confirmar que los fallbacks no conviertan un fallo BYOK en consumo global no deseado. BYOK estricto puede requerir adaptadores directos de proveedor.
@@ -62,7 +64,7 @@ En AI Gateway los budgets de plataforma no sustituyen límites de la aplicación
 
 - **Fase 5B-A:** informes deterministas y pruebas opcionales con Chrome Built-in AI + chatbot local donde esté disponible.
 - **Fase 5B-B:** AI Gateway, informes asistidos, chatbot con streaming, BYOK, límites y consentimiento; requiere un entorno servidor.
-- **Fase 5B-C (opcional):** herramientas de consulta controlada de solo lectura, búsqueda semántica o embeddings si justifican valor.
+- **Fase 5B-C (opcional, posterior al MVP):** consultas asistidas (text-to-SQL controlado) y, si justifican valor, búsqueda semántica o embeddings. La IA solo propone la consulta: el usuario la ve y la aprueba antes de ejecutarla. La ejecución es de solo lectura, sobre tablas autorizadas, con límites de tiempo y memoria y sin acceso a archivos ni funciones externas. Que una consulta comience con `SELECT` no basta para considerarla segura.
 
 ## 7. Aceptación
 

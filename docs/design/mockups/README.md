@@ -38,7 +38,7 @@ Estos mockups definen la **dirección visual objetivo** de DataForge: navegació
 | Concepto 2 — Módulos y navegación | [PNG 2](./a_wide_clean_modern_ui_ux_mockup_collage_of_a_da.png) |
 | Concepto 3 — Workspace y dashboards | [PNG 3](./a_wide_clean_ui_ux_mockup_collage_on_a_dark_to_li.png) |
 
-Se conservan **los nombres originales** para evitar duplicados y enlaces rotos. No son las imágenes renombradas `concept-01-workflow.png`, `concept-02-modules.png` y `concept-03-workspace.png` mencionadas en un borrador anterior.
+Se conservan **los nombres originales** de los archivos para evitar duplicados y enlaces rotos.
 
 ## Guía para implementación con agentes
 
@@ -50,6 +50,7 @@ Se conservan **los nombres originales** para evitar duplicados y enlaces rotos. 
 6. Considerar los números y textos dentro de los mockups como **ficticios**. La UI real obtiene valores de las operaciones verificadas de DataForge.
 7. El módulo financiero necesitará pantallas adicionales (movimientos manuales, cuentas, presupuestos) y el chatbot de IA será contextual y opcional; estos PNG no los agotan.
 8. Reemplazar estos conceptos por capturas reales solo cuando haya implementación verificable; preservar estas referencias históricas.
+9. En navegación y alcance funcional **prevalece la documentación**: los módulos de Machine Learning, Prophet, XML y mapas que aparecen en las imágenes no están planificados. Ver [Precedencia entre mockups y documentación](../README.md#precedencia-entre-mockups-y-documentación).
 
 ## Documentación relacionada
 

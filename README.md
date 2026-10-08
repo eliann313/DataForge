@@ -6,7 +6,7 @@ DataForge busca que cualquier persona pueda **importar, explorar, limpiar, combi
 
 > **Estado: planificación y validación arquitectónica.** Las características que se describen a continuación están **previstas, no implementadas**. El repositorio actualmente contiene documentación; no hay aún aplicación desplegada ni benchmarks que certifiquen el rendimiento.
 
-**Documentación:** [Roadmap completo](docs/roadmap.md) · [Arquitectura de software](docs/architecture.md)
+**Documentación:** [MVP y prioridades](docs/MVP.md) · [Roadmap completo](docs/roadmap.md) · [Arquitectura de software](docs/architecture.md) · [Decisiones (ADR)](docs/adr/README.md) · [Reglas para agentes](AGENTS.md)
 
 ## ¿Para quién es?
 
@@ -48,6 +48,8 @@ Se utilizarán **ARS y USD** inicialmente, con extensibilidad a otras monedas. L
 
 La contabilidad distinguirá transferencias propias, pagos de tarjeta, reintegros y gastos para evitar dobles conteos. No habrá conexión bancaria automática en el alcance inicial.
 
+Primero llegará **Finanzas Lite** dentro del MVP: registro manual de ingresos y gastos, resumen mensual y gráficos básicos, con ARS y USD por separado y sin conversión. Cuentas, cotizaciones, importación bancaria y ajuste por inflación (IPC) se incorporan después. Ver [MVP](docs/MVP.md).
+
 ### Ventas y negocios
 
 La plantilla contemplará análisis de facturación, productos, categorías, volumen, descuentos y devoluciones; se evitará calcular rentabilidad cuando no existan costos confiables o sumar ventas duplicadas por un JOIN incorrecto.
@@ -62,7 +64,7 @@ Permitirá analizar respuestas de formularios, selección múltiple, escalas y c
 - **Probar un ejemplo:** datasets de demostración para evaluar la aplicación al instante.
 - **Comenzar con mis datos:** carga de archivos o formulario manual en Finanzas.
 - **Workspace:** sidebar de navegación, panel central, inspector contextual, gráficos y tablas.
-- **Idioma:** español exclusivamente.
+- **Idioma:** español neutro en la interfaz, con configuración regional `es-AR` por defecto para números, fechas y moneda; no es un producto multilingüe.
 - **Diseño:** interfaz clara, moderna, accesible, responsive, inicialmente con tema claro.
 
 Los datos locales estarán sujetos a las cuotas y políticas de limpieza del navegador. Habrá opciones para exportar y recuperar proyectos.
@@ -110,7 +112,7 @@ Más información: [Arquitectura](docs/architecture.md).
 
 | Área | Tecnologías |
 |---|---|
-| Web | **Next.js**, React, TypeScript strict |
+| Web | **Next.js** (candidato principal; Vite + React como alternativa evaluada en el [ADR-0001](docs/adr/0001-framework-y-exportacion-estatica.md)), React, TypeScript strict |
 | UI | **Tailwind CSS**, **shadcn/ui**, **Lucide React** |
 | Tablas | TanStack Table, TanStack Virtual |
 | Estado y validación | Zustand cuando haga falta, Zod |
@@ -139,7 +141,7 @@ Más información: [Arquitectura](docs/architecture.md).
 - Subida explícita y voluntaria a almacenamiento privado si se desarrolla sincronización completa.
 - Datos y ejecución locales por defecto, también para personas registradas.
 
-Se empezará con **Next.js con exportación estática** para landing y aplicación. Una futura autenticación dinámica obligará a revisar el modo de despliegue; no forma parte del MVP.
+El candidato principal es **Next.js con exportación estática** para landing y aplicación; la decisión se confirma en la fase 0A ([ADR-0001](docs/adr/0001-framework-y-exportacion-estatica.md)). Una futura autenticación dinámica obligará a revisar el modo de despliegue; no forma parte del MVP.
 
 ## Objetivos de capacidad (no garantías)
 
@@ -151,19 +153,21 @@ Se empezará con **Next.js con exportación estática** para landing y aplicaci�
 | Estrés posterior | Hasta 500.000 filas / 100 MB en escenarios adecuados |
 | Rendimiento | Workers, lazy loading, paginación, virtualización y agregación |
 
-Estos números requieren benchmarks. **Paginación de tabla no equivale a ingesta por lotes.** Excel comprimido puede expandirse mucho más en memoria.
+Estos números son hipótesis que requieren benchmarks; el protocolo de medición y los umbrales provisionales están en el [ADR-0002](docs/adr/0002-motores-analiticos-y-criterios-de-corte.md). **Paginación de tabla no equivale a ingesta por lotes.** Excel comprimido puede expandirse mucho más en memoria.
 
 ## Roadmap resumido
 
 | Fase | Alcance |
 |---|---|
-| **0** | Validar Next.js, DuckDB-Wasm, Pyodide y Rust/Wasm |
+| **0A** | Fundamento tabular: Next.js (o Vite), DuckDB-Wasm, CSV/XLSX y despliegue estático |
+| **0B – 0C** | Spikes acotados de Pyodide y de Rust/Wasm |
 | **1** | Landing, UI y gestión de proyectos locales |
 | **2** | Importación multiformato, Data Explorer y profiling |
 | **3** | Estadística descriptiva, gráficos e insights básicos |
+| **3B** | **Finanzas Lite**: registro manual ARS/USD y resumen mensual |
 | **4** | Pipelines, limpieza y múltiples datasets |
 | **5** | Report Builder y exportación de proyectos |
-| **6** | Finanzas personales y registro manual |
+| **6** | Finanzas completas: cuentas, transferencias e importación |
 | **7** | Finanzas avanzadas, cotizaciones ARS/USD |
 | **7B** | Plantillas Ventas y Encuestas |
 | **8** | Python científico y forecasting |
@@ -172,7 +176,7 @@ Estos números requieren benchmarks. **Paginación de tabla no equivale a ingest
 | **11** | Hardening, E2E, benchmarks y publicación |
 | **Cloud C1–C2** | Cuentas y sincronización opcionales, sin bloquear las fases anteriores |
 
-[Consultar roadmap completo y criterios de aceptación](docs/roadmap.md).
+El **MVP (R1)** abarca las fases 0A a 3B: ver [MVP.md](docs/MVP.md). [Consultar roadmap completo y criterios de aceptación](docs/roadmap.md).
 
 ## Estructura prevista
 
@@ -198,17 +202,22 @@ DataForge/
 ├── tests/
 ├── e2e/
 ├── benchmarks/
+├── AGENTS.md
 ├── docs/
+│   ├── MVP.md
 │   ├── roadmap.md
-│   └── architecture.md
+│   ├── architecture.md
+│   ├── adr/
+│   └── design/
 └── .github/workflows/
 ```
 
 **Es una estructura objetivo, no carpetas ya existentes.** Se creará gradualmente al implementar cada fase.
 
-## Calidad y trabajo con agentes
+## Calidad
 
-- Revisar el estado real del repositorio y respetar la fase activa.
+Las reglas de trabajo con agentes de IA están en [AGENTS.md](AGENTS.md).
+
 - Dominio desacoplado de React, Next.js, IndexedDB, DuckDB, Pyodide y Rust.
 - Pruebas unitarias de negocio, pruebas de contrato para adaptadores y E2E de recorridos reales.
 - Validar cálculos estadísticos, financieros y DTW con implementaciones independientes.
@@ -221,18 +230,19 @@ DataForge/
 
 - [x] Crear repositorio.
 - [x] Consolidar roadmap y arquitectura de planificación.
-- [ ] Fase 0: esqueleto Next.js y build estático.
-- [ ] Fase 0: importar XLSX con DuckDB-Wasm y mostrar preview.
-- [ ] Fase 0: prueba de Pyodide bajo demanda.
-- [ ] Fase 0: compilación e integración mínima Rust/Wasm.
-- [ ] Medir interoperabilidad y consumo de recursos.
-- [ ] Registrar ADR de las decisiones validadas.
-- [ ] Publicar la primera demo funcional.
+- [x] Acotar el MVP, redactar ADR-0001 y ADR-0002 (estado «Propuesto») y separar las reglas de agentes en AGENTS.md.
+- [ ] Fase 0A: esqueleto (Next.js o Vite según ADR-0001), DuckDB-Wasm en un Worker, importar CSV/XLSX y mostrar vista previa.
+- [ ] Fase 0A: mediciones y despliegue estático en Vercel.
+- [ ] Fases 0B y 0C: spikes de Pyodide bajo demanda y de Rust/Wasm.
+- [ ] Cerrar ADR-0001 y ADR-0002 con resultados medidos.
+- [ ] Publicar la primera demo funcional (R1).
 
 ## Documentación y referencias
 
+- [MVP y prioridades](docs/MVP.md)
 - [Roadmap detallado](docs/roadmap.md)
 - [Arquitectura de software](docs/architecture.md)
+- [Decisiones de arquitectura (ADR)](docs/adr/README.md)
 - [Next.js](https://nextjs.org/docs)
 - [DuckDB-Wasm](https://duckdb.org/docs/stable/clients/wasm/overview)
 - [Pyodide](https://pyodide.org/)
@@ -246,11 +256,15 @@ DataForge/
 
 ## Asistente de IA e integraciones (extensiones opcionales)
 
+> **Visión futura, fuera del MVP.**
+
 **DataForge AI** permitirá explicar estadísticas calculadas, redactar informes y conversar sobre resultados mediante un chatbot contextual. El motor analítico seguirá siendo determinista y las respuestas deberán referenciar métricas verificables. Se contemplan tres alternativas:
 
 - **IA local:** evaluar Chrome Built-in AI en equipos/navegadores compatibles; ninguna migración automática a servicios remotos.
 - **Vercel AI Gateway:** informes asistidos y chat con streaming, bajo límites de cuota y consentimiento para enviar contexto seleccionado.
-- **BYOK:** clave propia del usuario, cifrada con AES-256-GCM en el servidor; nunca expuesta en el frontend ni en logs.
+- **BYOK:** clave propia del usuario. Su almacenamiento persistente en el servidor (cifrado AES-256-GCM) se difiere hasta que existan cuentas; la clave nunca se registra en logs ni se devuelve al frontend.
+
+Las consultas asistidas (text-to-SQL) serían de solo lectura y con aprobación previa del usuario; tampoco pertenecen al MVP.
 
 **DataForge Connect** contemplará importar desde APIs REST y, en una etapa conectada, recibir eventos/datasets de otras aplicaciones con claves limitadas por proyecto, ingestas idempotentes y almacenamiento temporal. Los motores de análisis permanecerán en el navegador.
 

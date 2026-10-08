@@ -1,6 +1,6 @@
 # DataForge Connect — Integraciones de datos
 
-> **Estado:** propuesta. Se distinguen **importación desde APIs** e **ingesta entrante**.
+> **Estado:** propuesta, **fuera del [MVP](MVP.md)**. Se distinguen **importación desde APIs** e **ingesta entrante**.
 
 ## 1. Fase 4B — Importar desde una API REST
 

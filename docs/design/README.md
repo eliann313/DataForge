@@ -38,6 +38,13 @@ Los **tres PNG originales están versionados en GitHub** y constituyen la refere
 
 El [SVG del workspace](./workspace-reference.svg) es una guía complementaria creada para documentar la composición general. **En caso de diferencias estéticas, priorizar los tres PNG originales y las decisiones explícitas de este documento.**
 
+### Precedencia entre mockups y documentación
+
+Los PNG definen la dirección **estética**. En navegación y alcance funcional **prevalece la documentación**:
+
+- La sidebar documentada (§3) agrupa SQL, Python, series temporales, forecasting, Rust y optimización dentro de **Laboratorio**. Los mockups muestran algunos de esos módulos (Series temporales, Machine Learning, SQL / Workspace) como entradas separadas de la barra lateral. Es un concepto exploratorio, no la navegación definitiva.
+- Los mockups incluyen un módulo de Machine Learning (clasificación, clustering, detección de anomalías, Random Forest, curva ROC), Prophet, importación de XML y gráficos de mapa. **Ninguno forma parte de una fase del roadmap**; que aparezcan en una imagen no los incorpora al alcance. Ver [ADR-0002](../adr/0002-motores-analiticos-y-criterios-de-corte.md).
+
 ---
 
 ## 2. Objetivo UX
@@ -98,7 +105,7 @@ El contexto del proyecto debe conservarse al cambiar de módulo. No obligar a re
 - **TanStack Table + TanStack Virtual:** exploración de tablas.
 - **Apache ECharts:** visualizaciones analíticas.
 - **React Flow:** canvas de pipelines cuando se implemente esa fase.
-- **Next.js + React + TypeScript:** shell, rutas, interfaz y coordinación.
+- **Next.js (o Vite, según el [ADR-0001](../adr/0001-framework-y-exportacion-estatica.md)) + React + TypeScript:** shell, rutas, interfaz y coordinación.
 
 No instalar dependencias adelantadas solo porque aparezcan representadas en los mockups.
 
@@ -127,10 +134,13 @@ El módulo financiero, las plantillas nuevas y el chatbot pueden necesitar vista
 - Navegación con teclado, foco visible, etiquetas accesibles, contraste y feedback para procesos largos.
 - No usar exclusivamente el color para representar un estado.
 - Ofrecer tabla de valores o resumen accesible cuando un gráfico comunique información esencial.
-- Todo en **español**; usar formatos numéricos y fechas claros y configurar moneda **ARS/USD** según contexto, sin conversiones implícitas.
+- Todo en **español neutro**, sin voseo ni regionalismos, con etiquetas como «Importar archivo», «Crear proyecto» y «Guardar cambios». Números, fechas y moneda usan la configuración regional `es-AR` por defecto; no se convierte la interfaz en un producto multilingüe.
+- Usar formatos numéricos y fechas claros y configurar moneda **ARS/USD** según contexto, sin conversiones implícitas.
 - Los datos de ejemplo deben etiquetarse como **ficticios**; los valores, texto y gráficos presentes en los mockups no constituyen datasets reales ni cálculos verificados.
 
 ## 7. Reglas para agentes de implementación
+
+Las reglas generales de trabajo están en [AGENTS.md](../../AGENTS.md). Las específicas de interfaz son:
 
 1. **Mirar los tres PNG originales** antes de proponer una nueva pantalla.
 2. Consultar el [roadmap](../roadmap.md) y desarrollar solo la fase actual.
