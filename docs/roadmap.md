@@ -361,3 +361,59 @@ Fase 10 no bloquea R5.
 - [ ] Registrar límites reales antes de ampliar el producto.
 
 **Regla rectora:** primero una plataforma que resuelva correctamente análisis comunes; después profundizar con plantillas y ciencia de datos especializada.
+
+## 11. Extensiones aprobadas para planificación (sin bloquear el MVP)
+
+### Fase 4B — Conectores REST de lectura
+
+- Importar JSON/CSV desde APIs públicas compatibles con CORS y mapear a DatasetSource.
+- Para endpoints privados, utilizar conectores backend con destinos permitidos y proteger secretos. Nunca implementar proxy libre de URLs (riesgo SSRF).
+- Manejar paginación, rate limits, errores, procedencia, versiones y consentimiento.
+- **Criterio:** importar una API demo y comparar registros con origen; permisos y fallos verificables.
+- **Documento:** [DataForge Connect](integrations.md).
+
+### Fase 5B-A — IA local y reportes asistidos
+
+- Crear Context Builder a partir de métricas/snapshots validados; respuestas y hallazgos con evidencias.
+- Evaluar Chrome Built-in AI/Prompt/Summarizer en navegador compatible, sin fallback remoto silencioso.
+- Chatbot contextual de solo lectura e informes explicativos, con edición humana.
+- Mantener modo reglas locales si no hay modelo.
+- **Criterio:** sin envío de información en modo local; sin invención de métricas ni bloqueo al faltar Chrome AI.
+
+### Fase 5B-B — IA remota opcional
+
+- Vercel AI Gateway + AI SDK, streaming de chatbot e informes estructurados.
+- Cuota global con límites y kill switch; BYOK cifrado AES-256-GCM en servidor, compatible con cuentas conectadas.
+- Consentimiento informado y vista previa del contexto a compartir; respetar tratamiento de datos de los proveedores.
+- Requiere API segura de Next.js: **no compatible con exportación puramente estática**.
+- Validar límites reales del nivel gratuito antes de habilitar clave global pública.
+- **Documento:** [DataForge AI](ai-assistant.md).
+
+### Cloud C3 — API entrante de integración
+
+- API keys de alta entropía mostradas una vez y almacenadas como digest.
+- Endpoints autenticados para eventos/snapshots y almacenamiento temporal aunque el navegador esté cerrado.
+- Idempotencia, scopes por fuente/proyecto, autorización, cuotas, auditoría y caducidad.
+- Ingesta de archivos grandes mediante storage privado y cargas temporales.
+- Procesamiento analítico sigue siendo local al importar al workspace.
+- **Documento:** [DataForge Connect](integrations.md).
+
+### Cloud C0 — Autenticación y recuperación
+
+- Registro opcional por email/contraseña; login, verificación y recuperación gestionados por proveedor.
+- Evaluar Neon Auth y Better Auth con correo transaccional; **Nodemailer no sustituye SMTP ni proveedor de email**.
+- Cuentas propuestas para **mayores de 18 años**, sujeto a revisión jurídica; app local anónima disponible sin registro.
+- Validar cuotas, dominio/remitente, sesiones, permisos y restablecimiento antes del lanzamiento.
+- **Documento:** [Autenticación](authentication.md).
+
+### Política, documentación y cumplimiento
+
+- Antes de cuentas, IA remota o ingesta cloud en producción: completar entidad responsable, email de contacto, base legal, jurisdicción, tratamiento de menores, proveedores, retención y derechos.
+- Los documentos en `docs/legal/` son **borradores no publicables**, no un escudo frente a reclamos ni sustituto de cumplimiento.
+- Mantener términos, privacidad, descargos IA/finanzas y consentimientos ajustados a implementación real.
+- **Referencias:** [Términos](legal/terms-of-use.md) · [Privacidad](legal/privacy-policy.md) · [Avisos IA y finanzas](legal/ai-financial-disclaimer.md).
+
+### Diseño aprobado
+
+- Guía UI versionada: [Mockup y decisiones de interfaz](design/README.md).
+- La maqueta vectorial está subida; los tres PNG originales generados durante planificación permanecen en la conversación hasta que se incorporen explícitamente.
