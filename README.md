@@ -243,3 +243,31 @@ DataForge/
 ---
 
 **Proyecto educativo, open-source y de portfolio.** Licencia y URL de demo por definir. Objetivo: crear análisis útiles, explicables y reproducibles sin infraestructura paga de procesamiento.
+
+## Asistente de IA e integraciones (extensiones opcionales)
+
+**DataForge AI** permitirá explicar estadísticas calculadas, redactar informes y conversar sobre resultados mediante un chatbot contextual. El motor analítico seguirá siendo determinista y las respuestas deberán referenciar métricas verificables. Se contemplan tres alternativas:
+
+- **IA local:** evaluar Chrome Built-in AI en equipos/navegadores compatibles; ninguna migración automática a servicios remotos.
+- **Vercel AI Gateway:** informes asistidos y chat con streaming, bajo límites de cuota y consentimiento para enviar contexto seleccionado.
+- **BYOK:** clave propia del usuario, cifrada con AES-256-GCM en el servidor; nunca expuesta en el frontend ni en logs.
+
+**DataForge Connect** contemplará importar desde APIs REST y, en una etapa conectada, recibir eventos/datasets de otras aplicaciones con claves limitadas por proyecto, ingestas idempotentes y almacenamiento temporal. Los motores de análisis permanecerán en el navegador.
+
+**Autenticación futura opcional:** registro con email/contraseña, verificación y recuperación mediante proveedor gestionado; evaluación de Neon Auth/Better Auth y correo transaccional. El uso local y anónimo continuará funcionando sin registro. Se propone registro para mayores de 18 años, sujeto a revisión jurídica.
+
+**Documentación:** [IA y chatbot](docs/ai-assistant.md) · [Integraciones](docs/integrations.md) · [Autenticación](docs/authentication.md).
+
+## Referencias de interfaz y políticas
+
+![Mockup vectorial del workspace de DataForge](docs/design/workspace-reference.svg)
+
+> **Referencia visual**, no captura de una aplicación ya implementada. [Guía de UI y mockups](docs/design/README.md). Los tres PNG exploratorios originales permanecen en la conversación hasta que se incorporen como archivos binarios al repositorio.
+
+Se elaboraron **borradores no publicables**, sujetos a completar identidad/contacto y revisión jurídica antes del lanzamiento con cuentas o procesamiento remoto:
+
+- [Términos de uso](docs/legal/terms-of-use.md)
+- [Política de privacidad](docs/legal/privacy-policy.md)
+- [Avisos sobre IA y finanzas](docs/legal/ai-financial-disclaimer.md)
+
+Estos textos no constituyen una garantía de inmunidad legal. La seguridad, el consentimiento y el tratamiento real de datos deberán validarse técnicamente y documentarse antes de ofrecer servicios conectados.
