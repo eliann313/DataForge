@@ -18,28 +18,28 @@
 
 | Capa | Responsabilidad | Dependencias permitidas |
 |---|---|---|
-| \`domain/\` | Entidades, objetos de valor, invariantes y reglas puras | Código estándar / tipos de dominio |
-| \`application/\` | Casos de uso, DTO y puertos necesarios | Dominio y contratos |
-| \`infrastructure/\` | Implementaciones de repositorios, mapeadores y adaptadores | Aplicación, dominio, plataforma |
-| \`presentation/\` | Vistas, componentes, hooks, formularios | Casos de uso y contratos públicos |
-| \`index.ts\` | API pública del módulo | Exportaciones explícitas |
+| `domain/` | Entidades, objetos de valor, invariantes y reglas puras | Código estándar / tipos de dominio |
+| `application/` | Casos de uso, DTO y puertos necesarios | Dominio y contratos |
+| `infrastructure/` | Implementaciones de repositorios, mapeadores y adaptadores | Aplicación, dominio, plataforma |
+| `presentation/` | Vistas, componentes, hooks, formularios | Casos de uso y contratos públicos |
+| `index.ts` | API pública del módulo | Exportaciones explícitas |
 
-Los puertos se definirán preferentemente junto al caso de uso que los necesita (por ejemplo \`application/ports/\`). No crear una capa de abstracción global para todo.
+Los puertos se definirán preferentemente junto al caso de uso que los necesita (por ejemplo `application/ports/`). No crear una capa de abstracción global para todo.
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
   UI["Presentación: React / Next.js"] --> UC["Aplicación: casos de uso"]
   UC --> DOM["Dominio: reglas y entidades"]
   UC --> PORT["Puertos / interfaces"]
   AD["Adaptadores: IndexedDB, OPFS, DuckDB, APIs"] -. "implementan" .-> PORT
   AD --> DOM
-\`\`\`
+```
 
 La dirección de dependencia está definida a nivel de importaciones de código: el dominio nunca importa implementaciones de infraestructura.
 
 ## 3. Estructura objetivo
 
-\`\`\`text
+```text
 DataForge/
 ├── README.md
 ├── public/
@@ -95,13 +95,13 @@ DataForge/
 │   └── adr/                   # Futuro
 └── .github/
     └── workflows/
-\`\`\`
+```
 
 **No crear directorios vacíos por anticipación.** La estructura se materializará al desarrollar las fases.
 
 ### Ejemplo de módulo con lógica relevante
 
-\`\`\`text
+```text
 modules/finance/
 ├── domain/
 │   ├── entities/
@@ -120,7 +120,7 @@ modules/finance/
 │   ├── hooks/
 │   └── views/
 └── index.ts
-\`\`\`
+```
 
 ## 4. Ejemplo de caso de uso: registrar un movimiento
 
@@ -133,17 +133,17 @@ modules/finance/
 
 Ejemplo orientativo de puerto:
 
-\`\`\`ts
+```ts
 export interface TransactionRepository {
   save(transaction: Transaction): Promise<void>;
   findById(id: string): Promise<Transaction | null>;
   delete(id: string): Promise<void>;
 }
-\`\`\`
+```
 
-\`Transaction\` es un tipo del dominio de finanzas. La interfaz es ejemplo de diseño, no API ya implementada.
+`Transaction` es un tipo del dominio de finanzas. La interfaz es ejemplo de diseño, no API ya implementada.
 
-**Precisión monetaria:** no usar \`number\` binario sin reglas para sumar importes; preferir valor decimal o unidades menores y reglas explícitas de redondeo. Retener divisa original, moneda de presentación y snapshot de cotización por separado.
+**Precisión monetaria:** no usar `number` binario sin reglas para sumar importes; preferir valor decimal o unidades menores y reglas explícitas de redondeo. Retener divisa original, moneda de presentación y snapshot de cotización por separado.
 
 ## 5. Contratos de motor analítico
 
