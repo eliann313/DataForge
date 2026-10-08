@@ -8,7 +8,11 @@
 
 **Archivo:** [workspace-reference.svg](./workspace-reference.svg).
 
-Este SVG es una **guía vectorial creada para el repositorio**, coherente con los conceptos de las tres composiciones iniciales generadas durante planificación. Las composiciones PNG originales están en la conversación de diseño y **no se han incorporado al repositorio**. No presentarlas como screenshots ni afirmar que se cargaron los PNG. Si posteriormente se incorporan, usar nombres como `concept-01.png`, `concept-02.png` y `concept-03.png`, indicando «Mockup generado / referencia».
+Este SVG es una **guía vectorial creada para el repositorio**, coherente con los conceptos de las tres composiciones iniciales generadas durante planificación. Las **tres composiciones PNG originales ya están versionadas** en [`mockups/`](./mockups/README.md), donde se muestran con sus nombres originales y sus descripciones. Son mockups generados, **no capturas de una aplicación implementada**.
+
+## Galería de conceptos originales
+
+[Ver los tres PNG y la guía de implementación](./mockups/README.md).
 
 ## Dirección visual aprobada
 
