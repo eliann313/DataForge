@@ -5,7 +5,7 @@
 **Objetivo:** construir una plataforma de análisis de datos autoservicio, en español, con procesamiento local en el navegador, proyectos persistentes, visualizaciones, pipelines reproducibles e instrumentos científicos especializados.  
 **Alcance:** proyecto educativo y de portfolio; objetivo de infraestructura sin servicios pagos.  
 **Arquitectura prevista:** Next.js + TypeScript como candidato principal (Vite + React como alternativa evaluada en el [ADR-0001](adr/0001-framework-y-exportacion-estatica.md)), arquitectura gritona por dominio con capas y puertos/adaptadores aplicados según la complejidad de cada módulo. DuckDB-Wasm, Pyodide y Rust/Wasm se validarán en la fase 0 ([ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md)) antes de adoptarse formalmente.  
-**Prioridad de ejecución:** este roadmap conserva la visión completa del producto. Lo que se construye primero está acotado en [MVP.md](MVP.md).
+**Prioridad de ejecución:** este roadmap conserva la visión completa del producto. Lo que se construye primero está acotado en [MVP.md](MVP.md). Para transferir el contexto integral de producto, arquitectura, fases y criterios a otros agentes, ver el [roadmap técnico maestro](roadmap-tecnico.md).
 
 ## 1. Visión y alcance
 
