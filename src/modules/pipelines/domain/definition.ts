@@ -14,11 +14,28 @@ export interface PipelineFilter {
   value?: string;
 }
 
+export type PipelineTargetType = "INTEGER" | "BIGINT" | "DECIMAL" | "BOOLEAN" | "VARCHAR";
+export type PipelineDateFormat =
+  | "YYYY-MM-DD"
+  | "DD/MM/YYYY"
+  | "MM/DD/YYYY"
+  | "DD-MM-YYYY"
+  | "YYYY-MM-DD HH:mm:ss";
+
 export type PipelineStep =
   | { id: string; type: "filter"; filter: PipelineFilter }
   | { id: string; type: "select"; columns: string[] }
   | { id: string; type: "dropNulls"; columns: string[] }
   | { id: string; type: "fillNull"; column: string; value: string | null }
+  | {
+      id: string;
+      type: "convertType";
+      column: string;
+      targetType: PipelineTargetType;
+      precision: number;
+      scale: number;
+    }
+  | { id: string; type: "normalizeDate"; column: string; inputFormat: PipelineDateFormat }
   | {
       id: string;
       type: "normalizeText";
@@ -53,6 +70,13 @@ export function isNumericPipelineColumn(column: PipelineColumn): boolean {
 /** Solo transforma tipos textuales explícitos; no convierte otros tipos a texto. */
 export function isTextPipelineColumn(column: PipelineColumn): boolean {
   return /^(?:VARCHAR|TEXT|STRING|CHAR|BPCHAR)(?:\s*\(|$)/.test(
+    column.type.trim().toUpperCase(),
+  );
+}
+
+/** Tipos DATE/TIMESTAMP que se pueden reducir sin interpretar una zona horaria. */
+export function isDatePipelineColumn(column: PipelineColumn): boolean {
+  return /^(?:DATE|DATETIME|TIMESTAMP(?:_(?:S|MS|NS))?)$/.test(
     column.type.trim().toUpperCase(),
   );
 }
@@ -94,6 +118,12 @@ const FILTER_OPERATORS = new Set<PipelineFilterOperator>([
 ]);
 const FILTER_OPERATORS_REQUIRING_VALUE = new Set<PipelineFilterOperator>([
   "contains", "eq", "gt", "gte", "lt", "lte",
+]);
+const PIPELINE_TARGET_TYPES = new Set<PipelineTargetType>([
+  "INTEGER", "BIGINT", "DECIMAL", "BOOLEAN", "VARCHAR",
+]);
+const PIPELINE_DATE_FORMATS = new Set<PipelineDateFormat>([
+  "YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY", "DD-MM-YYYY", "YYYY-MM-DD HH:mm:ss",
 ]);
 
 /**
@@ -188,6 +218,45 @@ export function validatePipeline(
         if (isNumericPipelineColumn(column) && !isNumericPipelineValue(step.value)) {
           return fail(`Ingrese un valor numérico válido para ${column.name}.`, step.id);
         }
+        break;
+      }
+      case "convertType": {
+        const column = findColumn(columns, step.column);
+        if (!column) {
+          return fail(`No se puede convertir una columna que ya no existe: ${step.column}.`, step.id);
+        }
+        if (!PIPELINE_TARGET_TYPES.has(step.targetType)) {
+          return fail("El tipo de destino no es válido.", step.id);
+        }
+        if (
+          step.targetType === "DECIMAL" &&
+          (!Number.isInteger(step.precision) || step.precision < 1 || step.precision > 38 ||
+            !Number.isInteger(step.scale) || step.scale < 0 || step.scale > step.precision)
+        ) {
+          return fail("La precisión debe estar entre 1 y 38 y la escala entre 0 y la precisión.", step.id);
+        }
+        const type = step.targetType === "DECIMAL"
+          ? `DECIMAL(${step.precision},${step.scale})`
+          : step.targetType;
+        columns = columns.map((candidate) =>
+          candidate.name === column.name ? { ...candidate, type } : candidate,
+        );
+        break;
+      }
+      case "normalizeDate": {
+        const column = findColumn(columns, step.column);
+        if (!column) {
+          return fail(`No se puede normalizar una columna que ya no existe: ${step.column}.`, step.id);
+        }
+        if (!isTextPipelineColumn(column) && !isDatePipelineColumn(column)) {
+          return fail(`La normalización de fechas requiere texto, DATE o TIMESTAMP sin zona horaria: ${column.name}.`, step.id);
+        }
+        if (!PIPELINE_DATE_FORMATS.has(step.inputFormat)) {
+          return fail("El formato de fecha no es válido.", step.id);
+        }
+        columns = columns.map((candidate) =>
+          candidate.name === column.name ? { ...candidate, type: "DATE" } : candidate,
+        );
         break;
       }
       case "normalizeText": {

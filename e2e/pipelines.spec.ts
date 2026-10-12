@@ -191,3 +191,143 @@ test("normaliza espacios, mayúsculas y texto vacío en una versión derivada", 
   await expect(preview.getByRole("row").nth(2).getByRole("cell")).toHaveText("nulo");
   await expect(preview.getByRole("row").nth(3).getByRole("cell")).toHaveText("bob");
 });
+
+test("convierte texto a entero solo después de validar y conserva la fuente", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "codigos-con-estado.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("codigo,estado\n00123,ok\n00007,ok\nX,omitir\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("codigos-con-estado.csv: 3 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /agregar filtro/i }).click();
+  await page.getByLabel("Columna del filtro 1").selectOption("estado");
+  await page.getByLabel("Operador del filtro 1").selectOption("eq");
+  await page.getByLabel("Valor del filtro 1").fill("ok");
+  await page.getByRole("button", { name: /convertir tipo/i }).click();
+  await page.getByLabel("Columna a convertir 2").selectOption("codigo");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByText(/2 de 3 filas/)).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByRole("cell", { name: "123", exact: true })).toBeVisible();
+  await expect(preview.getByRole("cell", { name: "7", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
+  const versions = page.locator('section[aria-labelledby="pipeline-versiones"]');
+  await expect(versions.getByText(/Preparación · versión 1 \(activa\)/)).toBeVisible({ timeout: 30_000 });
+  await expect(versions.getByRole("row", { name: /codigos-con-estado\.csv 3 2 Fuente original/ })).toBeVisible();
+});
+
+test("rechaza conversiones incompatibles sin crear ni activar una versión", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "codigos-invalidos.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("codigo\n00123\nABC\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("codigos-invalidos.csv: 2 filas, 1 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /convertir tipo/i }).click();
+  await page.getByLabel("Columna a convertir 1").selectOption("codigo");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+  const status = page.locator("main").getByRole("status");
+  await expect(status).toContainText(/se rechazó: 1 fila/i, { timeout: 30_000 });
+
+  await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
+  await expect(status).toContainText(/se rechazó: 1 fila/i, { timeout: 30_000 });
+  const versions = page.locator('section[aria-labelledby="pipeline-versiones"]');
+  await expect(versions.getByRole("row")).toHaveCount(2);
+  await expect(versions.getByText("codigos-invalidos.csv (activa)")).toBeVisible();
+});
+
+test("rechaza una conversión decimal que redondearía valores de texto", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "decimales.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("importe,estado\n10.125,ok\n2.50,ok\nvalor,omitir\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("decimales.csv: 3 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /agregar filtro/i }).click();
+  await page.getByLabel("Columna del filtro 1").selectOption("estado");
+  await page.getByLabel("Operador del filtro 1").selectOption("eq");
+  await page.getByLabel("Valor del filtro 1").fill("ok");
+  await page.getByRole("button", { name: /convertir tipo/i }).click();
+  await page.getByLabel("Columna a convertir 2").selectOption("importe");
+  await page.getByLabel("Tipo de destino 2").selectOption("DECIMAL");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  await expect(page.locator("main").getByRole("status")).toContainText(/se rechazó: 1 fila/i, { timeout: 30_000 });
+});
+
+test("normaliza fechas de texto con un formato de origen elegido", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "fechas.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("fecha,estado\n31/12/2025,ok\n01/02/2026,ok\nfecha-invalida,omitir\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("fechas.csv: 3 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /agregar filtro/i }).click();
+  await page.getByLabel("Columna del filtro 1").selectOption("estado");
+  await page.getByLabel("Operador del filtro 1").selectOption("eq");
+  await page.getByLabel("Valor del filtro 1").fill("ok");
+  await page.getByRole("button", { name: /normalizar fecha/i }).click();
+  await page.getByLabel("Columna de fecha 2").selectOption("fecha");
+  await page.getByLabel("Formato de fecha 2").selectOption("DD/MM/YYYY");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByText(/2 de 3 filas/)).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByRole("row").nth(1).getByRole("cell").first()).toHaveText("2025-12-31");
+  await expect(preview.getByRole("row").nth(2).getByRole("cell").first()).toHaveText("2026-02-01");
+});
+
+test("rechaza fechas inválidas sin crear una versión derivada", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "fechas-invalidas.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("fecha\n31/02/2025\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("fechas-invalidas.csv: 1 filas, 1 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /normalizar fecha/i }).click();
+  await page.getByLabel("Columna de fecha 1").selectOption("fecha");
+  await page.getByLabel("Formato de fecha 1").selectOption("DD/MM/YYYY");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  await expect(page.locator("main").getByRole("status")).toContainText(/normalización.*se rechazó: 1 fila/i, { timeout: 30_000 });
+  const versions = page.locator('section[aria-labelledby="pipeline-versiones"]');
+  await expect(versions.getByRole("row")).toHaveCount(2);
+  await expect(versions.getByText("fechas-invalidas.csv (activa)")).toBeVisible();
+});

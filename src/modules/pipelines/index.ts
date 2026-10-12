@@ -1,5 +1,6 @@
 export {
   columnsBeforeStep,
+  isDatePipelineColumn,
   isNumericPipelineColumn,
   isNumericPipelineValue,
   isTextPipelineColumn,
@@ -7,10 +8,12 @@ export {
   validatePipeline,
   type PipelineColumn,
   type PipelineDefinition,
+  type PipelineDateFormat,
   type PipelineFilter,
   type PipelineFilterOperator,
   type PipelinePreview,
   type PipelineStep,
+  type PipelineTargetType,
   type PipelineValidation,
   type PipelineVersion,
 } from "./domain/definition";

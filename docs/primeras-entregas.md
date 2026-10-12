@@ -6,8 +6,8 @@
 > tabular medido (global propuesto hasta 0B/0C), 0A.1–0A.6, E3.1–E3.3, E4
 > (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
 > correlación, hallazgos) y E6 (Finanzas Lite exacta); el primer corte R2 agrega
-> pipelines locales en sesión con filtros tipados, descarte y reemplazo de nulos, y normalización de texto.
-> Vitest 54/54; Playwright 76/76 en Chromium/Firefox; smoke estático 38/38 en Chromium.
+> pipelines locales en sesión con filtros tipados, descarte y reemplazo de nulos, normalización de texto/fechas y conversión tipada con rechazo de valores incompatibles o pérdida de precisión.
+> Vitest 58/58; Playwright 86/86 en Chromium/Firefox; smoke estático 43/43 en Chromium.
 > **Fase activa:** R2 (fases 4–5) tras el cierre de R1 el 2026-10-12.
 > 0B/0C siguen como investigación pendiente y no bloquean.
 > Este plan divide las fases existentes en entregas; no agrega fases ni cambia
@@ -112,18 +112,20 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 
 ## R2 / fase 4 — avance actual
 
-### Primer corte implementado (2026-10-12)
+### Cortes locales implementados (2026-10-12)
 
 - Pasos tipados para filtrar filas, seleccionar y renombrar columnas, quitar filas con nulos en columnas elegidas, reemplazar nulos, quitar duplicados exactamente iguales y ordenar.
 - Los filtros respetan el tipo físico: una igualdad sobre texto conserva valores como `00123`; las comparaciones mayor/menor solo se permiten en columnas numéricas y validan el literal.
 - Vista previa con cantidad de filas antes/después y muestra acotada.
 - Ejecutar crea una vista DuckDB derivada, sin sobrescribir la fuente; se puede activar de nuevo la versión fuente o una derivada.
+- Conversión explícita a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`. La vista previa y la ejecución rechazan valores incompatibles, desbordes o conversiones que pierdan precisión; los nulos se conservan.
+- Normalización de texto de fecha a `DATE` mediante formatos explícitos (`YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, `DD-MM-YYYY` y `YYYY-MM-DD HH:mm:ss`); las fechas inválidas se rechazan antes de crear una versión.
 - La definición y sus versiones existen solo en la sesión actual; se pierden al cerrar/recargar. No hay persistencia OPFS, exportación portable, múltiples fuentes ni UNION/JOIN en este corte.
 - Los identificadores SQL se escapan, los valores de filtro se codifican y no se acepta SQL libre. Un error de validación no crea ni activa una versión.
 
 ### Siguiente trabajo dentro de las fases existentes
 
-1. Completar fase 4 con normalización de fechas, conversiones tipadas, definiciones de pipeline guardables y más de un dataset.
+1. Completar fase 4 con definiciones de pipeline guardables y más de un dataset.
 2. Implementar APPEND/UNION y JOIN con validación de esquema, cardinalidad y resultados parciales.
 3. Avanzar a fase 5: informe reproducible, exportación y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
 4. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
@@ -131,9 +133,9 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 ### Verificación del corte local de fase 4
 
 Evidencia local del corte: `npm run typecheck` pasó; `npm run lint` pasó;
-`npm test` pasó con 54/54; `npm run build` produjo el export estático; y
-`npm run e2e -- --workers=3` pasó 76/76 en Chromium y Firefox contra ese export.
-`npm run smoke:static` pasó 38/38 en Chromium.
+`npm test` pasó con 58/58; `npm run build` produjo el export estático;
+`npm run e2e -- --workers=3` pasó 86/86 en Chromium y Firefox contra el servidor
+local de Next.js; `npm run smoke:static` pasó 43/43 en Chromium contra el export.
 El build se ejecutó con acceso local al navegador/servidor por una restricción de
 Windows/SWC en el entorno restringido. Estas funciones siguen fuera de la demo
 pública R1.

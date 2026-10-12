@@ -3,12 +3,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   columnsBeforeStep,
+  isDatePipelineColumn,
   isTextPipelineColumn,
   PipelineService,
   type PipelineDefinition,
+  type PipelineDateFormat,
   type PipelineFilterOperator,
   type PipelinePreview,
   type PipelineStep,
+  type PipelineTargetType,
   type PipelineVersion,
 } from "@/modules/pipelines";
 import { engine } from "@/platform/engines/duckdb/manager";
@@ -25,13 +28,31 @@ const FILTER_OPERATORS: { value: PipelineFilterOperator; label: string }[] = [
   { value: "isnull", label: "es nulo" },
   { value: "notnull", label: "no es nulo" },
 ];
+const PIPELINE_TARGET_TYPES: { value: PipelineTargetType; label: string }[] = [
+  { value: "INTEGER", label: "Entero (32 bits)" },
+  { value: "BIGINT", label: "Entero (64 bits)" },
+  { value: "DECIMAL", label: "Decimal exacto" },
+  { value: "BOOLEAN", label: "Booleano" },
+  { value: "VARCHAR", label: "Texto" },
+];
+const PIPELINE_DATE_FORMATS: { value: PipelineDateFormat; label: string }[] = [
+  { value: "YYYY-MM-DD", label: "Año-mes-día (2025-12-31)" },
+  { value: "DD/MM/YYYY", label: "Día/mes/año (31/12/2025)" },
+  { value: "MM/DD/YYYY", label: "Mes/día/año (12/31/2025)" },
+  { value: "DD-MM-YYYY", label: "Día-mes-año (31-12-2025)" },
+  { value: "YYYY-MM-DD HH:mm:ss", label: "Año-mes-día y hora (2025-12-31 14:30:00)" },
+];
 
 function needsValue(op: PipelineFilterOperator): boolean {
   return op !== "isnull" && op !== "notnull";
 }
 
-function formatCell(value: unknown): string {
+function formatCell(value: unknown, columnType?: string): string {
   if (value === null || value === undefined) return "nulo";
+  if (columnType?.trim().toUpperCase() === "DATE" && typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) return date.toISOString().slice(0, 10);
+  }
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
@@ -42,6 +63,8 @@ function stepName(step: PipelineStep): string {
     case "select": return "Seleccionar columnas";
     case "dropNulls": return "Quitar filas con nulos";
     case "fillNull": return "Reemplazar nulos";
+    case "convertType": return "Convertir tipo";
+    case "normalizeDate": return "Normalizar fecha";
     case "normalizeText": return "Normalizar texto";
     case "rename": return "Renombrar columna";
     case "deduplicate": return "Eliminar duplicados exactos";
@@ -125,6 +148,25 @@ export default function TransformationsView({
       case "fillNull":
         step = { id, type, column: available[0].name, value: null };
         break;
+      case "convertType":
+        step = {
+          id,
+          type,
+          column: available[0].name,
+          targetType: "INTEGER",
+          precision: 18,
+          scale: 2,
+        };
+        break;
+      case "normalizeDate": {
+        const column = available.find((candidate) => isTextPipelineColumn(candidate) || isDatePipelineColumn(candidate));
+        if (!column) {
+          setMessage("No hay columnas de texto o fecha disponibles para normalizar.");
+          return;
+        }
+        step = { id, type, column: column.name, inputFormat: "YYYY-MM-DD" };
+        break;
+      }
       case "normalizeText": {
         const column = available.find(isTextPipelineColumn);
         if (!column) {
@@ -294,6 +336,8 @@ export default function TransformationsView({
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("dropNulls")} className="rounded border border-gray-300 px-2 py-1 text-sm">Quitar filas con nulos</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("fillNull")} className="rounded border border-gray-300 px-2 py-1 text-sm">Reemplazar nulos</button>
           <button type="button" disabled={busy || !baseColumns.some(isTextPipelineColumn)} onClick={() => addStep("normalizeText")} className="rounded border border-gray-300 px-2 py-1 text-sm">Normalizar texto</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("convertType")} className="rounded border border-gray-300 px-2 py-1 text-sm">Convertir tipo</button>
+          <button type="button" disabled={busy || !baseColumns.some((column) => isTextPipelineColumn(column) || isDatePipelineColumn(column))} onClick={() => addStep("normalizeDate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Normalizar fecha</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("rename")} className="rounded border border-gray-300 px-2 py-1 text-sm">Renombrar columna</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("deduplicate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Eliminar duplicados</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("sort")} className="rounded border border-gray-300 px-2 py-1 text-sm">Ordenar filas</button>
@@ -303,6 +347,9 @@ export default function TransformationsView({
         <ol className="space-y-3">
           {steps.map((step, index) => {
             const available = currentColumns(index);
+            const selectedDateColumn = step.type === "normalizeDate"
+              ? available.find((column) => column.name === step.column)
+              : undefined;
             return (
               <li key={step.id}>
                 <fieldset className="space-y-2 rounded border border-gray-200 p-3">
@@ -469,6 +516,102 @@ export default function TransformationsView({
                       </>
                     ) : null}
 
+                    {step.type === "convertType" ? (
+                      <>
+                        <label>
+                          Columna a convertir {index + 1}{" "}
+                          <select
+                            aria-label={`Columna a convertir ${index + 1}`}
+                            value={step.column}
+                            disabled={busy || available.length === 0}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "convertType" ? { ...current, column: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {available.map((column) => <option key={column.name} value={column.name}>{column.name} · {column.type}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Tipo de destino {index + 1}{" "}
+                          <select
+                            aria-label={`Tipo de destino ${index + 1}`}
+                            value={step.targetType}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "convertType" ? { ...current, targetType: event.target.value as PipelineTargetType } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {PIPELINE_TARGET_TYPES.map((target) => <option key={target.value} value={target.value}>{target.label}</option>)}
+                          </select>
+                        </label>
+                        {step.targetType === "DECIMAL" ? (
+                          <>
+                            <label>
+                              Precisión {index + 1}{" "}
+                              <input
+                                aria-label={`Precisión decimal ${index + 1}`}
+                                type="number"
+                                min={1}
+                                max={38}
+                                value={step.precision}
+                                disabled={busy}
+                                onChange={(event) => updateStep(step.id, (current) => current.type === "convertType" ? { ...current, precision: Number(event.target.value) } : current)}
+                                className="w-20 rounded border border-gray-300 px-1 py-0.5"
+                              />
+                            </label>
+                            <label>
+                              Escala {index + 1}{" "}
+                              <input
+                                aria-label={`Escala decimal ${index + 1}`}
+                                type="number"
+                                min={0}
+                                max={38}
+                                value={step.scale}
+                                disabled={busy}
+                                onChange={(event) => updateStep(step.id, (current) => current.type === "convertType" ? { ...current, scale: Number(event.target.value) } : current)}
+                                className="w-20 rounded border border-gray-300 px-1 py-0.5"
+                              />
+                            </label>
+                          </>
+                        ) : null}
+                        <p className="basis-full text-sm text-gray-600">
+                          Los nulos se conservan. Se rechazan valores incompatibles o conversiones que pierdan precisión; en texto use enteros simples o decimales con punto, sin miles ni notación científica.
+                        </p>
+                      </>
+                    ) : null}
+
+                    {step.type === "normalizeDate" ? (
+                      <>
+                        <label>
+                          Columna de fecha {index + 1}{" "}
+                          <select
+                            aria-label={`Columna de fecha ${index + 1}`}
+                            value={step.column}
+                            disabled={busy || available.length === 0}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "normalizeDate" ? { ...current, column: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {available.filter((column) => isTextPipelineColumn(column) || isDatePipelineColumn(column)).map((column) => <option key={column.name} value={column.name}>{column.name} · {column.type}</option>)}
+                          </select>
+                        </label>
+                        {selectedDateColumn && isTextPipelineColumn(selectedDateColumn) ? (
+                          <label>
+                            Formato de origen {index + 1}{" "}
+                            <select
+                              aria-label={`Formato de fecha ${index + 1}`}
+                              value={step.inputFormat}
+                              disabled={busy}
+                              onChange={(event) => updateStep(step.id, (current) => current.type === "normalizeDate" ? { ...current, inputFormat: event.target.value as PipelineDateFormat } : current)}
+                              className="rounded border border-gray-300 px-1 py-0.5"
+                            >
+                              {PIPELINE_DATE_FORMATS.map((format) => <option key={format.value} value={format.value}>{format.label}</option>)}
+                            </select>
+                          </label>
+                        ) : <p>La columna ya está tipada como fecha; se reducirá a DATE.</p>}
+                        <p className="basis-full text-sm text-gray-600">
+                          Elija el formato real de la columna. Las fechas inválidas se rechazan; los nulos se conservan y la salida queda como DATE.
+                        </p>
+                      </>
+                    ) : null}
+
                     {step.type === "rename" ? (
                       <>
                         <label>
@@ -571,7 +714,7 @@ export default function TransformationsView({
                 <thead><tr>{preview.columns.map((column) => <th key={column.name} scope="col">{column.name}</th>)}</tr></thead>
                 <tbody>
                   {preview.rows.map((row, rowIndex) => (
-                    <tr key={rowIndex}>{preview.columns.map((column) => <td key={column.name}>{formatCell(row[column.name])}</td>)}</tr>
+                    <tr key={rowIndex}>{preview.columns.map((column) => <td key={column.name}>{formatCell(row[column.name], column.type)}</td>)}</tr>
                   ))}
                 </tbody>
               </table>

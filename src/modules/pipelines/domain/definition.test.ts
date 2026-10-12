@@ -71,6 +71,63 @@ describe("validatePipeline", () => {
     ])).error).toMatch(/reemplazar los nulos/);
   });
 
+  it("valida conversiones tipadas y actualiza el esquema derivado", () => {
+    const integer = validatePipeline(columns, definition([
+      { id: "cast-id", type: "convertType", column: "grupo", targetType: "INTEGER", precision: 18, scale: 2 },
+    ]));
+    expect(integer.valid).toBe(true);
+    expect(integer.columns[0]).toMatchObject({ name: "grupo", type: "INTEGER", nullable: false });
+
+    const decimal = validatePipeline(columns, definition([
+      { id: "cast-decimal", type: "convertType", column: "valor", targetType: "DECIMAL", precision: 12, scale: 4 },
+    ]));
+    expect(decimal.valid).toBe(true);
+    expect(decimal.columns[1]).toMatchObject({ name: "valor", type: "DECIMAL(12,4)", nullable: true });
+  });
+
+  it("rechaza tipos, columnas y precisión decimal inválidos", () => {
+    expect(validatePipeline(columns, definition([
+      { id: "cast-type", type: "convertType", column: "grupo", targetType: "DOUBLE", precision: 18, scale: 2 } as unknown as PipelineDefinition["steps"][number],
+    ])).error).toMatch(/tipo de destino no es válido/);
+    expect(validatePipeline(columns, definition([
+      { id: "cast-column", type: "convertType", column: "faltante", targetType: "INTEGER", precision: 18, scale: 2 },
+    ])).error).toMatch(/ya no existe/);
+    expect(validatePipeline(columns, definition([
+      { id: "cast-precision", type: "convertType", column: "valor", targetType: "DECIMAL", precision: 39, scale: 2 },
+    ])).error).toMatch(/precisión/);
+    expect(validatePipeline(columns, definition([
+      { id: "cast-scale", type: "convertType", column: "valor", targetType: "DECIMAL", precision: 3, scale: 4 },
+    ])).error).toMatch(/precisión/);
+  });
+
+  it("normaliza fechas de texto con formato explícito y admite fechas tipadas", () => {
+    const dateColumns: PipelineColumn[] = [
+      ...columns,
+      { name: "fecha_texto", type: "VARCHAR", nullable: false },
+      { name: "fecha_hora", type: "TIMESTAMP", nullable: true },
+    ];
+    const textDate = validatePipeline(dateColumns, definition([
+      { id: "date-text", type: "normalizeDate", column: "fecha_texto", inputFormat: "DD/MM/YYYY" },
+    ]));
+    expect(textDate.valid).toBe(true);
+    expect(textDate.columns.find((column) => column.name === "fecha_texto")?.type).toBe("DATE");
+
+    const timestamp = validatePipeline(dateColumns, definition([
+      { id: "date-time", type: "normalizeDate", column: "fecha_hora", inputFormat: "YYYY-MM-DD" },
+    ]));
+    expect(timestamp.valid).toBe(true);
+    expect(timestamp.columns.find((column) => column.name === "fecha_hora")?.type).toBe("DATE");
+  });
+
+  it("rechaza formatos inválidos y columnas numéricas al normalizar fechas", () => {
+    expect(validatePipeline(columns, definition([
+      { id: "date-number", type: "normalizeDate", column: "valor", inputFormat: "DD-MM-YYYY" },
+    ])).error).toMatch(/requiere texto, DATE o TIMESTAMP/);
+    expect(validatePipeline(columns, definition([
+      { id: "date-format", type: "normalizeDate", column: "grupo", inputFormat: "DD.MM.YYYY" } as unknown as PipelineDefinition["steps"][number],
+    ])).error).toMatch(/formato de fecha no es válido/);
+  });
+
   it("normaliza texto y marca la columna anulable al convertir vacíos en nulos", () => {
     const result = validatePipeline(columns, definition([
       {

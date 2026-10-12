@@ -28,11 +28,14 @@ import {
   validatePipeline,
   isNumericPipelineColumn,
   isNumericPipelineValue,
+  isTextPipelineColumn,
   type PipelineColumn,
   type PipelineDefinition,
+  type PipelineDateFormat,
   type PipelineExecutionPort,
   type PipelinePreview,
   type PipelineStep,
+  type PipelineTargetType,
   type PipelineVersion,
 } from "../../../modules/pipelines";
 
@@ -47,6 +50,13 @@ export const DATASET_TABLE = "df_dataset";
 const STAGING_TABLE = "df_dataset_next";
 const REGISTER_NAME = "df_upload.csv";
 const MAX_DERIVED_VERSIONS = 32;
+const DUCKDB_DATE_FORMATS: Record<PipelineDateFormat, string> = {
+  "YYYY-MM-DD": "%Y-%m-%d",
+  "DD/MM/YYYY": "%d/%m/%Y",
+  "MM/DD/YYYY": "%m/%d/%Y",
+  "DD-MM-YYYY": "%d-%m-%Y",
+  "YYYY-MM-DD HH:mm:ss": "%Y-%m-%d %H:%M:%S",
+};
 
 interface StoredPipelineVersion extends PipelineVersion {
   tableName: string;
@@ -682,6 +692,7 @@ export class DuckDBManager implements PipelineExecutionPort {
       steps,
     });
     if (!validation.valid) throw new Error(validation.error ?? "El pipeline no es válido.");
+    await assertPipelineConversions(conn, base, { id: "preview", name: "Vista previa", steps });
     const query = buildPipelineQuery(base.tableName, base.columns, steps);
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
     const [countTable, previewTable] = await Promise.all([
@@ -717,6 +728,7 @@ export class DuckDBManager implements PipelineExecutionPort {
     const tableName = `df_pipeline_${sequence}`;
     const query = buildPipelineQuery(base.tableName, base.columns, definition.steps);
     try {
+      await assertPipelineConversions(conn, base, definition);
       await conn.query(`CREATE VIEW ${escapeIdentifier(tableName)} AS ${query}`);
       const [rowCount, columns] = await Promise.all([
         this.readCount(conn, tableName),
@@ -1114,6 +1126,39 @@ export function buildPipelineQuery(
         query = `SELECT ${projected.join(", ")} FROM (${query}) AS ${alias}`;
         break;
       }
+      case "convertType": {
+        const column = columns.find((candidate) => candidate.name === step.column);
+        if (!column) throw new Error(`La columna ya no existe: ${step.column}.`);
+        const type = pipelineCastSqlType(step.targetType, step.precision, step.scale);
+        const projected = columns.map((candidate) =>
+          candidate.name === column.name
+            ? `CAST(${escapeIdentifier(candidate.name)} AS ${type}) AS ${escapeIdentifier(candidate.name)}`
+            : escapeIdentifier(candidate.name),
+        );
+        query = `SELECT ${projected.join(", ")} FROM (${query}) AS ${alias}`;
+        columns = columns.map((candidate) =>
+          candidate.name === column.name ? { ...candidate, type } : candidate,
+        );
+        break;
+      }
+      case "normalizeDate": {
+        const column = columns.find((candidate) => candidate.name === step.column);
+        if (!column) throw new Error(`La columna ya no existe: ${step.column}.`);
+        const source = escapeIdentifier(column.name);
+        const expression = isTextPipelineColumn(column)
+          ? `CAST(STRPTIME(${source}, ${escapeStringLiteral(DUCKDB_DATE_FORMATS[step.inputFormat])}) AS DATE)`
+          : `CAST(${source} AS DATE)`;
+        const projected = columns.map((candidate) =>
+          candidate.name === column.name
+            ? `${expression} AS ${escapeIdentifier(candidate.name)}`
+            : escapeIdentifier(candidate.name),
+        );
+        query = `SELECT ${projected.join(", ")} FROM (${query}) AS ${alias}`;
+        columns = columns.map((candidate) =>
+          candidate.name === column.name ? { ...candidate, type: "DATE" } : candidate,
+        );
+        break;
+      }
       case "normalizeText": {
         const column = columns.find((candidate) => candidate.name === step.column);
         if (!column) throw new Error(`La columna ya no existe: ${step.column}.`);
@@ -1160,6 +1205,93 @@ export function buildPipelineQuery(
     query = `SELECT * FROM (${query}) AS ${escapeIdentifier("df_sorted")} ORDER BY ${escapeIdentifier(finalSort.column)} ${finalSort.direction === "asc" ? "ASC" : "DESC"}`;
   }
   return query;
+}
+
+/** Rechaza conversiones inválidas o con pérdida antes de mostrar o crear una versión. */
+async function assertPipelineConversions(
+  conn: AsyncDuckDBConnection,
+  base: StoredPipelineVersion,
+  definition: PipelineDefinition,
+): Promise<void> {
+  for (const [index, step] of definition.steps.entries()) {
+    if (step.type !== "convertType" && step.type !== "normalizeDate") continue;
+    const previousSteps = definition.steps.slice(0, index);
+    const previousValidation = validatePipeline(base.columns, {
+      ...definition,
+      steps: previousSteps,
+    });
+    const sourceColumn = previousValidation.columns.find((column) => column.name === step.column);
+    if (!sourceColumn) throw new Error(`La columna ya no existe: ${step.column}.`);
+    const input = previousSteps.length === 0
+      ? `SELECT * FROM ${escapeIdentifier(base.tableName)}`
+      : buildPipelineQuery(base.tableName, base.columns, previousSteps);
+    const source = escapeIdentifier(step.column);
+    let targetType: string;
+    let invalidConditions: string[];
+    if (step.type === "normalizeDate") {
+      targetType = "DATE";
+      const parseFormat = escapeStringLiteral(DUCKDB_DATE_FORMATS[step.inputFormat]);
+      invalidConditions = [isTextPipelineColumn(sourceColumn)
+        ? `TRY_STRPTIME(${source}, ${parseFormat}) IS NULL`
+        : `TRY_CAST(${source} AS DATE) IS NULL`];
+    } else {
+      targetType = pipelineCastSqlType(step.targetType, step.precision, step.scale);
+      const converted = `TRY_CAST(${source} AS ${targetType})`;
+      invalidConditions = [`${converted} IS NULL`];
+
+      if (step.targetType === "INTEGER" || step.targetType === "BIGINT") {
+        if (isTextPipelineColumn(sourceColumn)) {
+          invalidConditions.push(
+            `NOT regexp_full_match(TRIM(CAST(${source} AS VARCHAR)), '^[+-]?[0-9]+$')`,
+          );
+        } else if (isNumericPipelineColumn(sourceColumn)) {
+          invalidConditions.push(`${source} <> ${converted}`);
+        }
+      } else if (step.targetType === "DECIMAL") {
+        if (isTextPipelineColumn(sourceColumn)) {
+          const textValue = `TRIM(CAST(${source} AS VARCHAR))`;
+          const significantFraction = `regexp_replace(regexp_extract(${textValue}, '[.]([0-9]+)$', 1), '0+$', '')`;
+          invalidConditions.push(
+            `NOT regexp_full_match(${textValue}, '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)$')`,
+            `length(${significantFraction}) > ${step.scale}`,
+          );
+        } else if (isNumericPipelineColumn(sourceColumn)) {
+          invalidConditions.push(`${source} <> ${converted}`);
+        }
+      } else if (step.targetType === "BOOLEAN") {
+        if (isTextPipelineColumn(sourceColumn)) {
+          invalidConditions.push(
+            `LOWER(TRIM(CAST(${source} AS VARCHAR))) NOT IN ('true', 'false', 't', 'f', 'yes', 'no', 'y', 'n', '1', '0')`,
+          );
+        } else if (isNumericPipelineColumn(sourceColumn)) {
+          invalidConditions.push(`${source} NOT IN (0, 1)`);
+        }
+      }
+    }
+
+    const check = await conn.query(
+      `SELECT COUNT(*) AS n FROM (${input}) AS ${escapeIdentifier("df_cast_check")} WHERE ${source} IS NOT NULL AND (${invalidConditions.join(" OR ")})`,
+    );
+    const row = toJSONRows(check)[0] as Record<string, unknown> | undefined;
+    const invalidCount = row ? Number(row.n) : NaN;
+    if (!Number.isSafeInteger(invalidCount) || invalidCount < 0) {
+      throw new Error(`No se pudo validar la conversión de «${step.column}».`);
+    }
+    if (invalidCount > 0) {
+      const action = step.type === "normalizeDate" ? "La normalización" : "La conversión";
+      throw new Error(
+        `${action} de «${step.column}» a ${targetType} se rechazó: ${invalidCount} fila(s) contiene(n) valores inválidos o perdería(n) precisión. Revise los datos, el formato o el tipo de destino.`,
+      );
+    }
+  }
+}
+
+function pipelineCastSqlType(
+  targetType: PipelineTargetType,
+  precision: number,
+  scale: number,
+): string {
+  return targetType === "DECIMAL" ? `DECIMAL(${precision},${scale})` : targetType;
 }
 
 function messageOf(cause: unknown): string {

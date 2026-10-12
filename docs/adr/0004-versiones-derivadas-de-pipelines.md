@@ -19,7 +19,8 @@ R1 mantiene el dataset importado en memoria dentro de DuckDB-Wasm. Fase 4 necesi
 - Mantener la tabla importada como fuente de sesión inmutable.
 - Representar el resultado del pipeline como una vista DuckDB derivada de la versión elegida; guardar en memoria el nombre, el esquema, el conteo, el padre, el pipeline y la fecha de creación.
 - Permitir activar cualquier versión aún disponible durante la sesión. Limitar a 32 las versiones derivadas de la fuente importada; se libera la cadena al reemplazar el archivo o terminar el Worker.
-- Aceptar solo pasos declarativos cerrados: filtro, selección de columnas, descarte de filas nulas según columnas elegidas, reemplazo de nulos por un valor explícito, normalización de texto (recorte de extremos, cambio de mayúsculas/minúsculas y texto vacío a nulo), renombre, eliminación de filas idénticas y orden final. Escapar identificadores y literales; validar valores numéricos por tipo; no aceptar SQL arbitrario.
+- Aceptar solo pasos declarativos cerrados: filtro, selección de columnas, descarte de filas nulas según columnas elegidas, reemplazo de nulos por un valor explícito, conversión a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`, normalización de fechas a `DATE` con formatos enumerados, normalización de texto (recorte de extremos, cambio de mayúsculas/minúsculas y texto vacío a nulo), renombre, eliminación de filas idénticas y orden final. Escapar identificadores y literales; validar valores numéricos por tipo; no aceptar SQL arbitrario.
+- Antes de previsualizar o crear la vista derivada, validar cada conversión contra los datos del paso anterior. Rechazar valores incompatibles, desbordes y conversiones numéricas o decimales que pierdan precisión; conservar los valores nulos.
 - Resolver literales de filtro según el tipo físico: igualdad sobre texto compara como texto; `gt/gte/lt/lte` requieren columnas numéricas y valores numéricos válidos. Esto conserva códigos con ceros iniciales como `00123`.
 - Mantener estos metadatos y versiones en memoria. No guardar definiciones, archivos ni resultados en OPFS/IndexedDB en este corte.
 - Revisar la estrategia de materialización y persistencia al desarrollar exportación/respaldo portable en fase 5, con mediciones de memoria y ejecución.
@@ -38,11 +39,11 @@ R1 mantiene el dataset importado en memoria dentro de DuckDB-Wasm. Fase 4 necesi
 - Reimportar reemplaza de forma transaccional el dataset de sesión y elimina primero las vistas derivadas.
 - Las versiones desaparecen al cerrar el Worker o recargar. La definición del pipeline no sobrevive a la vista actual ni se guarda en el proyecto.
 - Las vistas pueden recalcular transformaciones en cada lectura; este corte no acredita rendimiento ni capacidad para grandes cadenas.
-- No se consideran completados los criterios completos de fase 4: faltan normalización de fechas, conversión de tipos, persistencia de definiciones, varios datasets y validaciones de UNION/JOIN.
+- No se consideran completados los criterios completos de fase 4: faltan persistencia de definiciones, varios datasets y validaciones de UNION/JOIN.
 
 ## Evidencia de implementación
 
-El corte se verificó con `npm run typecheck`, `npm run lint`, `npm test` (54/54),
-`npm run build` y Playwright (76/76) sobre el build estático en Chromium y
-Firefox y `npm run smoke:static` (38/38 en Chromium). Estas funciones continúan
-fuera de la demo pública R1.
+El corte actual se verificó con `npm run typecheck`, `npm run lint`, `npm test`
+(58/58), `npm run build`, Playwright (86/86 en Chromium y Firefox contra el
+servidor local de Next.js) y `npm run smoke:static` (43/43 en Chromium contra el
+export recién generado). Estas funciones continúan fuera de la demo pública R1.
