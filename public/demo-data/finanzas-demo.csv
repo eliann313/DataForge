@@ -1,0 +1,11 @@
+id,fecha,descripcion,tipo,categoria,importe,moneda
+1,2024-01-03,sueldo,ingreso,trabajo,250000,ARS
+2,2024-01-05,alquiler,gasto,vivienda,120000,ARS
+3,2024-01-10,supermercado,gasto,alimentos,45500.50,ARS
+4,2024-01-15,freelance,ingreso,trabajo,300,USD
+5,2024-02-03,sueldo,ingreso,trabajo,255000,ARS
+6,2024-02-05,alquiler,gasto,vivienda,120000,ARS
+7,2024-02-12,colectivo,gasto,transporte,15000,ARS
+8,2024-02-15,freelance,ingreso,trabajo,300,USD
+9,2024-03-03,sueldo,ingreso,trabajo,260000,ARS
+10,2024-03-08,supermercado,gasto,alimentos,51200.75,ARS

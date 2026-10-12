@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DataForge — Fase 0A (esqueleto técnico)",
+  title: "DataForge — Análisis de datos local",
   description:
-    "Spike técnico de la fase 0A: esqueleto Next.js estático. Sin funcionalidades de producto implementadas.",
+    "Plataforma local-first en español: importar CSV/XLSX, explorar y analizar en el navegador, sin cuenta.",
 };
 
 export default function RootLayout({

@@ -19,6 +19,7 @@ import { escapeIdentifier } from "./contract";
 import {
   MAX_CSV_BYTES,
   checkCSVFile,
+  checkInputFile,
   clampPage,
   escapeStringLiteral,
   problemLabel,
@@ -58,6 +59,162 @@ export interface NumericSummary {
   max: number;
 }
 
+export type FilterOp =
+  | "contains"
+  | "eq"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "isnull"
+  | "notnull";
+
+export interface DataFilter {
+  column: string;
+  op: FilterOp;
+  value?: string;
+}
+
+export interface DataSort {
+  column: string;
+  dir: "asc" | "desc";
+}
+
+export interface PageResult {
+  rows: ResultRow[];
+  /** Filas totales del dataset (sin filtros). */
+  total: number;
+  /** Filas tras aplicar filtros. */
+  filtered: number;
+}
+
+export interface Frequency {
+  value: unknown;
+  count: number;
+}
+
+export interface FrequencyRow {
+  value: unknown;
+  count: number;
+  pct: number;
+}
+
+export interface FrequencyTable {
+  column: string;
+  valid: number;
+  rows: FrequencyRow[];
+}
+
+export interface GroupedRow {
+  x: unknown;
+  y: number | null;
+}
+
+export interface Histogram {
+  column: string;
+  bins: number;
+  lo: number;
+  hi: number;
+  width: number;
+  counts: number[];
+}
+
+export interface Correlation {
+  colA: string;
+  colB: string;
+  r: number | null;
+  pairs: number;
+}
+
+export interface NumericDescription {
+  column: string;
+  total: number;
+  valid: number;
+  missing: number;
+  sum: number | null;
+  mean: number | null;
+  median: number | null;
+  mode: number | string | null;
+  min: number | null;
+  max: number | null;
+  range: number | null;
+  variance: number | null;
+  stddev: number | null;
+  q1: number | null;
+  q3: number | null;
+  iqr: number | null;
+}
+
+export interface ColumnProfile {
+  column: string;
+  total: number;
+  nulls: number;
+  nullPct: number;
+  distinct: number;
+  min: unknown;
+  max: unknown;
+  top: Frequency[];
+}
+
+/**
+ * Construye el WHERE a partir de filtros declarativos. Identificadores
+ * escapados, literales saneados; valores numéricos validados. Sin SQL
+ * arbitraria: operadores cerrados y dirección validada.
+ */
+export function buildWhere(filters: DataFilter[]): string {
+  if (filters.length === 0) return "";
+  const parts = filters.map((f) => {
+    const col = escapeIdentifier(f.column);
+    switch (f.op) {
+      case "isnull":
+        return `${col} IS NULL`;
+      case "notnull":
+        return `${col} IS NOT NULL`;
+      case "contains": {
+        const pattern = escapeLike(requireValue(f));
+        return `CAST(${col} AS VARCHAR) ILIKE ${escapeStringLiteral(`%${pattern}%`)} ESCAPE '\\'`;
+      }
+      case "eq":
+        return `${col} = ${literalValue(requireValue(f))}`;
+      case "gt":
+        return `${col} > ${literalValue(requireValue(f))}`;
+      case "gte":
+        return `${col} >= ${literalValue(requireValue(f))}`;
+      case "lt":
+        return `${col} < ${literalValue(requireValue(f))}`;
+      case "lte":
+        return `${col} <= ${literalValue(requireValue(f))}`;
+    }
+  });
+  return ` WHERE ${parts.join(" AND ")}`;
+}
+
+export function buildOrderBy(sort: DataSort | null): string {
+  if (!sort) return "";
+  if (sort.dir !== "asc" && sort.dir !== "desc") {
+    throw new Error("Dirección de orden inválida");
+  }
+  return `ORDER BY ${escapeIdentifier(sort.column)} ${sort.dir === "asc" ? "ASC" : "DESC"}`;
+}
+
+function requireValue(f: DataFilter): string {
+  if (f.value === undefined || f.value === "") {
+    throw new Error(`El filtro sobre ${f.column} necesita un valor.`);
+  }
+  return f.value;
+}
+
+/** Número validado o literal de texto escapado. */
+function literalValue(raw: string): string {
+  if (/^-?\d+(\.\d+)?$/.test(raw.trim())) return raw.trim();
+  return escapeStringLiteral(raw);
+}
+
+/** Escapa %, _ y \ para ILIKE. */
+function escapeLike(raw: string): string {
+  return raw.replace(/[\\%_]/g, (m) => `\\${m}`);
+}
+
 export class DuckDBManager {
   private status: EngineStatus = "idle";
   private lastError: EngineError | null = null;
@@ -66,6 +223,25 @@ export class DuckDBManager {
   private db: AsyncDuckDB | null = null;
   private conn: AsyncDuckDBConnection | null = null;
   private initPromise: Promise<void> | null = null;
+  private listeners = new Set<() => void>();
+
+  /** Suscripción a cambios de estado (paneles sincronizados). */
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private emit(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // Un panel roto no rompe el motor.
+      }
+    }
+  }
 
   getStatus(): EngineStatus {
     return this.status;
@@ -87,10 +263,12 @@ export class DuckDBManager {
     }
     this.status = "initializing";
     this.lastError = null;
+    this.emit();
     this.initPromise = this.doInit().then(
       () => {
         this.status = "ready";
         this.initPromise = null;
+        this.emit();
       },
       (cause: unknown) => {
         this.status = "error";
@@ -99,6 +277,7 @@ export class DuckDBManager {
           message: messageOf(cause),
         };
         this.initPromise = null;
+        this.emit();
         void this.release();
       },
     );
@@ -156,6 +335,7 @@ export class DuckDBManager {
     await this.release();
     this.lastPing = null;
     this.status = "closed";
+    this.emit();
   }
 
   // ---- 0A.3: importación CSV y consultas internas (SQL controlada por la app) ----
@@ -171,21 +351,38 @@ export class DuckDBManager {
   }
 
   /**
-   * Importa un CSV (UTF-8, con encabezados, coma o punto y coma por
-   * autodetección). Un archivo por vez; la fuente original no se modifica.
-   * Ante fallo conserva la tabla activa anterior.
+   * Importa un CSV (UTF-8). Opciones: delimitador autodetectado (coma/punto
+   * y coma) o explícito, con o sin encabezados. Un archivo por vez; la fuente
+   * original no se modifica. Ante fallo conserva la tabla activa anterior.
    */
-  async importCSV(file: File): Promise<ImportSummary> {
+  async importCSV(
+    file: File,
+    opts?: { delimiter?: "auto" | "," | ";"; header?: boolean },
+  ): Promise<ImportSummary> {
     this.requireConn();
     const check = checkCSVFile(file.name, file.size);
-    if (!check.ok) {
+    if (!check.ok || !file.name.toLowerCase().endsWith(".csv")) {
       throw {
         code: "query-failed",
-        message: problemLabel(check.problem!),
+        message: check.ok
+          ? "Tipo no soportado: se esperaba un .csv."
+          : problemLabel(check.problem!),
       } satisfies EngineError;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
-    return this.importBuffer(file.name, file.size, bytes);
+    const delimiter = opts?.delimiter ?? "auto";
+    const header = opts?.header ?? true;
+    const options =
+      delimiter === "auto"
+        ? `header = ${header}, auto_detect = true`
+        : `header = ${header}, delim = ${escapeStringLiteral(delimiter)}, auto_detect = false`;
+    return this.materialize(
+      file.name,
+      file.size,
+      bytes,
+      REGISTER_NAME,
+      `SELECT * FROM read_csv(${escapeStringLiteral(REGISTER_NAME)}, ${options})`,
+    );
   }
 
   /** Importa texto CSV ya extraído (p. ej. hoja XLSX vía Worker). */
@@ -204,7 +401,68 @@ export class DuckDBManager {
         message: problemLabel("too-large"),
       } satisfies EngineError;
     }
-    return this.importBuffer(displayName, bytes.byteLength, bytes);
+    return this.materialize(
+      displayName,
+      bytes.byteLength,
+      bytes,
+      REGISTER_NAME,
+      `SELECT * FROM read_csv(${escapeStringLiteral(REGISTER_NAME)}, header = true, auto_detect = true)`,
+    );
+  }
+
+  /**
+   * Importa JSON tabular (arreglo de objetos; se aceptan campos anidados,
+   * que llegan como STRUCT). Formas no tabulares se rechazan con mensaje.
+   */
+  async importJSON(file: File): Promise<ImportSummary> {
+    this.requireConn();
+    const check = checkInputFile(file.name, file.size);
+    if (!check.ok || !file.name.toLowerCase().endsWith(".json")) {
+      throw {
+        code: "query-failed",
+        message: check.ok
+          ? "Tipo no soportado en este spike: JSON tabular (.json)."
+          : problemLabel(check.problem!),
+      } satisfies EngineError;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const head = new TextDecoder().decode(bytes.slice(0, 4096)).trimStart();
+    if (!head.startsWith("[")) {
+      throw {
+        code: "query-failed",
+        message:
+          "JSON no tabular: se espera un arreglo de objetos [{...}, ...] (NDJSON en fase 2).",
+      } satisfies EngineError;
+    }
+    return this.materialize(
+      file.name,
+      file.size,
+      bytes,
+      "df_upload.json",
+      `SELECT * FROM read_json(${escapeStringLiteral("df_upload.json")}, format = 'array')`,
+    );
+  }
+
+  /** Importa Parquet vía lectura nativa de DuckDB. */
+  async importParquet(file: File): Promise<ImportSummary> {
+    this.requireConn();
+    const check = checkInputFile(file.name, file.size);
+    if (!check.ok || !file.name.toLowerCase().endsWith(".parquet")) {
+      throw {
+        code: "query-failed",
+        message: check.ok
+          ? "Tipo no soportado en este spike: Parquet (.parquet)."
+          : problemLabel(check.problem!),
+      } satisfies EngineError;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return this.materialize(
+      file.name,
+      file.size,
+      bytes,
+      "df_upload.parquet",
+      `SELECT * FROM read_parquet(${escapeStringLiteral("df_upload.parquet")})`,
+    );
   }
 
   /**
@@ -239,10 +497,12 @@ export class DuckDBManager {
     }
   }
 
-  private async importBuffer(
+  private async materialize(
     displayName: string,
     size: number,
     bytes: Uint8Array,
+    registerName: string,
+    sourceSQL: string,
   ): Promise<ImportSummary> {
     const conn = this.requireConn();
     if (bytes.byteLength === 0) {
@@ -259,10 +519,10 @@ export class DuckDBManager {
         message: "El motor no está listo. Inicialícelo antes de importar.",
       } satisfies EngineError;
     }
-    await db.registerFileBuffer(REGISTER_NAME, bytes);
+    await db.registerFileBuffer(registerName, bytes);
     try {
       await conn.query(
-        `CREATE OR REPLACE TABLE ${escapeIdentifier(STAGING_TABLE)} AS SELECT * FROM read_csv(${escapeStringLiteral(REGISTER_NAME)}, header = true, auto_detect = true)`,
+        `CREATE OR REPLACE TABLE ${escapeIdentifier(STAGING_TABLE)} AS ${sourceSQL}`,
       );
       const columns = await this.readSchema(conn, STAGING_TABLE);
       const rows = await this.readCount(conn, STAGING_TABLE);
@@ -279,11 +539,11 @@ export class DuckDBManager {
       }
       throw {
         code: "query-failed",
-        message: `No se pudo importar el CSV: ${messageOf(cause)}`,
+        message: `No se pudo importar el archivo: ${messageOf(cause)}`,
       } satisfies EngineError;
     } finally {
       try {
-        await db.dropFile(REGISTER_NAME);
+        await db.dropFile(registerName);
       } catch {
         // Liberación best-effort del buffer registrado.
       }
@@ -304,13 +564,207 @@ export class DuckDBManager {
     return this.readCount(this.requireConn(), DATASET_TABLE);
   }
 
-  async getPage(page: number, pageSize: number): Promise<ResultRow[]> {
+  // ---- E4: filtros y orden sobre el dataset completo, profiling ----
+
+  async getPage(
+    page: number,
+    pageSize: number,
+    opts?: { filters?: DataFilter[]; sort?: DataSort | null },
+  ): Promise<PageResult> {
     const conn = this.requireConn();
     const c = clampPage(page, pageSize);
+    const where = buildWhere(opts?.filters ?? []);
+    const order = buildOrderBy(opts?.sort ?? null);
+    const [table, total, filtered] = await Promise.all([
+      conn.query(
+        `SELECT * FROM ${escapeIdentifier(DATASET_TABLE)}${where} ${order} LIMIT ${c.pageSize} OFFSET ${c.offset}`,
+      ),
+      this.readCount(conn, DATASET_TABLE),
+      where
+        ? this.readCountWhere(conn, where)
+        : this.readCount(conn, DATASET_TABLE),
+    ]);
+    return { rows: toJSONRows(table), total, filtered };
+  }
+
+  async countFiltered(filters: DataFilter[]): Promise<number> {
+    const conn = this.requireConn();
+    const where = buildWhere(filters);
+    return where
+      ? this.readCountWhere(conn, where)
+      : this.readCount(conn, DATASET_TABLE);
+  }
+
+  /** Perfil de una columna: nulos, cardinalidad, rango y frecuencias. */
+  async profileColumn(column: string): Promise<ColumnProfile> {
+    const conn = this.requireConn();
+    const col = escapeIdentifier(column);
+    const table = escapeIdentifier(DATASET_TABLE);
+    const stats = toJSONRows(
+      await conn.query(
+        `SELECT COUNT(*) AS total, COUNT(${col}) AS nonnull, COUNT(DISTINCT ${col}) AS distinct_n, MIN(${col}) AS mn, MAX(${col}) AS mx FROM ${table}`,
+      ),
+    )[0] as Record<string, unknown>;
+    const total = Number(stats.total);
+    const nonnull = Number(stats.nonnull);
+    const top = toJSONRows(
+      await conn.query(
+        `SELECT ${col} AS v, COUNT(*) AS c FROM ${table} GROUP BY ${col} ORDER BY c DESC, v LIMIT 5`,
+      ),
+    ).map((r) => ({ value: r.v ?? null, count: Number(r.c) }));
+    return {
+      column,
+      total,
+      nulls: total - nonnull,
+      nullPct: total === 0 ? 0 : Math.round(((total - nonnull) / total) * 1000) / 10,
+      distinct: Number(stats.distinct_n),
+      min: (stats.mn as unknown) ?? null,
+      max: (stats.mx as unknown) ?? null,
+      top,
+    };
+  }
+
+  /**
+   * Duplicados potenciales: filas idénticas en TODAS las columnas.
+   * Definición visible en la UI; detectar ≠ eliminar (limpiar es R2).
+   */
+  async duplicateCount(): Promise<number> {
+    const conn = this.requireConn();
     const table = await conn.query(
-      `SELECT * FROM ${escapeIdentifier(DATASET_TABLE)} LIMIT ${c.pageSize} OFFSET ${c.offset}`,
+      `SELECT COUNT(*) AS n FROM (SELECT * FROM ${escapeIdentifier(DATASET_TABLE)} GROUP BY ALL HAVING COUNT(*) > 1)`,
     );
-    return toJSONRows(table);
+    const row = toJSONRows(table)[0] as Record<string, unknown> | undefined;
+    const groups = row ? Number(row.n) : NaN;
+    if (!Number.isInteger(groups) || groups < 0) throw new Error("Conteo inválido");
+    return groups;
+  }
+
+  // ---- E5: estadística descriptiva y agregados para gráficos ----
+  // Definiciones: varianza/desvío MUESTRALES (n−1); cuantiles continuos
+  // (interpolación lineal); mediana = cuantil 0.5; nulos siempre excluidos.
+
+  async describeNumeric(column: string): Promise<NumericDescription> {
+    const conn = this.requireConn();
+    const col = escapeIdentifier(column);
+    const table = escapeIdentifier(DATASET_TABLE);
+    const row = toJSONRows(
+      await conn.query(
+        `SELECT COUNT(*) AS total, COUNT(${col}) AS valid, SUM(${col}) AS s, AVG(${col}) AS a, MEDIAN(${col}) AS med, MODE(${col}) AS mode, MIN(${col}) AS mn, MAX(${col}) AS mx, VAR_SAMP(${col}) AS var, STDDEV_SAMP(${col}) AS std, QUANTILE_CONT(${col}, 0.25) AS q1, QUANTILE_CONT(${col}, 0.75) AS q3 FROM ${table}`,
+      ),
+    )[0] as Record<string, unknown>;
+    if (!row) throw new Error(`Sin filas para describir ${column}`);
+    const num = (v: unknown): number | null => {
+      if (v === null || v === undefined) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const total = Number(row.total);
+    const valid = Number(row.valid);
+    return {
+      column,
+      total,
+      valid,
+      missing: total - valid,
+      sum: num(row.s),
+      mean: num(row.a),
+      median: num(row.med),
+      mode: row.mode === null || row.mode === undefined ? null : (row.mode as number | string),
+      min: num(row.mn),
+      max: num(row.mx),
+      range: num(row.mn) !== null && num(row.mx) !== null ? (num(row.mx) as number) - (num(row.mn) as number) : null,
+      variance: num(row.var),
+      stddev: num(row.std),
+      q1: num(row.q1),
+      q3: num(row.q3),
+      iqr: num(row.q1) !== null && num(row.q3) !== null ? (num(row.q3) as number) - (num(row.q1) as number) : null,
+    };
+  }
+
+  /** Frecuencias de una columna con porcentaje sobre válidos. */
+  async frequencies(column: string, limit = 20): Promise<FrequencyTable> {
+    const conn = this.requireConn();
+    const col = escapeIdentifier(column);
+    const table = escapeIdentifier(DATASET_TABLE);
+    const valid = await this.readCountWhere(conn, ` WHERE ${col} IS NOT NULL`);
+    const rows = toJSONRows(
+      await conn.query(
+        `SELECT ${col} AS v, COUNT(*) AS c FROM ${table} WHERE ${col} IS NOT NULL GROUP BY ${col} ORDER BY c DESC, v LIMIT ${Math.min(Math.max(1, limit), 100)}`,
+      ),
+    );
+    return {
+      column,
+      valid,
+      rows: rows.map((r) => ({
+        value: r.v ?? null,
+        count: Number(r.c),
+        pct: valid === 0 ? 0 : Math.round((Number(r.c) / valid) * 1000) / 10,
+      })),
+    };
+  }
+
+  /** Agregación por grupo para gráficos (barras/líneas sobre agregados). */
+  async groupedStat(
+    groupCol: string,
+    numCol: string | null,
+    agg: "count" | "sum" | "mean",
+  ): Promise<GroupedRow[]> {
+    const conn = this.requireConn();
+    const g = escapeIdentifier(groupCol);
+    const table = escapeIdentifier(DATASET_TABLE);
+    const select =
+      agg === "count"
+        ? "COUNT(*) AS y"
+        : numCol
+          ? `${agg === "sum" ? "SUM" : "AVG"}(${escapeIdentifier(numCol)}) AS y`
+          : "COUNT(*) AS y";
+    const rows = toJSONRows(
+      await conn.query(
+        `SELECT ${g} AS x, ${select} FROM ${table} GROUP BY ${g} ORDER BY x LIMIT 500`,
+      ),
+    );
+    return rows.map((r) => ({ x: r.x ?? null, y: r.y === null ? null : Number(r.y) }));
+  }
+
+  /** Histograma por bines iguales (conteo por intervalo, límites visibles). */
+  async histogram(column: string, bins = 20): Promise<Histogram> {
+    const conn = this.requireConn();
+    const b = Math.min(Math.max(5, Math.floor(bins)), 50);
+    const desc = await this.describeNumeric(column);
+    if (desc.min === null || desc.max === null || desc.valid === 0) {
+      throw new Error(`Sin valores numéricos en ${column}`);
+    }
+    const col = escapeIdentifier(column);
+    const table = escapeIdentifier(DATASET_TABLE);
+    if (desc.min === desc.max) {
+      return { column, bins: b, lo: desc.min, hi: desc.max, width: 0, counts: [desc.valid] };
+    }
+    const width = (desc.max - desc.min) / b;
+    const rows = toJSONRows(
+      await conn.query(
+        `SELECT LEAST(CAST(FLOOR((${col} - ${desc.min}) / ${width}) AS INTEGER), ${b - 1}) AS bin, COUNT(*) AS c FROM ${table} WHERE ${col} IS NOT NULL GROUP BY bin ORDER BY bin`,
+      ),
+    );
+    const counts = new Array<number>(b).fill(0);
+    for (const r of rows) counts[Number(r.bin)] = Number(r.c);
+    return { column, bins: b, lo: desc.min, hi: desc.max, width, counts };
+  }
+
+  /**
+   * Correlación lineal de Pearson entre dos columnas numéricas.
+   * Se informa n de pares válidos y la advertencia: correlación ≠ causalidad.
+   */
+  async correlation(colA: string, colB: string): Promise<Correlation> {
+    const conn = this.requireConn();
+    const a = escapeIdentifier(colA);
+    const b = escapeIdentifier(colB);
+    const table = escapeIdentifier(DATASET_TABLE);
+    const row = toJSONRows(
+      await conn.query(
+        `SELECT CORR(${a}, ${b}) AS r, COUNT(*) AS n FROM ${table} WHERE ${a} IS NOT NULL AND ${b} IS NOT NULL`,
+      ),
+    )[0] as Record<string, unknown>;
+    const r = row.r === null ? null : Number(row.r);
+    return { colA, colB, r: r !== null && Number.isFinite(r) ? r : null, pairs: Number(row.n) };
   }
 
   /** Agregación sobre una columna (nombre escapado; sin SQL arbitraria). */
@@ -363,11 +817,25 @@ export class DuckDBManager {
     return n;
   }
 
+  private async readCountWhere(
+    conn: AsyncDuckDBConnection,
+    where: string,
+  ): Promise<number> {
+    const counted = await conn.query(
+      `SELECT COUNT(*) AS n FROM ${escapeIdentifier(DATASET_TABLE)}${where}`,
+    );
+    const row = toJSONRows(counted)[0] as Record<string, unknown> | undefined;
+    const n = row ? Number(row.n) : NaN;
+    if (!Number.isInteger(n) || n < 0) throw new Error("Conteo inválido");
+    return n;
+  }
+
   /** Reinicia el Worker. Si cerrar exige reimportar, la UI lo indica. */
   async restart(): Promise<void> {
     await this.release();
     this.lastPing = null;
     this.status = "idle";
+    this.emit();
     await this.init();
   }
 

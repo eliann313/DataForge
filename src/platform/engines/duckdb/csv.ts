@@ -25,7 +25,11 @@ export function checkInputFile(name: string, bytes: number): FileCheck {
   const lower = name.toLowerCase();
   const isCSV = lower.endsWith(".csv");
   const isXLSX = lower.endsWith(".xlsx");
-  if (!isCSV && !isXLSX) return { ok: false, problem: "unsupported-type" };
+  const isJSON = lower.endsWith(".json");
+  const isParquet = lower.endsWith(".parquet");
+  if (!isCSV && !isXLSX && !isJSON && !isParquet) {
+    return { ok: false, problem: "unsupported-type" };
+  }
   if (bytes === 0) return { ok: false, problem: "empty" };
   const limit = isXLSX ? MAX_XLSX_BYTES : MAX_CSV_BYTES;
   if (bytes > limit) return { ok: false, problem: "too-large" };
@@ -39,7 +43,7 @@ export function problemLabel(problem: FileProblem): string {
     case "too-large":
       return `Supera el límite orientativo de ${MAX_CSV_BYTES / (1024 * 1024)} MB por archivo.`;
     case "unsupported-type":
-      return "Tipo no soportado en este spike: solo .csv y .xlsx.";
+      return "Tipo no soportado: solo .csv, .xlsx, .json tabular y .parquet.";
   }
 }
 

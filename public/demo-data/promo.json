@@ -1,0 +1,1 @@
+[{"id":1,"producto":"pan","importe":300.0,"promo":null},{"id":2,"producto":"leche","importe":450.5,"promo":"2x1"},{"id":3,"producto":"pan","importe":320.0,"promo":null,"origen":{"canal":"redes"}},{"id":4,"producto":"leche","importe":310.75,"promo":null},{"id":5,"producto":"pan","importe":640.0,"promo":"descuento"}]

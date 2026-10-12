@@ -1,15 +1,16 @@
 # DataForge — Plan de primeras entregas
 
-> **Estado:** plan de ejecución, con E1 completo y E2 parcial (ver abajo).
+> **Estado:** plan de ejecución, con E1–E6 cerradas (R1 funcional completo).
 > **Fecha:** 2026-10-11 (plan); **avance:** 2026-10-12 en rama `develop`.
-> **Base verificada:** documentación, dos ADR propuestos con evidencia parcial 0A,
-> spike 0A.1–0A.5 con E2E 18/18 y benchmarks; sin tests concluyentes de 0B/0C.
-> **Fase activa:** 0A. Este plan divide las fases existentes en entregas; no agrega fases ni cambia los criterios del MVP.
->
-> **Avance 2026-10-12:** E1 completa (commits `0A.1`–`0A.3`); E2 parcial
-> (`0A.4` XLSX por ruta B con sonda de ruta A soportada, `0A.5` harness con
-> medianas, `0A.6` smoke estático local 9/9 + CI E2E). **Bloqueador explícito de
-> E2:** smoke sobre URL real de Vercel (sin acceso al hosting); 0A sigue abierta.
+> **Base verificada:** documentación, ADR-0001 y ADR-0003 aceptados, ADR-0002 con
+> tabular medido (global propuesto hasta 0B/0C), 0A.1–0A.6, E3.1–E3.3, E4
+> (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
+> correlación, hallazgos) y E6 (Finanzas Lite exacta); E2E 62/62 en
+> Chromium/Firefox, Vitest 41/41.
+> **Fase activa:** cierre de R1 (verificación de los dos recorridos + demo).
+> 0B/0C siguen como investigación pendiente y no bloquean.
+> Este plan divide las fases existentes en entregas; no agrega fases ni cambia
+> los criterios del MVP.
 
 ## Objetivo y alcance decidido
 

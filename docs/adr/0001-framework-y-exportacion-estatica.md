@@ -1,6 +1,6 @@
 # ADR-0001 — Framework de aplicación y exportación estática
 
-- **Estado:** Propuesto. Se confirma o revierte al cerrar la [fase 0A](../roadmap.md).
+- **Estado:** Aceptado (2026-10-12, al cerrar 0A con smoke en Vercel).
 - **Fecha:** 2026-10-08
 - **Relacionados:** [Arquitectura §8](../architecture.md), [ADR-0002](./0002-motores-analiticos-y-criterios-de-corte.md)
 
@@ -75,6 +75,16 @@ Next 16.4.0, React 19.3.0, TypeScript 5.9 strict, Chromium 156 y Firefox 157.
 **Bloqueador explícito:** falta el smoke sobre URL real de Vercel (sin acceso al
 hosting en este entorno); un build local no acredita despliegue. Este ADR sigue
 **Propuesto** hasta ese smoke.
+
+## Cierre 0A (2026-10-12)
+
+Smoke 9/9 Chromium contra `https://data-forge-analysis.vercel.app/` (producción,
+deploy automático desde `main`): página técnica, motor diferido con
+inicialización real (19,6 s incluyendo descarga de 36 MB de WASM), CSV/XLSX,
+paginación e inyección neutralizada. Worker y WASM mismo-origen operativos en el
+hosting estático sin COOP/COEP ni `vercel.json`. **Decisión: se conserva Next.js
+con exportación estática (opción A)**; no hubo fricción que justifique la
+comparación acotada con Vite. Estado: **Aceptado**.
 
 ## Referencias
 

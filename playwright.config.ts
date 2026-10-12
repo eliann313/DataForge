@@ -6,6 +6,8 @@ const staticURL = process.env.STATIC_URL;
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
+  // Suite con WASM pesado (36 MB por contexto): 3 workers evitan contención.
+  workers: 3,
   reporter: "list",
   use: {
     baseURL: staticURL ?? "http://127.0.0.1:3000",
