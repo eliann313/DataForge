@@ -240,7 +240,7 @@ Las reglas de trabajo con agentes de IA están en [AGENTS.md](AGENTS.md).
 - [x] Finanzas Lite (E6/3B, cerrada 2026-10-12): CRUD manual ARS/USD en centavos exactos, resumen mensual por moneda sin conversión, gráficos y persistencia local.
 - [x] Cierre de R1 (2026-10-12): recorridos importar→estadística→gráfico y finanzas→recarga verificados con E2E 31/31 en la demo pública; E2E total 62/62, Vitest 41/41.
 - [ ] Fases 0B y 0C: spikes de Pyodide bajo demanda y de Rust/Wasm (no bloquean R1).
-- [x] R2 / fase 4 — primer corte local: pipeline con filtros tipados, selección/renombre, descarte de filas con nulos, deduplicación exacta y orden; vistas derivadas conservan la fuente y permiten reactivar versiones.
+- [x] R2 / fase 4 — primer corte local: pipeline con filtros tipados, selección/renombre, descarte y reemplazo de nulos, deduplicación exacta y orden; vistas derivadas conservan la fuente y permiten reactivar versiones.
 - [ ] R2 restante (fases 4–5): más transformaciones, múltiples datasets, uniones validadas, persistencia portable e informes.
 
 ## Documentación y referencias

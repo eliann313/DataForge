@@ -56,6 +56,21 @@ describe("validatePipeline", () => {
     ])).error).toMatch(/ya no existe/);
   });
 
+  it("valida reemplazos de nulos según el tipo físico", () => {
+    expect(validatePipeline(columns, definition([
+      { id: "fill-text", type: "fillNull", column: "grupo", value: "00123" },
+    ])).valid).toBe(true);
+    expect(validatePipeline(columns, definition([
+      { id: "fill-number", type: "fillNull", column: "valor", value: "0.5" },
+    ])).valid).toBe(true);
+    expect(validatePipeline(columns, definition([
+      { id: "fill-number", type: "fillNull", column: "valor", value: "cero" },
+    ])).error).toMatch(/valor numérico válido/);
+    expect(validatePipeline(columns, definition([
+      { id: "fill-missing", type: "fillNull", column: "valor", value: null },
+    ])).error).toMatch(/reemplazar los nulos/);
+  });
+
   it("exige nombre, pasos y valores para los operadores que los necesitan", () => {
     expect(validatePipeline(columns, { id: "p", name: " ", steps: [] }).error).toMatch(/nombre/);
     expect(validatePipeline(columns, definition([])).error).toMatch(/al menos un paso/);

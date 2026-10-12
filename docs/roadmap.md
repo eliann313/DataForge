@@ -179,7 +179,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Objetivo:** preparación y composición de datos con trazabilidad.
 
-**Avance verificado (2026-10-12, R2 inicial):** pipeline de pasos tipados para filtrar, seleccionar y renombrar columnas, quitar filas nulas según las columnas elegidas, eliminar filas exactamente duplicadas y ordenar; los filtros preservan textos que parecen numéricos y validan comparaciones según el tipo físico. Incluye vista previa, creación de versiones derivadas como vistas DuckDB de sesión y activación de versiones anteriores. La fuente importada se conserva intacta. El alcance restante de fase 4 incluye reemplazo/normalización y conversión de tipos, definiciones de pipeline guardables, múltiples fuentes y validación de UNION/JOIN. La persistencia portable y los informes pertenecen a fase 5.
+**Avance verificado (2026-10-12, R2 inicial):** pipeline de pasos tipados para filtrar, seleccionar y renombrar columnas, quitar filas nulas según las columnas elegidas, reemplazar nulos con valores validados, eliminar filas exactamente duplicadas y ordenar; los filtros preservan textos que parecen numéricos y validan comparaciones según el tipo físico. Incluye vista previa, creación de versiones derivadas como vistas DuckDB de sesión y activación de versiones anteriores. La fuente importada se conserva intacta. El alcance restante de fase 4 incluye normalización de nulos y conversión de tipos, definiciones de pipeline guardables, múltiples fuentes y validación de UNION/JOIN. La persistencia portable y los informes pertenecen a fase 5.
 
 **Alcance**
 - Renombrar columnas, transformar tipos, normalizar fechas/texto, filtrar, ordenar, deduplicar, tratar nulos, crear expresiones y agregaciones.

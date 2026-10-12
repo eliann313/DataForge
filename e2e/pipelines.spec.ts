@@ -142,3 +142,27 @@ test("quita filas con nulos en las columnas seleccionadas", async ({ page }) => 
   await expect(preview.getByText(/1 de 2 filas/)).toBeVisible({ timeout: 30_000 });
   await expect(preview.getByRole("row").nth(1).getByRole("cell")).toHaveText(["1", "A"]);
 });
+
+test("reemplaza nulos con un valor validado según el tipo numérico", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "importes-nulos.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("id,importe\n1,10\n2,\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("importes-nulos.csv: 2 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /reemplazar nulos/i }).click();
+  await page.getByLabel("Columna con nulos 1").selectOption("importe");
+  await page.getByLabel("Valor de reemplazo 1").fill("0");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByText(/2 de 2 filas/)).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByRole("row").nth(2).getByRole("cell")).toHaveText(["2", "0"]);
+});

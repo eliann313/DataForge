@@ -27,6 +27,7 @@ import {
 import {
   validatePipeline,
   isNumericPipelineColumn,
+  isNumericPipelineValue,
   type PipelineColumn,
   type PipelineDefinition,
   type PipelineExecutionPort,
@@ -256,7 +257,7 @@ function literalValue(raw: string): string {
 function typedFilterValue(raw: string, column: PipelineColumn): string {
   if (!isNumericPipelineColumn(column)) return escapeStringLiteral(raw);
   const value = raw.trim();
-  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) {
+  if (!isNumericPipelineValue(value)) {
     throw new Error(`Ingrese un valor numérico válido para ${column.name}.`);
   }
   return value;
@@ -1098,6 +1099,19 @@ export function buildPipelineQuery(
           .map((name) => `${escapeIdentifier(name)} IS NOT NULL`)
           .join(" AND ");
         query = `SELECT * FROM (${query}) AS ${alias} WHERE ${predicates}`;
+        break;
+      }
+      case "fillNull": {
+        if (step.value === null) throw new Error("Ingrese el valor para reemplazar los nulos.");
+        const column = columns.find((candidate) => candidate.name === step.column);
+        if (!column) throw new Error(`La columna ya no existe: ${step.column}.`);
+        const replacement = typedFilterValue(step.value, column);
+        const projected = columns.map((candidate) =>
+          candidate.name === step.column
+            ? `COALESCE(${escapeIdentifier(candidate.name)}, ${replacement}) AS ${escapeIdentifier(candidate.name)}`
+            : escapeIdentifier(candidate.name),
+        );
+        query = `SELECT ${projected.join(", ")} FROM (${query}) AS ${alias}`;
         break;
       }
       case "rename": {

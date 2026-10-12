@@ -18,6 +18,7 @@ export type PipelineStep =
   | { id: string; type: "filter"; filter: PipelineFilter }
   | { id: string; type: "select"; columns: string[] }
   | { id: string; type: "dropNulls"; columns: string[] }
+  | { id: string; type: "fillNull"; column: string; value: string | null }
   | { id: string; type: "rename"; column: string; newName: string }
   | { id: string; type: "deduplicate" }
   | { id: string; type: "sort"; column: string; direction: "asc" | "desc" };
@@ -39,6 +40,10 @@ export function isNumericPipelineColumn(column: PipelineColumn): boolean {
   return /^(?:UTINYINT|USMALLINT|UINTEGER|UBIGINT|UHUGEINT|TINYINT|SMALLINT|INTEGER|INT|BIGINT|HUGEINT|INT2|INT4|INT8|FLOAT|FLOAT4|FLOAT8|REAL|DOUBLE|DECIMAL|NUMERIC)(?:\s*\(|$)/.test(
     column.type.trim().toUpperCase(),
   );
+}
+
+export function isNumericPipelineValue(value: string): boolean {
+  return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim());
 }
 
 /** Referencia lógica a la fuente o a una versión derivada durante la sesión. */
@@ -123,6 +128,13 @@ export function validatePipeline(
         if (needsFilterValue(step.filter.op) && step.filter.value === "") {
           return fail("Complete el valor del filtro.", step.id);
         }
+        const filterColumn = findColumn(columns, step.filter.column)!;
+        if (isNumericPipelineColumn(filterColumn) && needsFilterValue(step.filter.op) && !isNumericPipelineValue(step.filter.value ?? "")) {
+          return fail(`Ingrese un valor numérico válido para ${filterColumn.name}.`, step.id);
+        }
+        if (isNumericComparison(step.filter.op) && !isNumericPipelineColumn(filterColumn)) {
+          return fail(`Los filtros de comparación requieren una columna numérica: ${filterColumn.name}.`, step.id);
+        }
         break;
       }
       case "select": {
@@ -148,6 +160,19 @@ export function validatePipeline(
         }
         const missing = step.columns.find((name) => !hasColumn(columns, name));
         if (missing) return fail(`La selección de nulos referencia una columna que ya no existe: ${missing}.`, step.id);
+        break;
+      }
+      case "fillNull": {
+        const column = findColumn(columns, step.column);
+        if (!column) {
+          return fail(`No se puede reemplazar nulos en una columna que ya no existe: ${step.column}.`, step.id);
+        }
+        if (step.value === null) {
+          return fail("Ingrese el valor para reemplazar los nulos.", step.id);
+        }
+        if (isNumericPipelineColumn(column) && !isNumericPipelineValue(step.value)) {
+          return fail(`Ingrese un valor numérico válido para ${column.name}.`, step.id);
+        }
         break;
       }
       case "rename": {
@@ -214,6 +239,10 @@ function hasColumn(columns: readonly PipelineColumn[], name: string): boolean {
 
 function needsFilterValue(operator: PipelineFilterOperator): boolean {
   return FILTER_OPERATORS_REQUIRING_VALUE.has(operator);
+}
+
+function isNumericComparison(operator: PipelineFilterOperator): boolean {
+  return operator === "gt" || operator === "gte" || operator === "lt" || operator === "lte";
 }
 
 function normalizeName(value: string): string {

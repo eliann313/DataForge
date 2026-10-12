@@ -1,6 +1,7 @@
 export {
   columnsBeforeStep,
   isNumericPipelineColumn,
+  isNumericPipelineValue,
   MAX_PIPELINE_STEPS,
   validatePipeline,
   type PipelineColumn,

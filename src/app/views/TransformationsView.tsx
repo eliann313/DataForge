@@ -40,6 +40,7 @@ function stepName(step: PipelineStep): string {
     case "filter": return "Filtrar filas";
     case "select": return "Seleccionar columnas";
     case "dropNulls": return "Quitar filas con nulos";
+    case "fillNull": return "Reemplazar nulos";
     case "rename": return "Renombrar columna";
     case "deduplicate": return "Eliminar duplicados exactos";
     case "sort": return "Ordenar filas";
@@ -118,6 +119,9 @@ export default function TransformationsView({
         break;
       case "dropNulls":
         step = { id, type, columns: available.map((column) => column.name) };
+        break;
+      case "fillNull":
+        step = { id, type, column: available[0].name, value: null };
         break;
       case "rename":
         step = {
@@ -270,6 +274,7 @@ export default function TransformationsView({
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("filter")} className="rounded border border-gray-300 px-2 py-1 text-sm">Agregar filtro</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("select")} className="rounded border border-gray-300 px-2 py-1 text-sm">Seleccionar columnas</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("dropNulls")} className="rounded border border-gray-300 px-2 py-1 text-sm">Quitar filas con nulos</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("fillNull")} className="rounded border border-gray-300 px-2 py-1 text-sm">Reemplazar nulos</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("rename")} className="rounded border border-gray-300 px-2 py-1 text-sm">Renombrar columna</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("deduplicate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Eliminar duplicados</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("sort")} className="rounded border border-gray-300 px-2 py-1 text-sm">Ordenar filas</button>
@@ -367,6 +372,33 @@ export default function TransformationsView({
                           </label>
                         ))}
                       </div>
+                    ) : null}
+
+                    {step.type === "fillNull" ? (
+                      <>
+                        <label>
+                          Columna con nulos {index + 1}{" "}
+                          <select
+                            aria-label={`Columna con nulos ${index + 1}`}
+                            value={step.column}
+                            disabled={busy || available.length === 0}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "fillNull" ? { ...current, column: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {available.map((column) => <option key={column.name} value={column.name}>{column.name}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Valor de reemplazo {index + 1}{" "}
+                          <input
+                            aria-label={`Valor de reemplazo ${index + 1}`}
+                            value={step.value ?? ""}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "fillNull" ? { ...current, value: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          />
+                        </label>
+                      </>
                     ) : null}
 
                     {step.type === "rename" ? (

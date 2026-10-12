@@ -19,7 +19,7 @@ R1 mantiene el dataset importado en memoria dentro de DuckDB-Wasm. Fase 4 necesi
 - Mantener la tabla importada como fuente de sesión inmutable.
 - Representar el resultado del pipeline como una vista DuckDB derivada de la versión elegida; guardar en memoria el nombre, el esquema, el conteo, el padre, el pipeline y la fecha de creación.
 - Permitir activar cualquier versión aún disponible durante la sesión. Limitar a 32 las versiones derivadas de la fuente importada; se libera la cadena al reemplazar el archivo o terminar el Worker.
-- Aceptar solo pasos declarativos cerrados: filtro, selección de columnas, descarte de filas nulas según columnas elegidas, renombre, eliminación de filas idénticas y orden final. Escapar identificadores y literales; no aceptar SQL arbitrario.
+- Aceptar solo pasos declarativos cerrados: filtro, selección de columnas, descarte de filas nulas según columnas elegidas, reemplazo de nulos por un valor explícito, renombre, eliminación de filas idénticas y orden final. Escapar identificadores y literales; validar valores numéricos por tipo; no aceptar SQL arbitrario.
 - Resolver literales de filtro según el tipo físico: igualdad sobre texto compara como texto; `gt/gte/lt/lte` requieren columnas numéricas y valores numéricos válidos. Esto conserva códigos con ceros iniciales como `00123`.
 - Mantener estos metadatos y versiones en memoria. No guardar definiciones, archivos ni resultados en OPFS/IndexedDB en este corte.
 - Revisar la estrategia de materialización y persistencia al desarrollar exportación/respaldo portable en fase 5, con mediciones de memoria y ejecución.
@@ -42,7 +42,7 @@ R1 mantiene el dataset importado en memoria dentro de DuckDB-Wasm. Fase 4 necesi
 
 ## Evidencia de implementación
 
-El corte se verificó con `npm run typecheck`, `npm run lint`, `npm test` (52/52),
-`npm run build`, Playwright (72/72) sobre el build estático en Chromium y
-Firefox y `npm run smoke:static` (36/36 en Chromium). Estas funciones continúan
+El corte se verificó con `npm run typecheck`, `npm run lint`, `npm test` (53/53),
+`npm run build` y Playwright (74/74) sobre el build estático en Chromium y
+Firefox y `npm run smoke:static` (37/37 en Chromium). Estas funciones continúan
 fuera de la demo pública R1.
