@@ -7,6 +7,8 @@
 **Arquitectura prevista:** Next.js + TypeScript como candidato principal (Vite + React como alternativa evaluada en el [ADR-0001](adr/0001-framework-y-exportacion-estatica.md)), arquitectura gritona por dominio con capas y puertos/adaptadores aplicados según la complejidad de cada módulo. DuckDB-Wasm, Pyodide y Rust/Wasm se validarán en la fase 0 ([ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md)) antes de adoptarse formalmente.  
 **Prioridad de ejecución:** este roadmap conserva la visión completa del producto. Lo que se construye primero está acotado en [MVP.md](MVP.md). Para transferir el contexto integral de producto, arquitectura, fases y criterios a otros agentes, ver el [roadmap técnico maestro](roadmap-tecnico.md).
 
+**Plan de ejecución:** [Primeras entregas](primeras-entregas.md) divide las fases existentes en seis entregas hasta R1 y detalla el backlog 0A. Todas están pendientes; la fase activa sigue siendo 0A.
+
 ## 1. Visión y alcance
 
 DataForge permite a usuarios básicos y avanzados:

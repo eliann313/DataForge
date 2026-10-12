@@ -8,6 +8,8 @@ DataForge busca que cualquier persona pueda **importar, explorar, limpiar, combi
 
 **Documentación:** [MVP y prioridades](docs/MVP.md) · [Roadmap completo](docs/roadmap.md) · [Roadmap técnico maestro](docs/roadmap-tecnico.md) · [Arquitectura de software](docs/architecture.md) · [Decisiones (ADR)](docs/adr/README.md) · [Reglas para agentes](AGENTS.md)
 
+**Ejecución inicial:** [Plan de primeras entregas](docs/primeras-entregas.md), con seis entregas hasta R1 y backlog inmediato de la fase 0A.
+
 ## ¿Para quién es?
 
 Personas que desean respuestas simples de sus archivos, estudiantes e investigadores, profesionales, analistas de datos y desarrolladores. La complejidad de la interfaz crece según la tarea: análisis rápido para principiantes y workspace avanzado para usuarios técnicos.
