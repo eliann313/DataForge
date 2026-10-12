@@ -71,6 +71,52 @@ describe("validatePipeline", () => {
     ])).error).toMatch(/reemplazar los nulos/);
   });
 
+  it("normaliza texto y marca la columna anulable al convertir vacíos en nulos", () => {
+    const result = validatePipeline(columns, definition([
+      {
+        id: "normalize-text",
+        type: "normalizeText",
+        column: "grupo",
+        trimWhitespace: true,
+        letterCase: "lower",
+        emptyToNull: true,
+      },
+    ]));
+
+    expect(result.valid).toBe(true);
+    expect(result.columns[0].nullable).toBe(true);
+    expect(validatePipeline(columns, definition([
+      {
+        id: "normalize-number",
+        type: "normalizeText",
+        column: "valor",
+        trimWhitespace: true,
+        letterCase: "preserve",
+        emptyToNull: false,
+      },
+    ])).error).toMatch(/columna de texto/);
+    expect(validatePipeline(columns, definition([
+      {
+        id: "normalize-noop",
+        type: "normalizeText",
+        column: "grupo",
+        trimWhitespace: false,
+        letterCase: "preserve",
+        emptyToNull: false,
+      },
+    ])).error).toMatch(/al menos una regla/);
+    expect(validatePipeline(columns, definition([
+      {
+        id: "normalize-malformed",
+        type: "normalizeText",
+        column: "grupo",
+        trimWhitespace: true,
+        letterCase: "lower",
+        emptyToNull: "yes",
+      } as unknown as PipelineDefinition["steps"][number],
+    ])).error).toMatch(/opciones de normalización/);
+  });
+
   it("exige nombre, pasos y valores para los operadores que los necesitan", () => {
     expect(validatePipeline(columns, { id: "p", name: " ", steps: [] }).error).toMatch(/nombre/);
     expect(validatePipeline(columns, definition([])).error).toMatch(/al menos un paso/);

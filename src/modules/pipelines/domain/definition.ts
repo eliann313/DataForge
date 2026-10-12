@@ -19,6 +19,14 @@ export type PipelineStep =
   | { id: string; type: "select"; columns: string[] }
   | { id: string; type: "dropNulls"; columns: string[] }
   | { id: string; type: "fillNull"; column: string; value: string | null }
+  | {
+      id: string;
+      type: "normalizeText";
+      column: string;
+      trimWhitespace: boolean;
+      letterCase: "preserve" | "lower" | "upper";
+      emptyToNull: boolean;
+    }
   | { id: string; type: "rename"; column: string; newName: string }
   | { id: string; type: "deduplicate" }
   | { id: string; type: "sort"; column: string; direction: "asc" | "desc" };
@@ -38,6 +46,13 @@ export interface PipelineColumn {
 /** Clasifica tipos físicos numéricos para no reinterpretar textos numéricos. */
 export function isNumericPipelineColumn(column: PipelineColumn): boolean {
   return /^(?:UTINYINT|USMALLINT|UINTEGER|UBIGINT|UHUGEINT|TINYINT|SMALLINT|INTEGER|INT|BIGINT|HUGEINT|INT2|INT4|INT8|FLOAT|FLOAT4|FLOAT8|REAL|DOUBLE|DECIMAL|NUMERIC)(?:\s*\(|$)/.test(
+    column.type.trim().toUpperCase(),
+  );
+}
+
+/** Solo transforma tipos textuales explícitos; no convierte otros tipos a texto. */
+export function isTextPipelineColumn(column: PipelineColumn): boolean {
+  return /^(?:VARCHAR|TEXT|STRING|CHAR|BPCHAR)(?:\s*\(|$)/.test(
     column.type.trim().toUpperCase(),
   );
 }
@@ -172,6 +187,30 @@ export function validatePipeline(
         }
         if (isNumericPipelineColumn(column) && !isNumericPipelineValue(step.value)) {
           return fail(`Ingrese un valor numérico válido para ${column.name}.`, step.id);
+        }
+        break;
+      }
+      case "normalizeText": {
+        const column = findColumn(columns, step.column);
+        if (!column) {
+          return fail(`No se puede normalizar una columna que ya no existe: ${step.column}.`, step.id);
+        }
+        if (!isTextPipelineColumn(column)) {
+          return fail(`La normalización requiere una columna de texto: ${column.name}.`, step.id);
+        }
+        if (step.letterCase !== "preserve" && step.letterCase !== "lower" && step.letterCase !== "upper") {
+          return fail("La opción de mayúsculas y minúsculas no es válida.", step.id);
+        }
+        if (typeof step.trimWhitespace !== "boolean" || typeof step.emptyToNull !== "boolean") {
+          return fail("Las opciones de normalización de texto no son válidas.", step.id);
+        }
+        if (!step.trimWhitespace && step.letterCase === "preserve" && !step.emptyToNull) {
+          return fail("Elija al menos una regla para normalizar el texto.", step.id);
+        }
+        if (step.emptyToNull) {
+          columns = columns.map((candidate) =>
+            candidate.name === column.name ? { ...candidate, nullable: true } : candidate,
+          );
         }
         break;
       }

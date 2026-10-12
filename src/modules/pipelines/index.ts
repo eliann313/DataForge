@@ -2,6 +2,7 @@ export {
   columnsBeforeStep,
   isNumericPipelineColumn,
   isNumericPipelineValue,
+  isTextPipelineColumn,
   MAX_PIPELINE_STEPS,
   validatePipeline,
   type PipelineColumn,

@@ -1114,6 +1114,27 @@ export function buildPipelineQuery(
         query = `SELECT ${projected.join(", ")} FROM (${query}) AS ${alias}`;
         break;
       }
+      case "normalizeText": {
+        const column = columns.find((candidate) => candidate.name === step.column);
+        if (!column) throw new Error(`La columna ya no existe: ${step.column}.`);
+        let expression = escapeIdentifier(column.name);
+        if (step.trimWhitespace) expression = `TRIM(${expression})`;
+        if (step.letterCase === "lower") expression = `LOWER(${expression})`;
+        if (step.letterCase === "upper") expression = `UPPER(${expression})`;
+        if (step.emptyToNull) expression = `NULLIF(${expression}, '')`;
+        const projected = columns.map((candidate) =>
+          candidate.name === column.name
+            ? `${expression} AS ${escapeIdentifier(candidate.name)}`
+            : escapeIdentifier(candidate.name),
+        );
+        query = `SELECT ${projected.join(", ")} FROM (${query}) AS ${alias}`;
+        if (step.emptyToNull) {
+          columns = columns.map((candidate) =>
+            candidate.name === column.name ? { ...candidate, nullable: true } : candidate,
+          );
+        }
+        break;
+      }
       case "rename": {
         const newName = step.newName.trim();
         const projected = columns.map((column) =>

@@ -1,13 +1,13 @@
 # DataForge — Plan de primeras entregas
 
 > **Estado:** E1–E6 cerradas; R1 completo. Seguimiento actual: R2 / fase 4.
-> **Fecha:** 2026-10-11 (plan); **avance:** 2026-10-12 en rama `develop`.
+> **Fecha:** 2026-10-11 (plan); **avance:** 2026-10-12 en `codex/r2-phase4-pipelines` (PR #16 hacia `develop`).
 > **Base verificada:** documentación, ADR-0001 y ADR-0003 aceptados, ADR-0002 con
 > tabular medido (global propuesto hasta 0B/0C), 0A.1–0A.6, E3.1–E3.3, E4
 > (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
 > correlación, hallazgos) y E6 (Finanzas Lite exacta); el primer corte R2 agrega
-> pipelines locales en sesión con filtros tipados, descarte y reemplazo de nulos.
-> Vitest 53/53; Playwright 74/74 en Chromium/Firefox.
+> pipelines locales en sesión con filtros tipados, descarte y reemplazo de nulos, y normalización de texto.
+> Vitest 54/54; Playwright 76/76 en Chromium/Firefox; smoke estático 38/38 en Chromium.
 > **Fase activa:** R2 (fases 4–5) tras el cierre de R1 el 2026-10-12.
 > 0B/0C siguen como investigación pendiente y no bloquean.
 > Este plan divide las fases existentes en entregas; no agrega fases ni cambia
@@ -123,17 +123,17 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 
 ### Siguiente trabajo dentro de las fases existentes
 
-1. Completar fase 4 con normalización de nulos, conversiones tipadas, definiciones de pipeline guardables y más de un dataset.
+1. Completar fase 4 con normalización de fechas, conversiones tipadas, definiciones de pipeline guardables y más de un dataset.
 2. Implementar APPEND/UNION y JOIN con validación de esquema, cardinalidad y resultados parciales.
 3. Avanzar a fase 5: informe reproducible, exportación y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
 4. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
 
-### Verificación del corte inicial
+### Verificación del corte local de fase 4
 
 Evidencia local del corte: `npm run typecheck` pasó; `npm run lint` pasó;
-`npm test` pasó con 53/53; `npm run build` produjo el export estático; y
-`npm run e2e -- --workers=3` pasó 74/74 en Chromium y Firefox contra ese export.
-`npm run smoke:static` pasó 37/37 en Chromium.
+`npm test` pasó con 54/54; `npm run build` produjo el export estático; y
+`npm run e2e -- --workers=3` pasó 76/76 en Chromium y Firefox contra ese export.
+`npm run smoke:static` pasó 38/38 en Chromium.
 El build se ejecutó con acceso local al navegador/servidor por una restricción de
 Windows/SWC en el entorno restringido. Estas funciones siguen fuera de la demo
 pública R1.

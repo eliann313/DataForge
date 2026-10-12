@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   columnsBeforeStep,
+  isTextPipelineColumn,
   PipelineService,
   type PipelineDefinition,
   type PipelineFilterOperator,
@@ -41,6 +42,7 @@ function stepName(step: PipelineStep): string {
     case "select": return "Seleccionar columnas";
     case "dropNulls": return "Quitar filas con nulos";
     case "fillNull": return "Reemplazar nulos";
+    case "normalizeText": return "Normalizar texto";
     case "rename": return "Renombrar columna";
     case "deduplicate": return "Eliminar duplicados exactos";
     case "sort": return "Ordenar filas";
@@ -123,6 +125,22 @@ export default function TransformationsView({
       case "fillNull":
         step = { id, type, column: available[0].name, value: null };
         break;
+      case "normalizeText": {
+        const column = available.find(isTextPipelineColumn);
+        if (!column) {
+          setMessage("No hay columnas de texto disponibles para normalizar.");
+          return;
+        }
+        step = {
+          id,
+          type,
+          column: column.name,
+          trimWhitespace: true,
+          letterCase: "preserve",
+          emptyToNull: true,
+        };
+        break;
+      }
       case "rename":
         step = {
           id,
@@ -275,6 +293,7 @@ export default function TransformationsView({
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("select")} className="rounded border border-gray-300 px-2 py-1 text-sm">Seleccionar columnas</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("dropNulls")} className="rounded border border-gray-300 px-2 py-1 text-sm">Quitar filas con nulos</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("fillNull")} className="rounded border border-gray-300 px-2 py-1 text-sm">Reemplazar nulos</button>
+          <button type="button" disabled={busy || !baseColumns.some(isTextPipelineColumn)} onClick={() => addStep("normalizeText")} className="rounded border border-gray-300 px-2 py-1 text-sm">Normalizar texto</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("rename")} className="rounded border border-gray-300 px-2 py-1 text-sm">Renombrar columna</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("deduplicate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Eliminar duplicados</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("sort")} className="rounded border border-gray-300 px-2 py-1 text-sm">Ordenar filas</button>
@@ -397,6 +416,55 @@ export default function TransformationsView({
                             onChange={(event) => updateStep(step.id, (current) => current.type === "fillNull" ? { ...current, value: event.target.value } : current)}
                             className="rounded border border-gray-300 px-1 py-0.5"
                           />
+                        </label>
+                      </>
+                    ) : null}
+
+                    {step.type === "normalizeText" ? (
+                      <>
+                        <label>
+                          Columna de texto {index + 1}{" "}
+                          <select
+                            aria-label={`Columna de texto ${index + 1}`}
+                            value={step.column}
+                            disabled={busy || !available.some(isTextPipelineColumn)}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "normalizeText" ? { ...current, column: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {available.filter(isTextPipelineColumn).map((column) => <option key={column.name} value={column.name}>{column.name}</option>)}
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={step.trimWhitespace}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "normalizeText" ? { ...current, trimWhitespace: event.target.checked } : current)}
+                          />
+                          Quitar espacios en los extremos
+                        </label>
+                        <label>
+                          Mayúsculas y minúsculas {index + 1}{" "}
+                          <select
+                            aria-label={`Mayúsculas y minúsculas ${index + 1}`}
+                            value={step.letterCase}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "normalizeText" ? { ...current, letterCase: event.target.value as "preserve" | "lower" | "upper" } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            <option value="preserve">Conservar</option>
+                            <option value="lower">Minúsculas</option>
+                            <option value="upper">Mayúsculas</option>
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="checkbox"
+                            checked={step.emptyToNull}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "normalizeText" ? { ...current, emptyToNull: event.target.checked } : current)}
+                          />
+                          Convertir texto vacío en nulo
                         </label>
                       </>
                     ) : null}

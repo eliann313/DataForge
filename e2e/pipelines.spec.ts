@@ -166,3 +166,28 @@ test("reemplaza nulos con un valor validado según el tipo numérico", async ({ 
   await expect(preview.getByText(/2 de 2 filas/)).toBeVisible({ timeout: 30_000 });
   await expect(preview.getByRole("row").nth(2).getByRole("cell")).toHaveText(["2", "0"]);
 });
+
+test("normaliza espacios, mayúsculas y texto vacío en una versión derivada", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "texto.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from('nombre\n"  Alice  "\n"   "\n"BOB"\n', "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("texto.csv: 3 filas, 1 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /normalizar texto/i }).click();
+  await page.getByLabel("Mayúsculas y minúsculas 1").selectOption("lower");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByText(/3 de 3 filas/)).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByRole("row").nth(1).getByRole("cell")).toHaveText("alice");
+  await expect(preview.getByRole("row").nth(2).getByRole("cell")).toHaveText("nulo");
+  await expect(preview.getByRole("row").nth(3).getByRole("cell")).toHaveText("bob");
+});
