@@ -1,11 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// STATIC_URL (0A.6): smoke contra el build exportado en lugar del dev server.
+const staticURL = process.env.STATIC_URL;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   reporter: "list",
   use: {
-    baseURL: "http://127.0.0.1:3000",
+    baseURL: staticURL ?? "http://127.0.0.1:3000",
     trace: "on-first-retry",
   },
   projects: [
@@ -19,10 +22,12 @@ export default defineConfig({
       use: { ...devices["Desktop Firefox"] },
     },
   ],
-  webServer: {
-    command: "npm run dev",
-    url: "http://127.0.0.1:3000",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
+  webServer: staticURL
+    ? undefined
+    : {
+        command: "npm run dev",
+        url: "http://127.0.0.1:3000",
+        reuseExistingServer: !process.env.CI,
+        timeout: 120 * 1000,
+      },
 });

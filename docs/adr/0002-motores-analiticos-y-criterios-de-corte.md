@@ -81,6 +81,41 @@ Los mockups son referencias visuales y **no** un catálogo de algoritmos obligat
 - Este ADR se actualiza con los resultados medidos y pasa a **Aceptado** o **Modificado**.
 - Los límites de capacidad del README se ajustan a lo medido.
 
+## Resultados tabulares 0A (2026-10-12, rama `develop`)
+
+Fijado: `@duckdb/duckdb-wasm` 1.33.1-dev57.0 (sabor `eh` monohilo, bundle local),
+`xlsx` 0.18.5, Apache Arrow 17 (dependencia de DuckDB).
+Equipo: Windows 11 x64, Ryzen 5 8645HS, 15 GB. Navegador medido: Chromium 156
+(headless-shell); compatibilidad verificada además en Firefox 157 (E2E 18/18).
+Datos brutos: `benchmarks/results/bench-win32-2026-10-12T02-22-19.json`
+(5 corridas por escenario, mediana y rango; CSV determinista vía `benchmarks/gen-csv.mjs`).
+
+| Escenario | Bytes reales | Init motor (med [rango]) | Importación pared (med [rango]) | Motor |
+|---|---|---|---|---|
+| CSV 1k×10 | 81.848 | 1890 ms [1385, 2114] | 238 ms [225, 250] | ~120 ms |
+| CSV 10k×20 | 1.675.007 | 1402 ms [1373, 1905] | 269 ms [236, 349] | ~150 ms |
+| CSV 100k×20 | 17.148.715 | 1881 ms [1376, 1917] | 867 ms [850, 877] | ~290 ms |
+| CSV 100k×30 | 25.722.248 | — | **Rechazado por límite 20 MB** | — |
+
+Frente a las hipótesis: 10k×20 < 5 s (0,27 s) y 100k×20 < 20 s (0,87 s) se cumplen
+en este equipo; no son garantías para otros equipos/navegadores.
+`longtask`: 0 en las 15 corridas (sin bloqueos del hilo principal observados).
+Memoria: `performance.memory` no refleja la memoria del Worker/WASM (delta 0,0 MB
+medido); el pico real en WASM no es observable con esta API — queda declarado,
+no estimado. No se midió móvil (evaluación por separado, según protocolo).
+
+XLSX en la versión fijada: **ruta A soportada** — `read_xlsx` directo leyó la
+sonda, pero incluye el encabezado como fila (opciones por caracterizar).
+**Ruta B adoptada como primaria** (SheetJS en Worker): encabezados, selector de
+hojas, valores almacenados sin ejecutar fórmulas, corruptos rechazados.
+Ambas rutas se mantienen hasta la medición comparativa.
+
+Límites vigentes (orientativos, sin cambiar): CSV 20 MB, XLSX 10 MB comprimido.
+La variante densa 100k×30 (25,7 MB) evidencia el corte del límite; la ingesta por
+lotes o un límite mayor pertenecen a fases posteriores, no a este spike.
+
+Este ADR sigue **Propuesto** hasta 0B/0C; no se afirma la convivencia con Python/Rust.
+
 ## Referencias
 
 - [DuckDB-Wasm: extensiones](https://duckdb.org/docs/current/clients/wasm/extensions)

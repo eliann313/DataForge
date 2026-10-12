@@ -15,6 +15,7 @@
     "e2e:install": "playwright install --with-deps chromium",
     "bench": "playwright test --config=playwright.bench.config.ts",
     "gen:bench": "node benchmarks/gen-csv.mjs",
+    "smoke:static": "node scripts/smoke-static.mjs",
     "vendor:duckdb": "node scripts/vendor-duckdb.mjs",
     "postinstall": "npm run vendor:duckdb",
     "predev": "npm run vendor:duckdb",

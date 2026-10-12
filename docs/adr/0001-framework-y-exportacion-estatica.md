@@ -54,6 +54,28 @@ Si B resulta claramente más simple para los motores, sin perder ninguna funcion
 - Hasta cerrar la fase 0A no se instalan dependencias específicas del framework más allá del spike.
 - Este ADR se actualiza con los resultados y pasa a **Aceptado** o **Reemplazado**.
 
+## Evidencia parcial 0A.1–0A.5 (2026-10-12, rama `develop`, sin cerrar 0A)
+
+Entorno: Windows 11 (win32 10.0.26300, x64, Ryzen 5 8645HS, 15 GB), Node v24.21.0,
+Next 16.4.0, React 19.3.0, TypeScript 5.9 strict, Chromium 156 y Firefox 157.
+
+1. Workers y WASM sin soluciones invasivas: `new Worker(new URL(...))` para el
+   parser XLSX y Worker propio de DuckDB-Wasm funcionan con Turbopack y con
+   `output: 'export'`. E2E 18/18 en Chromium y Firefox.
+2. Worker cross-origin vía CDN lo bloquea el navegador (`Failed to construct
+   'Worker'`); se adoptó bundle local autocontenido (`public/vendor/duckdb`,
+   sabor `eh` monohilo) copiado desde node_modules con script versionado.
+3. Sin COOP/COEP: el sabor monohilo no los exige; no se activaron (criterio).
+4. Build reproducible y despliegue estático: `npm run build` genera `out/` y
+   `npm run smoke:static` pasa 9/9 Chromium contra el exportado servido por HTTP.
+5. Configuración mínima: `output: 'export'`, `trailingSlash`, imágenes sin
+   optimizar, `allowedDevOrigins: ['127.0.0.1']` solo para el smoke E2E.
+6. Navegación a proyectos locales: pendiente de fase 1 (sin IDs dinámicos).
+
+**Bloqueador explícito:** falta el smoke sobre URL real de Vercel (sin acceso al
+hosting en este entorno); un build local no acredita despliegue. Este ADR sigue
+**Propuesto** hasta ese smoke.
+
 ## Referencias
 
 - [Next.js: static exports](https://nextjs.org/docs/app/guides/static-exports)
