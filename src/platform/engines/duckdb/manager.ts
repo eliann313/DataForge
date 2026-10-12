@@ -93,6 +93,58 @@ export interface Frequency {
   count: number;
 }
 
+export interface FrequencyRow {
+  value: unknown;
+  count: number;
+  pct: number;
+}
+
+export interface FrequencyTable {
+  column: string;
+  valid: number;
+  rows: FrequencyRow[];
+}
+
+export interface GroupedRow {
+  x: unknown;
+  y: number | null;
+}
+
+export interface Histogram {
+  column: string;
+  bins: number;
+  lo: number;
+  hi: number;
+  width: number;
+  counts: number[];
+}
+
+export interface Correlation {
+  colA: string;
+  colB: string;
+  r: number | null;
+  pairs: number;
+}
+
+export interface NumericDescription {
+  column: string;
+  total: number;
+  valid: number;
+  missing: number;
+  sum: number | null;
+  mean: number | null;
+  median: number | null;
+  mode: number | string | null;
+  min: number | null;
+  max: number | null;
+  range: number | null;
+  variance: number | null;
+  stddev: number | null;
+  q1: number | null;
+  q3: number | null;
+  iqr: number | null;
+}
+
 export interface ColumnProfile {
   column: string;
   total: number;
@@ -585,6 +637,134 @@ export class DuckDBManager {
     const groups = row ? Number(row.n) : NaN;
     if (!Number.isInteger(groups) || groups < 0) throw new Error("Conteo inválido");
     return groups;
+  }
+
+  // ---- E5: estadística descriptiva y agregados para gráficos ----
+  // Definiciones: varianza/desvío MUESTRALES (n−1); cuantiles continuos
+  // (interpolación lineal); mediana = cuantil 0.5; nulos siempre excluidos.
+
+  async describeNumeric(column: string): Promise<NumericDescription> {
+    const conn = this.requireConn();
+    const col = escapeIdentifier(column);
+    const table = escapeIdentifier(DATASET_TABLE);
+    const row = toJSONRows(
+      await conn.query(
+        `SELECT COUNT(*) AS total, COUNT(${col}) AS valid, SUM(${col}) AS s, AVG(${col}) AS a, MEDIAN(${col}) AS med, MODE(${col}) AS mode, MIN(${col}) AS mn, MAX(${col}) AS mx, VAR_SAMP(${col}) AS var, STDDEV_SAMP(${col}) AS std, QUANTILE_CONT(${col}, 0.25) AS q1, QUANTILE_CONT(${col}, 0.75) AS q3 FROM ${table}`,
+      ),
+    )[0] as Record<string, unknown>;
+    if (!row) throw new Error(`Sin filas para describir ${column}`);
+    const num = (v: unknown): number | null => {
+      if (v === null || v === undefined) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const total = Number(row.total);
+    const valid = Number(row.valid);
+    return {
+      column,
+      total,
+      valid,
+      missing: total - valid,
+      sum: num(row.s),
+      mean: num(row.a),
+      median: num(row.med),
+      mode: row.mode === null || row.mode === undefined ? null : (row.mode as number | string),
+      min: num(row.mn),
+      max: num(row.mx),
+      range: num(row.mn) !== null && num(row.mx) !== null ? (num(row.mx) as number) - (num(row.mn) as number) : null,
+      variance: num(row.var),
+      stddev: num(row.std),
+      q1: num(row.q1),
+      q3: num(row.q3),
+      iqr: num(row.q1) !== null && num(row.q3) !== null ? (num(row.q3) as number) - (num(row.q1) as number) : null,
+    };
+  }
+
+  /** Frecuencias de una columna con porcentaje sobre válidos. */
+  async frequencies(column: string, limit = 20): Promise<FrequencyTable> {
+    const conn = this.requireConn();
+    const col = escapeIdentifier(column);
+    const table = escapeIdentifier(DATASET_TABLE);
+    const valid = await this.readCountWhere(conn, ` WHERE ${col} IS NOT NULL`);
+    const rows = toJSONRows(
+      await conn.query(
+        `SELECT ${col} AS v, COUNT(*) AS c FROM ${table} WHERE ${col} IS NOT NULL GROUP BY ${col} ORDER BY c DESC, v LIMIT ${Math.min(Math.max(1, limit), 100)}`,
+      ),
+    );
+    return {
+      column,
+      valid,
+      rows: rows.map((r) => ({
+        value: r.v ?? null,
+        count: Number(r.c),
+        pct: valid === 0 ? 0 : Math.round((Number(r.c) / valid) * 1000) / 10,
+      })),
+    };
+  }
+
+  /** Agregación por grupo para gráficos (barras/líneas sobre agregados). */
+  async groupedStat(
+    groupCol: string,
+    numCol: string | null,
+    agg: "count" | "sum" | "mean",
+  ): Promise<GroupedRow[]> {
+    const conn = this.requireConn();
+    const g = escapeIdentifier(groupCol);
+    const table = escapeIdentifier(DATASET_TABLE);
+    const select =
+      agg === "count"
+        ? "COUNT(*) AS y"
+        : numCol
+          ? `${agg === "sum" ? "SUM" : "AVG"}(${escapeIdentifier(numCol)}) AS y`
+          : "COUNT(*) AS y";
+    const rows = toJSONRows(
+      await conn.query(
+        `SELECT ${g} AS x, ${select} FROM ${table} GROUP BY ${g} ORDER BY x LIMIT 500`,
+      ),
+    );
+    return rows.map((r) => ({ x: r.x ?? null, y: r.y === null ? null : Number(r.y) }));
+  }
+
+  /** Histograma por bines iguales (conteo por intervalo, límites visibles). */
+  async histogram(column: string, bins = 20): Promise<Histogram> {
+    const conn = this.requireConn();
+    const b = Math.min(Math.max(5, Math.floor(bins)), 50);
+    const desc = await this.describeNumeric(column);
+    if (desc.min === null || desc.max === null || desc.valid === 0) {
+      throw new Error(`Sin valores numéricos en ${column}`);
+    }
+    const col = escapeIdentifier(column);
+    const table = escapeIdentifier(DATASET_TABLE);
+    if (desc.min === desc.max) {
+      return { column, bins: b, lo: desc.min, hi: desc.max, width: 0, counts: [desc.valid] };
+    }
+    const width = (desc.max - desc.min) / b;
+    const rows = toJSONRows(
+      await conn.query(
+        `SELECT LEAST(CAST(FLOOR((${col} - ${desc.min}) / ${width}) AS INTEGER), ${b - 1}) AS bin, COUNT(*) AS c FROM ${table} WHERE ${col} IS NOT NULL GROUP BY bin ORDER BY bin`,
+      ),
+    );
+    const counts = new Array<number>(b).fill(0);
+    for (const r of rows) counts[Number(r.bin)] = Number(r.c);
+    return { column, bins: b, lo: desc.min, hi: desc.max, width, counts };
+  }
+
+  /**
+   * Correlación lineal de Pearson entre dos columnas numéricas.
+   * Se informa n de pares válidos y la advertencia: correlación ≠ causalidad.
+   */
+  async correlation(colA: string, colB: string): Promise<Correlation> {
+    const conn = this.requireConn();
+    const a = escapeIdentifier(colA);
+    const b = escapeIdentifier(colB);
+    const table = escapeIdentifier(DATASET_TABLE);
+    const row = toJSONRows(
+      await conn.query(
+        `SELECT CORR(${a}, ${b}) AS r, COUNT(*) AS n FROM ${table} WHERE ${a} IS NOT NULL AND ${b} IS NOT NULL`,
+      ),
+    )[0] as Record<string, unknown>;
+    const r = row.r === null ? null : Number(row.r);
+    return { colA, colB, r: r !== null && Number.isFinite(r) ? r : null, pairs: Number(row.n) };
   }
 
   /** Agregación sobre una columna (nombre escapado; sin SQL arbitraria). */

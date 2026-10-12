@@ -14,7 +14,7 @@ export type ViewName =
 const ITEMS: { id: ViewName; label: string; ready: boolean }[] = [
   { id: "inicio", label: "Inicio", ready: true },
   { id: "datos", label: "Datos", ready: true },
-  { id: "analisis", label: "Análisis", ready: false },
+  { id: "analisis", label: "Análisis", ready: true },
   { id: "transformaciones", label: "Transformaciones", ready: false },
   { id: "laboratorio", label: "Laboratorio", ready: false },
   { id: "informes", label: "Informes", ready: false },
