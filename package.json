@@ -12,9 +12,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "e2e:install": "playwright install --with-deps chromium"
+    "e2e:install": "playwright install --with-deps chromium",
+    "vendor:duckdb": "node scripts/vendor-duckdb.mjs",
+    "postinstall": "npm run vendor:duckdb",
+    "predev": "npm run vendor:duckdb",
+    "prebuild": "npm run vendor:duckdb"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"

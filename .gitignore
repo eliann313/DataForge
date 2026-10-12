@@ -7,7 +7,10 @@ out/
 playwright-report/
 test-results/
 
+# generados (vendor-duckdb copia assets desde node_modules)
+public/vendor/
+tsconfig.tsbuildinfo
+
 # sistema
 .DS_Store
 *.local
-tsconfig.tsbuildinfo
