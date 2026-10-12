@@ -5,9 +5,11 @@
 > **Base verificada:** documentación, ADR-0001 y ADR-0003 aceptados, ADR-0002 con
 > tabular medido (global propuesto hasta 0B/0C), 0A.1–0A.6, E3.1–E3.3, E4
 > (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
-> correlación, hallazgos) y E6 (Finanzas Lite exacta); el primer corte R2 agrega
-> pipelines locales en sesión con filtros tipados, descarte y reemplazo de nulos, normalización de texto/fechas y conversión tipada con rechazo de valores incompatibles o pérdida de precisión.
-> Vitest 58/58; Playwright 86/86 en Chromium/Firefox; smoke estático 43/43 en Chromium.
+> correlación, hallazgos) y E6 (Finanzas Lite exacta); R2 agrega pipelines locales
+> tipados y definiciones guardables por proyecto en IndexedDB, sin persistir los
+> archivos fuente ni sus versiones derivadas. Verificación local: tipado y lint
+> correctos, Vitest 63/63, Playwright 88/88 en Chromium/Firefox y revalidación
+> focal del nuevo flujo 2/2 tras un ajuste de estado de React.
 > **Fase activa:** R2 (fases 4–5) tras el cierre de R1 el 2026-10-12.
 > 0B/0C siguen como investigación pendiente y no bloquean.
 > Este plan divide las fases existentes en entregas; no agrega fases ni cambia
@@ -120,25 +122,26 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 - Ejecutar crea una vista DuckDB derivada, sin sobrescribir la fuente; se puede activar de nuevo la versión fuente o una derivada.
 - Conversión explícita a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`. La vista previa y la ejecución rechazan valores incompatibles, desbordes o conversiones que pierdan precisión; los nulos se conservan.
 - Normalización de texto de fecha a `DATE` mediante formatos explícitos (`YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, `DD-MM-YYYY` y `YYYY-MM-DD HH:mm:ss`); las fechas inválidas se rechazan antes de crear una versión.
-- La definición y sus versiones existen solo en la sesión actual; se pierden al cerrar/recargar. No hay persistencia OPFS, exportación portable, múltiples fuentes ni UNION/JOIN en este corte.
+- La definición puede guardarse por proyecto en IndexedDB; se valida contra el esquema activo al cargarla. Las versiones derivadas y los datos siguen en la sesión y se pierden al cerrar/recargar. No hay persistencia OPFS, exportación portable, múltiples fuentes ni UNION/JOIN en este corte.
 - Los identificadores SQL se escapan, los valores de filtro se codifican y no se acepta SQL libre. Un error de validación no crea ni activa una versión.
 
 ### Siguiente trabajo dentro de las fases existentes
 
-1. Completar fase 4 con definiciones de pipeline guardables y más de un dataset.
+1. Incorporar más de un dataset por proyecto y conservar el linaje sin persistir archivos por implicación.
 2. Implementar APPEND/UNION y JOIN con validación de esquema, cardinalidad y resultados parciales.
 3. Avanzar a fase 5: informe reproducible, exportación y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
 4. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
 
 ### Verificación del corte local de fase 4
 
-Evidencia local del corte: `npm run typecheck` pasó; `npm run lint` pasó;
-`npm test` pasó con 58/58; `npm run build` produjo el export estático;
-`npm run e2e -- --workers=3` pasó 86/86 en Chromium y Firefox contra el servidor
-local de Next.js; `npm run smoke:static` pasó 43/43 en Chromium contra el export.
-El build se ejecutó con acceso local al navegador/servidor por una restricción de
-Windows/SWC en el entorno restringido. Estas funciones siguen fuera de la demo
-pública R1.
+Evidencia de este corte: `npm run typecheck` y `npm run lint` pasaron; `npm test`
+pasó con 63/63; `npm run e2e -- --workers=3` pasó 88/88 en Chromium y Firefox
+contra el servidor local de Next.js. Después del último ajuste de estado en la
+UI, el recorrido de guardar, recargar, reimportar y cargar una definición pasó
+2/2 en Chromium y Firefox. El build estático y el smoke estático no se repitieron
+en este incremento; la evidencia del corte anterior sigue registrada en
+[ADR-0004](adr/0004-versiones-derivadas-de-pipelines.md). Estas funciones siguen
+fuera de la demo pública R1.
 
 ## Evidencia histórica del backlog 0A (E1–E2)
 

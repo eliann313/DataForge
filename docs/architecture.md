@@ -1,6 +1,6 @@
 # DataForge — Arquitectura de software
 
-> **Estado:** arquitectura objetivo con partes verificadas. Next.js estático, DuckDB-Wasm en Worker y R1 están implementados; el primer corte de pipelines de fase 4 está en curso en el checkout local. La convivencia con Pyodide/Rust y la persistencia de versiones siguen pendientes. Ver [ADR-0001](adr/0001-framework-y-exportacion-estatica.md), [ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md), [ADR-0004](adr/0004-versiones-derivadas-de-pipelines.md) y el [roadmap](roadmap.md).
+> **Estado:** arquitectura objetivo con partes verificadas. Next.js estático, DuckDB-Wasm en Worker, R1 y definiciones de pipeline guardables por proyecto están implementados en la rama R2. La convivencia con Pyodide/Rust, varios datasets y la persistencia de versiones siguen pendientes. Ver [ADR-0001](adr/0001-framework-y-exportacion-estatica.md), [ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md), [ADR-0004](adr/0004-versiones-derivadas-de-pipelines.md), [ADR-0005](adr/0005-definiciones-de-pipeline-locales.md) y el [roadmap](roadmap.md).
 
 ## 1. Estilo arquitectónico
 
@@ -208,13 +208,13 @@ Entidades propuestas: Folder, Project, DatasetSource, DatasetVersion, DatasetSch
 
 Los identificadores y contratos de persistencia deben ser neutrales a implementación local o conectada. La importación y persistencia deben ser recuperables frente a fallos parciales.
 
-**Implementación actual de R2:** una fuente por sesión. El primer pipeline ejecuta pasos tipados como vistas DuckDB sobre una versión elegida; no materializa ni persiste el resultado. La gestión de varias fuentes, uniones y pipelines guardables sigue pendiente de fase 4.
+**Implementación actual de R2:** una fuente por sesión. Las definiciones declarativas pueden guardarse por proyecto en IndexedDB y validarse contra el esquema activo; el pipeline ejecuta pasos tipados como vistas DuckDB sobre una versión elegida, sin materializar ni persistir los resultados. La gestión de varias fuentes y uniones sigue pendiente de fase 4.
 
 ## 7. Persistencia y privacidad
 
 **Objetivo:** IndexedDB para metadatos/configuración y OPFS para ficheros o estructuras tabulares cuando el flujo lo justifique; exportación/importación de proyectos como respaldo. La persistencia está sujeta a cuotas, limpieza por usuario/navegador y disponibilidad en dispositivo.
 
-**Real hasta R2 inicial:** metadatos de proyectos en IndexedDB; datasets y vistas derivadas viven en memoria del Worker y se pierden al cerrarlo o recargar. OPFS y el respaldo portable siguen diferidos.
+**Real hasta el corte actual de R2:** metadatos de proyectos y definiciones de pipeline en IndexedDB; datasets y vistas derivadas viven en memoria del Worker y se pierden al cerrarlo o recargar. OPFS y el respaldo portable siguen diferidos.
 
 **Futuro opcional:** autenticación y Neon PostgreSQL para cuentas, carpetas y configuraciones sincronizadas; almacenamiento privado de objetos si se aprueba subir datasets. No usar PostgreSQL como repositorio principal de archivos grandes. Autorización por propietario verificada del lado del servidor. **Ningún archivo se sincroniza sin consentimiento.**
 

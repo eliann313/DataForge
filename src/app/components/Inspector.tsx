@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useProjects } from "@/modules/projects/presentation/ProjectsContext";
+import { useProjects } from "@/modules/projects";
 
 function formatMB(bytes: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`;

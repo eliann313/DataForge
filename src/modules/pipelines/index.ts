@@ -4,6 +4,7 @@ export {
   isNumericPipelineColumn,
   isNumericPipelineValue,
   isTextPipelineColumn,
+  isPipelineDefinition,
   MAX_PIPELINE_STEPS,
   validatePipeline,
   type PipelineColumn,
@@ -18,4 +19,6 @@ export {
   type PipelineVersion,
 } from "./domain/definition";
 export { PipelineService } from "./application/service";
-export type { PipelineExecutionPort } from "./application/ports";
+export type { PipelineDefinitionRepository, PipelineExecutionPort } from "./application/ports";
+export { MemoryPipelineDefinitionRepository } from "./infrastructure/memory";
+export { IndexedDBPipelineDefinitionRepository } from "./infrastructure/indexeddb";

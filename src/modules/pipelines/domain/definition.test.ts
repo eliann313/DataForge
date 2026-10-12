@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validatePipeline, type PipelineColumn, type PipelineDefinition } from "./definition";
+import { isPipelineDefinition, validatePipeline, type PipelineColumn, type PipelineDefinition } from "./definition";
 
 const columns: PipelineColumn[] = [
   { name: "grupo", type: "VARCHAR", nullable: false },
@@ -11,6 +11,13 @@ function definition(steps: PipelineDefinition["steps"]): PipelineDefinition {
 }
 
 describe("validatePipeline", () => {
+  it("reconoce definiciones guardadas con pasos cerrados y rechaza formas dañadas", () => {
+    const valid = definition([{ id: "d1", type: "deduplicate" }]);
+    expect(isPipelineDefinition(valid)).toBe(true);
+    expect(isPipelineDefinition({ ...valid, steps: [{ id: "x", type: "sql", query: "DROP TABLE" }] })).toBe(false);
+    expect(isPipelineDefinition({ ...valid, steps: [{ id: "x", type: "sort", column: 12, direction: "sideways" }] })).toBe(false);
+  });
+
   it("valida el esquema que resulta de filtrar, renombrar y seleccionar", () => {
     const result = validatePipeline(columns, definition([
       { id: "f1", type: "filter", filter: { column: "grupo", op: "eq", value: "A" } },

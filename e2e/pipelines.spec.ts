@@ -1,6 +1,43 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 
+test("guarda una definición en el proyecto y la recupera al recargar", async ({ page }) => {
+  const project = `Pipelines-${Date.now()}`;
+  await page.goto("/");
+  await page.getByLabel(/nombre de proyecto nuevo/i).fill(project);
+  await page.getByRole("button", { name: /^crear proyecto$/i }).click();
+  await expect(page.getByText(project, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles(path.resolve("public/demo-data/duplicadas.csv"));
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("duplicadas.csv: 3 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /eliminar duplicados/i }).click();
+  await page.getByRole("button", { name: /guardar definición/i }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText(/guardada en/i, { timeout: 15_000 });
+
+  await page.reload();
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles(path.resolve("public/demo-data/duplicadas.csv"));
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("duplicadas.csv: 3 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  const saved = page.getByLabel("Definición guardada");
+  await expect(saved.locator("option", { hasText: "Preparación" })).toBeAttached({ timeout: 15_000 });
+  await saved.selectOption({ label: "Preparación" });
+  await page.getByRole("button", { name: /cargar definición/i }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText(/validada contra el esquema actual/i);
+  await page.getByRole("button", { name: /vista previa/i }).click();
+  await expect(page.locator('section[aria-labelledby="pipeline-vista-previa"]').getByText(/2 de 3 filas/)).toBeVisible({ timeout: 30_000 });
+});
+
 test("crea una versión derivada sin alterar la fuente y permite activarla otra vez", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /^datos$/i }).click();

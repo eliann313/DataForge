@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ProjectsProvider } from "@/modules/projects/presentation/ProjectsContext";
+import { ProjectsProvider } from "@/modules/projects";
 import Inspector from "./components/Inspector";
 import Sidebar, { type ViewName } from "./components/Sidebar";
 import TopBar from "./components/TopBar";

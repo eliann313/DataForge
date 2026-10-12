@@ -1,6 +1,6 @@
 "use client";
 
-import { useProjects } from "@/modules/projects/presentation/ProjectsContext";
+import { useProjects } from "@/modules/projects";
 import type { ViewName } from "./Sidebar";
 
 const TITLES: Record<ViewName, string> = {

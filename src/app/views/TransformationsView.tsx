@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   columnsBeforeStep,
+  IndexedDBPipelineDefinitionRepository,
   isDatePipelineColumn,
   isTextPipelineColumn,
   PipelineService,
@@ -14,9 +15,10 @@ import {
   type PipelineTargetType,
   type PipelineVersion,
 } from "@/modules/pipelines";
+import { useProjects } from "@/modules/projects";
 import { engine } from "@/platform/engines/duckdb/manager";
 
-const pipelineService = new PipelineService(engine);
+const pipelineService = new PipelineService(engine, new IndexedDBPipelineDefinitionRepository());
 
 const FILTER_OPERATORS: { value: PipelineFilterOperator; label: string }[] = [
   { value: "contains", label: "contiene" },
@@ -72,11 +74,18 @@ function stepName(step: PipelineStep): string {
   }
 }
 
+function createPipelineId(): string {
+  const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `pipeline-${id}`;
+}
+
 export default function TransformationsView({
   onImportData,
 }: {
   onImportData: () => void;
 }) {
+  const { active: activeProject } = useProjects();
+  const activeProjectId = activeProject?.id ?? null;
   const [versions, setVersions] = useState<PipelineVersion[]>(() => pipelineService.getVersions());
   const [baseVersionId, setBaseVersionId] = useState(
     () => pipelineService.getActiveVersionId() ?? pipelineService.getVersions()[0]?.id ?? "",
@@ -89,16 +98,46 @@ export default function TransformationsView({
     columns: PipelineVersion["columns"];
   }>({ versionId: "", columns: [] });
   const [pipelineName, setPipelineName] = useState("Preparación");
+  const [pipelineId, setPipelineId] = useState(createPipelineId);
   const [steps, setSteps] = useState<PipelineStep[]>([]);
+  const [definitionsState, setDefinitionsState] = useState<{
+    projectId: string;
+    items: PipelineDefinition[];
+  } | null>(null);
+  const [selectedDefinition, setSelectedDefinition] = useState<{ projectId: string; id: string } | null>(null);
   const [preview, setPreview] = useState<PipelinePreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const stepSequence = useRef(0);
 
   const definition = useMemo<PipelineDefinition>(
-    () => ({ id: `pipeline-${baseVersionId || "session"}`, name: pipelineName, steps }),
-    [baseVersionId, pipelineName, steps],
+    () => ({ id: pipelineId, name: pipelineName, steps }),
+    [pipelineId, pipelineName, steps],
   );
+  const savedDefinitions = definitionsState?.projectId === activeProjectId
+    ? definitionsState.items
+    : [];
+  const selectedDefinitionId = selectedDefinition?.projectId === activeProjectId
+    ? selectedDefinition.id
+    : "";
+  const definitionsLoading = Boolean(activeProjectId && definitionsState?.projectId !== activeProjectId);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeProjectId) return () => { cancelled = true; };
+
+    pipelineService.listDefinitions(activeProjectId).then(
+      (items) => {
+        if (!cancelled) setDefinitionsState({ projectId: activeProjectId, items });
+      },
+    ).catch((cause: unknown) => {
+      if (!cancelled) {
+        setDefinitionsState({ projectId: activeProjectId, items: [] });
+        setMessage(cause instanceof Error ? cause.message : "No se pudieron leer las definiciones guardadas.");
+      }
+    });
+    return () => { cancelled = true; };
+  }, [activeProjectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -253,6 +292,74 @@ export default function TransformationsView({
     }
   }
 
+  async function saveDefinition() {
+    if (!activeProject) {
+      setMessage("Abra un proyecto para guardar la definición.");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const saved = await pipelineService.saveDefinition(activeProject.id, baseVersionId, definition);
+      const items = await pipelineService.listDefinitions(activeProject.id);
+      setDefinitionsState({ projectId: activeProject.id, items });
+      setSelectedDefinition({ projectId: activeProject.id, id: saved.id });
+      setMessage(`Definición «${saved.name}» guardada en «${activeProject.name}» en este dispositivo.`);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "No se pudo guardar la definición.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadDefinition() {
+    const saved = savedDefinitions.find((item) => item.id === selectedDefinitionId);
+    if (!saved) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await pipelineService.validateDefinition(baseVersionId, saved);
+      setPipelineId(saved.id);
+      setPipelineName(saved.name);
+      setSteps(JSON.parse(JSON.stringify(saved.steps)) as PipelineStep[]);
+      setPreview(null);
+      setMessage("Definición cargada y validada contra el esquema actual.");
+    } catch (cause) {
+      setMessage(cause instanceof Error ? `No se pudo cargar la definición: ${cause.message}` : "No se pudo cargar la definición.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteDefinition() {
+    const saved = savedDefinitions.find((item) => item.id === selectedDefinitionId);
+    if (!saved || !activeProject) return;
+    if (!window.confirm(`¿Eliminar la definición «${saved.name}» de este proyecto?`)) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await pipelineService.deleteDefinition(activeProject.id, saved.id);
+      setDefinitionsState((current) => current?.projectId === activeProject.id
+        ? { ...current, items: current.items.filter((item) => item.id !== saved.id) }
+        : current);
+      setSelectedDefinition(null);
+      setMessage(`Definición «${saved.name}» eliminada.`);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "No se pudo eliminar la definición.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function newDefinition() {
+    setPipelineId(createPipelineId());
+    setPipelineName("Preparación");
+    setSteps([]);
+    setSelectedDefinition(null);
+    setPreview(null);
+    setMessage(null);
+  }
+
   async function activateVersion(version: PipelineVersion) {
     setBusy(true);
     setMessage(null);
@@ -288,9 +395,47 @@ export default function TransformationsView({
       <header className="space-y-1">
         <h2 id="transformaciones-titulo" className="text-xl font-bold">Transformaciones · Fase 4</h2>
         <p className="text-sm text-gray-600">
-          Cree una versión derivada con pasos repetibles. La fuente permanece intacta; las versiones viven en la sesión actual y se descartan al cerrar o recargar.
+          Guarde definiciones en un proyecto de este dispositivo y cree versiones derivadas repetibles. Los archivos y las versiones derivadas permanecen en la sesión; no se guardan con la definición.
         </p>
       </header>
+
+      <section className="space-y-2 rounded border border-gray-200 bg-white p-4" aria-labelledby="pipelines-guardados">
+        <h3 id="pipelines-guardados" className="font-semibold">Definiciones guardadas</h3>
+        <p className="text-sm text-gray-600">
+          {activeProject
+            ? `Proyecto activo: ${activeProject.name}. Las definiciones se almacenan localmente.`
+            : "Abra un proyecto en el inspector para guardar y recuperar definiciones."}
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-sm">
+            Definición del proyecto
+            <select
+              aria-label="Definición guardada"
+              value={selectedDefinitionId}
+              disabled={!activeProject || definitionsLoading || savedDefinitions.length === 0 || busy}
+              onChange={(event) => setSelectedDefinition(activeProjectId
+                ? { projectId: activeProjectId, id: event.target.value }
+                : null)}
+              className="rounded border border-gray-300 px-2 py-1"
+            >
+              <option value="">{definitionsLoading ? "Cargando…" : "Seleccione una definición"}</option>
+              {savedDefinitions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <button type="button" disabled={!selectedDefinitionId || !baseVersionId || busy} onClick={() => void loadDefinition()} className="rounded border border-gray-300 px-3 py-2 text-sm">
+            Cargar definición
+          </button>
+          <button type="button" disabled={!selectedDefinitionId || busy} onClick={() => void deleteDefinition()} className="rounded border border-gray-300 px-3 py-2 text-sm text-red-700">
+            Eliminar definición
+          </button>
+          <button type="button" disabled={!activeProject || !baseVersionId || steps.length === 0 || busy} onClick={() => void saveDefinition()} className="rounded bg-violet-800 px-3 py-2 text-sm font-medium text-white">
+            Guardar definición
+          </button>
+          <button type="button" disabled={busy} onClick={newDefinition} className="rounded border border-gray-300 px-3 py-2 text-sm">
+            Nueva definición
+          </button>
+        </div>
+      </section>
 
       <section className="space-y-3 rounded border border-gray-200 bg-white p-4" aria-labelledby="pipeline-configuracion">
         <h3 id="pipeline-configuracion" className="font-semibold">Definición del pipeline</h3>

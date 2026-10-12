@@ -54,6 +54,48 @@ export interface PipelineDefinition {
   steps: PipelineStep[];
 }
 
+/** Valida la forma persistida antes de tratarla como una definición confiable. */
+export function isPipelineDefinition(value: unknown): value is PipelineDefinition {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string" || !Array.isArray(value.steps)) {
+    return false;
+  }
+  return value.steps.every((candidate) => {
+    if (!isRecord(candidate) || typeof candidate.id !== "string") return false;
+    switch (candidate.type) {
+      case "filter":
+        return isRecord(candidate.filter) && typeof candidate.filter.column === "string" &&
+          typeof candidate.filter.op === "string" && FILTER_OPERATORS.has(candidate.filter.op as PipelineFilterOperator) &&
+          (candidate.filter.value === undefined || typeof candidate.filter.value === "string");
+      case "select":
+      case "dropNulls":
+        return Array.isArray(candidate.columns) && candidate.columns.every((column) => typeof column === "string");
+      case "fillNull":
+        return typeof candidate.column === "string" && (candidate.value === null || typeof candidate.value === "string");
+      case "convertType":
+        return typeof candidate.column === "string" && PIPELINE_TARGET_TYPES.has(candidate.targetType as PipelineTargetType) &&
+          typeof candidate.precision === "number" && typeof candidate.scale === "number";
+      case "normalizeDate":
+        return typeof candidate.column === "string" && PIPELINE_DATE_FORMATS.has(candidate.inputFormat as PipelineDateFormat);
+      case "normalizeText":
+        return typeof candidate.column === "string" && typeof candidate.trimWhitespace === "boolean" &&
+          (candidate.letterCase === "preserve" || candidate.letterCase === "lower" || candidate.letterCase === "upper") &&
+          typeof candidate.emptyToNull === "boolean";
+      case "rename":
+        return typeof candidate.column === "string" && typeof candidate.newName === "string";
+      case "deduplicate":
+        return true;
+      case "sort":
+        return typeof candidate.column === "string" && (candidate.direction === "asc" || candidate.direction === "desc");
+      default:
+        return false;
+    }
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export interface PipelineColumn {
   name: string;
   type: string;
@@ -146,6 +188,7 @@ export function validatePipeline(
   });
 
   if (!definition.name.trim()) return fail("Ingrese un nombre para el pipeline.");
+  if (!definition.id.trim()) return fail("La definición necesita un identificador.");
   if (definition.name.trim().length > 80) {
     return fail("El nombre del pipeline no puede superar los 80 caracteres.");
   }

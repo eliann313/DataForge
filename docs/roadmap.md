@@ -1,6 +1,6 @@
 # DataForge — Roadmap maestro
 
-> **Estado al 2026-10-12:** R1 (0A–3B; E1–E6) está cerrado y verificado. R2/fase 4 está activa; hay un primer corte de pipelines implementado en una PR abierta, todavía fuera de la demo pública. El resto del roadmap sigue siendo plan hasta que código y pruebas demuestren su avance.
+> **Estado al 2026-10-12:** R1 (0A–3B; E1–E6) está cerrado y verificado. R2/fase 4 está activa; la PR abierta incluye pipelines de sesión y definiciones guardables localmente por proyecto, todavía fuera de la demo pública. Falta completar múltiples fuentes y relaciones validadas. El resto del roadmap sigue siendo plan hasta que código y pruebas demuestren su avance.
 
 **Objetivo:** construir una plataforma de análisis de datos autoservicio, en español, con procesamiento local en el navegador, proyectos persistentes, visualizaciones, pipelines reproducibles e instrumentos científicos especializados.  
 **Alcance:** proyecto educativo y de portfolio; objetivo de infraestructura sin servicios pagos.  
@@ -179,7 +179,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Objetivo:** preparación y composición de datos con trazabilidad.
 
-**Avance verificado (2026-10-12, R2):** pipeline de pasos tipados para filtrar, seleccionar y renombrar columnas, quitar filas nulas según las columnas elegidas, reemplazar nulos con valores validados, normalizar texto (espacios en los extremos, mayúsculas/minúsculas y texto vacío a nulo) y fechas a `DATE` con formatos de origen explícitos, convertir a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`, eliminar filas exactamente duplicadas y ordenar. Las conversiones y fechas se validan antes de la vista previa y de crear la versión: se rechazan incompatibilidades, desbordes, fechas imposibles, pérdida de escala decimal y conversiones numéricas con pérdida; los nulos se conservan. Los filtros preservan textos que parecen numéricos y validan comparaciones según el tipo físico. Incluye vista previa, creación de versiones derivadas como vistas DuckDB de sesión y activación de versiones anteriores. La fuente importada se conserva intacta. El alcance restante de fase 4 incluye definiciones de pipeline guardables, múltiples fuentes y validación de UNION/JOIN. La persistencia portable y los informes pertenecen a fase 5.
+**Avance verificado (2026-10-12, R2):** pipeline de pasos tipados para filtrar, seleccionar y renombrar columnas, quitar filas nulas según las columnas elegidas, reemplazar nulos con valores validados, normalizar texto (espacios en los extremos, mayúsculas/minúsculas y texto vacío a nulo) y fechas a `DATE` con formatos de origen explícitos, convertir a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`, eliminar filas exactamente duplicadas y ordenar. Las conversiones y fechas se validan antes de la vista previa y de crear la versión: se rechazan incompatibilidades, desbordes, fechas imposibles, pérdida de escala decimal y conversiones numéricas con pérdida; los nulos se conservan. Los filtros preservan textos que parecen numéricos y validan comparaciones según el tipo físico. Incluye vista previa, creación de versiones derivadas como vistas DuckDB de sesión y activación de versiones anteriores. Las definiciones declarativas se pueden guardar en IndexedDB dentro del proyecto y se vuelven a validar contra el esquema actual al cargarlas; no guardan archivos ni resultados. La fuente importada se conserva intacta. El alcance restante de fase 4 incluye varios datasets por proyecto y validación de UNION/JOIN. La persistencia portable y los informes pertenecen a fase 5.
 
 **Alcance**
 - Renombrar columnas, transformar tipos, normalizar fechas/texto, filtrar, ordenar, deduplicar, tratar nulos, crear expresiones y agregaciones.
@@ -395,7 +395,7 @@ Fase 10 no bloquea R5.
 - [x] Definir el MVP acotado ([MVP.md](MVP.md)) y mover las reglas de agentes a [AGENTS.md](../AGENTS.md).
 - [x] Cerrar R1 con entregas E1–E6, mediciones tabulares y smoke público.
 - [x] Iniciar R2/fase 4 con una primera versión de pipelines locales; evidencia y límites en [primeras entregas](primeras-entregas.md) y [ADR-0004](adr/0004-versiones-derivadas-de-pipelines.md).
-- [ ] Completar fase 4: limpieza configurable, definiciones reproducibles y múltiples datasets con relaciones validadas.
+- [ ] Completar fase 4: múltiples datasets con APPEND/UNION y JOIN validados; verificar linaje y evitar multiplicaciones involuntarias.
 - [ ] Avanzar a fase 5: informes y respaldo/exportación portable; decidir almacenamiento duradero con evidencia.
 - [ ] Completar spikes 0B y 0C cuando aporten valor; actualizar ADR-0002 sin bloquear R2.
 

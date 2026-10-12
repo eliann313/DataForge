@@ -22,3 +22,10 @@ export interface PipelineExecutionPort {
   ): Promise<PipelineVersion>;
   activateDatasetVersion(versionId: string): Promise<void>;
 }
+
+/** Guarda definiciones declarativas por proyecto; no conserva archivos ni resultados. */
+export interface PipelineDefinitionRepository {
+  save(projectId: string, definition: PipelineDefinition): Promise<void>;
+  list(projectId: string): Promise<PipelineDefinition[]>;
+  delete(projectId: string, definitionId: string): Promise<void>;
+}
