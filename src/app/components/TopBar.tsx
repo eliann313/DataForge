@@ -7,6 +7,7 @@ const TITLES: Record<ViewName, string> = {
   inicio: "Inicio",
   datos: "Datos",
   analisis: "Análisis",
+  finanzas: "Finanzas",
   transformaciones: "Transformaciones",
   laboratorio: "Laboratorio",
   informes: "Informes",

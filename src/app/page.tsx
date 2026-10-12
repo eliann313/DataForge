@@ -7,6 +7,7 @@ import Sidebar, { type ViewName } from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import DatosView from "./views/DatosView";
 import AnalysisView from "./views/AnalysisView";
+import FinanceView from "./views/FinanceView";
 import InicioView, { type ExampleDataset } from "./views/InicioView";
 import type { ExampleRequest } from "@/platform/engines/duckdb/ImportPanel";
 
@@ -63,6 +64,8 @@ export default function Home() {
                 <DatosView example={example} />
               ) : view === "analisis" ? (
                 <AnalysisView />
+              ) : view === "finanzas" ? (
+                <FinanceView />
               ) : null}
             </main>
             <Inspector />
