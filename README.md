@@ -4,7 +4,7 @@
 
 DataForge busca que cualquier persona pueda **importar, explorar, limpiar, combinar, analizar, visualizar y exportar datos** sin configurar un entorno científico ni subir sus archivos a un backend de procesamiento. Un usuario puede analizar una planilla; otro puede construir pipelines reproducibles, trabajar con varios datasets y aplicar análisis estadístico avanzado.
 
-> **Estado: R1 funcional completo el 2026-10-12 en rama `develop`** (E1–E6; ver [primeras entregas](docs/primeras-entregas.md)). Pendiente el cierre formal (recorridos en demo pública). Las características de R2 en adelante están **previstas, no implementadas**. Demo pública: `https://data-forge-analysis.vercel.app/` (sigue al último merge a `main`). Los umbrales de capacidad son hipótesis hasta completar las mediciones del [ADR-0002](docs/adr/0002-motores-analiticos-y-criterios-de-corte.md).
+> **Estado: R1 cerrado el 2026-10-12** (E1–E6 verificadas en demo pública con E2E 31/31; ver [primeras entregas](docs/primeras-entregas.md)). Las características de R2 en adelante están **previstas, no implementadas**. Demo pública: `https://data-forge-analysis.vercel.app/` (sigue al último merge a `main`). Los umbrales de capacidad son hipótesis hasta completar las mediciones del [ADR-0002](docs/adr/0002-motores-analiticos-y-criterios-de-corte.md).
 
 **Documentación:** [MVP y prioridades](docs/MVP.md) · [Roadmap completo](docs/roadmap.md) · [Roadmap técnico maestro](docs/roadmap-tecnico.md) · [Arquitectura de software](docs/architecture.md) · [Decisiones (ADR)](docs/adr/README.md) · [Reglas para agentes](AGENTS.md)
 
@@ -238,8 +238,9 @@ Las reglas de trabajo con agentes de IA están en [AGENTS.md](AGENTS.md).
 - [x] Fase 2 (E4, cerrada 2026-10-12): CSV/JSON/Parquet/XLSX, filtros y orden sobre DuckDB, roles semánticos editables, profiling con definiciones visibles.
 - [x] Fase 3 (E5, cerrada 2026-10-12): descriptivos exactos (varianza muestral, cuantiles continuos), ECharts con alternativa tabular, correlación justificada y hallazgos por reglas.
 - [x] Finanzas Lite (E6/3B, cerrada 2026-10-12): CRUD manual ARS/USD en centavos exactos, resumen mensual por moneda sin conversión, gráficos y persistencia local.
-- [ ] Cierre de R1: verificar los dos recorridos (importar→estadística→gráfico; finanzas→recarga) en demo pública con mediciones.
+- [x] Cierre de R1 (2026-10-12): recorridos importar→estadística→gráfico y finanzas→recarga verificados con E2E 31/31 en la demo pública; E2E total 62/62, Vitest 41/41.
 - [ ] Fases 0B y 0C: spikes de Pyodide bajo demanda y de Rust/Wasm (no bloquean R1).
+- [ ] R2 (fases 4–5): limpieza, pipelines, múltiples datasets e informes.
 
 ## Documentación y referencias
 
