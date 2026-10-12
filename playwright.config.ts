@@ -13,6 +13,11 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      // 0A.5: segundo navegador de escritorio para compatibilidad.
+      name: "firefox",
+      use: { ...devices["Desktop Firefox"] },
+    },
   ],
   webServer: {
     command: "npm run dev",

@@ -13,6 +13,8 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "e2e:install": "playwright install --with-deps chromium",
+    "bench": "playwright test --config=playwright.bench.config.ts",
+    "gen:bench": "node benchmarks/gen-csv.mjs",
     "vendor:duckdb": "node scripts/vendor-duckdb.mjs",
     "postinstall": "npm run vendor:duckdb",
     "predev": "npm run vendor:duckdb",

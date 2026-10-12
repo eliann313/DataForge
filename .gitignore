@@ -10,6 +10,7 @@ test-results/
 # generados (vendor-duckdb copia assets desde node_modules)
 public/vendor/
 tsconfig.tsbuildinfo
+benchmarks/data/
 
 # sistema
 .DS_Store

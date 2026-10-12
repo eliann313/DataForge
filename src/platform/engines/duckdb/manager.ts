@@ -46,6 +46,8 @@ export interface ImportSummary {
   bytes: number;
   rows: number;
   columns: ColumnInfo[];
+  /** Tiempo real de CREATE+consultas en el motor (ms, sin diálogo de archivo). */
+  durationMs: number;
 }
 
 export interface NumericSummary {
@@ -249,6 +251,7 @@ export class DuckDBManager {
         message: problemLabel("empty"),
       } satisfies EngineError;
     }
+    const started = performance.now();
     const db = this.db;
     if (!db) {
       throw {
@@ -267,7 +270,7 @@ export class DuckDBManager {
       await conn.query(
         `ALTER TABLE ${escapeIdentifier(STAGING_TABLE)} RENAME TO ${escapeIdentifier(DATASET_TABLE)}`,
       );
-      return { fileName: displayName, bytes: size, rows, columns };
+      return { fileName: displayName, bytes: size, rows, columns, durationMs: Math.round(performance.now() - started) };
     } catch (cause) {
       try {
         await conn.query(`DROP TABLE IF EXISTS ${escapeIdentifier(STAGING_TABLE)}`);

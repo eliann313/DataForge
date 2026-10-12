@@ -280,7 +280,8 @@ export default function ImportPanel() {
         <>
           <p role="status">
             {st.summary.fileName}: {st.summary.rows} filas,{" "}
-            {st.summary.columns.length} columnas.
+            {st.summary.columns.length} columnas, {st.summary.bytes} bytes
+            importados en {st.summary.durationMs} ms (motor).
           </p>
           <h3>Esquema</h3>
           <table>
