@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ResultRow } from "./contract";
 import {
   DEFAULT_PAGE_SIZE,
@@ -56,7 +56,17 @@ function formatCell(value: unknown): string {
   return String(value);
 }
 
-export default function ImportPanel() {
+export interface ExampleRequest {
+  url: string;
+  name: string;
+  nonce: number;
+}
+
+export default function ImportPanel({
+  example,
+}: {
+  example?: ExampleRequest | null;
+}) {
   const [file, setFile] = useState<File | null>(null);
   const [st, setSt] = useState<State>(initial);
   const [busy, setBusy] = useState(false);
@@ -64,6 +74,45 @@ export default function ImportPanel() {
   const [sheet, setSheet] = useState("");
   const [probe, setProbe] = useState<string | null>(null);
   const bridgeRef = useRef<XLSXBridge | null>(null);
+
+  // Ejemplo ficticio pedido desde Inicio: se descarga y se importa con la
+  // misma ruta general. La importación es idempotente (reemplaza la tabla).
+  useEffect(() => {
+    if (!example) return;
+    let cancelled = false;
+    (async () => {
+      setBusy(true);
+      setSheets(null);
+      setSt((s) => ({ ...s, phase: "importing", message: null }));
+      try {
+        const res = await fetch(example.url);
+        if (!res.ok) throw new Error(`Ejemplo no disponible (HTTP ${res.status})`);
+        const downloaded = new File([await res.blob()], example.name, {
+          type: "text/csv",
+        });
+        if (!cancelled) {
+          setFile(downloaded);
+          // Acción explícita del usuario: habilita el inicio diferido.
+          if (engine.getStatus() !== "ready") await engine.init();
+          if (!cancelled) {
+            const summary = await engine.importCSV(downloaded);
+            if (!cancelled) await showResult(summary);
+          }
+        }
+      } catch (cause) {
+        if (!cancelled) {
+          const message =
+            cause instanceof Error ? cause.message : "Error al cargar el ejemplo";
+          setSt((s) => ({ ...s, phase: "error", message }));
+        }
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [example]);
 
   const totalPages =
     st.summary && st.summary.rows > 0
@@ -284,7 +333,7 @@ export default function ImportPanel() {
             importados en {st.summary.durationMs} ms (motor).
           </p>
           <h3>Esquema</h3>
-          <table>
+          <table className="df-table">
             <thead>
               <tr>
                 <th scope="col">Columna</th>
@@ -335,7 +384,7 @@ export default function ImportPanel() {
           <h3>
             Vista previa (página {st.page} de {totalPages})
           </h3>
-          <table>
+          <table className="df-table">
             <thead>
               <tr>
                 {st.summary.columns.map((c) => (

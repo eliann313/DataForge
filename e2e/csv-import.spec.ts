@@ -9,6 +9,7 @@ import { expect, test, type Page } from "@playwright/test";
 // - vacio.csv: 0 bytes; debe fallar con error recuperable.
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
   await page.getByRole("button", { name: /inicializar motor/i }).click();
   await expect(page.getByText("Estado: Motor listo")).toBeVisible({
     timeout: 120_000,

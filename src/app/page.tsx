@@ -1,43 +1,71 @@
-import EnginePanel from "@/platform/engines/duckdb/EnginePanel";
-import ImportPanel from "@/platform/engines/duckdb/ImportPanel";
-import "./page.css";
+"use client";
 
+import { useState } from "react";
+import { ProjectsProvider } from "@/modules/projects/presentation/ProjectsContext";
+import Inspector from "./components/Inspector";
+import Sidebar, { type ViewName } from "./components/Sidebar";
+import TopBar from "./components/TopBar";
+import DatosView from "./views/DatosView";
+import InicioView, { type ExampleDataset } from "./views/InicioView";
+import type { ExampleRequest } from "@/platform/engines/duckdb/ImportPanel";
+
+// Shell E3: sidebar oscura, contenido claro, inspector contextual.
+// Sin rutas dinámicas (exportación estática): la vista es estado local.
 export default function Home() {
+  const [view, setView] = useState<ViewName>("inicio");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [example, setExample] = useState<ExampleRequest | null>(null);
+
+  function navigate(v: ViewName) {
+    setView(v);
+    setSidebarOpen(false);
+  }
+
+  function tryExample(ex: ExampleDataset) {
+    setExample({ url: ex.file, name: ex.file.split("/").pop() ?? ex.file, nonce: Date.now() });
+    setView("datos");
+    setSidebarOpen(false);
+  }
+
   return (
-    <main className="container">
-      <p className="kicker">DataForge · Fase 0A — Fundamento tabular</p>
-      <h1>Esqueleto técnico (spike 0A en curso)</h1>
-      <p>
-        Esta página verifica los ítems <strong>0A.1–0A.4 / E1–E2</strong> del
-        plan de primeras entregas: instalación reproducible, tipado estricto,
-        lint, build estático, motor DuckDB-Wasm en Worker con inicio diferido,
-        importación CSV y XLSX con esquema, conteo, agregación y preview
-        paginada. No es la landing definitiva ni el workspace.
-      </p>
-      <EnginePanel />
-      <ImportPanel />
-      <section aria-labelledby="verifica">
-        <h2 id="verifica">Qué verifica este esqueleto</h2>
-        <ul>
-          <li>Next.js con exportación estática (`output: &quot;export&quot;`).</li>
-          <li>TypeScript estricto y lint sin errores.</li>
-          <li>Pruebas unitarias con Vitest y smoke E2E con Playwright.</li>
-          <li>CI básica: tipado + lint + tests + build.</li>
-        </ul>
-      </section>
-      <section aria-labelledby="fuera">
-        <h2 id="fuera">Fuera de este alcance</h2>
-        <ul>
-          <li>JSON tabular y Parquet (fase 2).</li>
-          <li>Proyectos, Data Explorer, gráficos y Finanzas Lite (fases 1–3B).</li>
-          <li>Cuentas, nube, IA remota y servidores (requieren aprobación).</li>
-        </ul>
-      </section>
-      <p className="nota">
-        Estado real del repositorio: documentación más este esqueleto. Nada de
-        lo descrito en el roadmap está implementado hasta que el código y las
-        pruebas lo demuestren.
-      </p>
-    </main>
+    <ProjectsProvider>
+      <a
+        href="#contenido"
+        className="sr-only focus:not-sr-only focus:absolute focus:bg-white focus:p-2"
+      >
+        Saltar al contenido
+      </a>
+      <div className="flex min-h-screen bg-gray-50 font-sans text-gray-900">
+        <div
+          className={`fixed inset-y-0 left-0 z-20 w-60 bg-gray-900 p-4 text-gray-100 transition-transform lg:static lg:translate-x-0 ${
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <p className="mb-4 text-lg font-bold">DataForge</p>
+          <Sidebar view={view} onNavigate={navigate} />
+        </div>
+        {sidebarOpen ? (
+          <button
+            type="button"
+            aria-label="Cerrar navegación"
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 z-10 bg-black/40 lg:hidden"
+          />
+        ) : null}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar view={view} onToggleSidebar={() => setSidebarOpen((o) => !o)} />
+          <div className="grid flex-1 gap-6 p-4 lg:grid-cols-[1fr_16rem] lg:p-6">
+            <main id="contenido" tabIndex={-1} className="min-w-0">
+              {view === "inicio" ? (
+                <InicioView onNavigate={navigate} onTryExample={tryExample} />
+              ) : view === "datos" ? (
+                <DatosView example={example} />
+              ) : null}
+            </main>
+            <Inspector />
+          </div>
+        </div>
+      </div>
+    </ProjectsProvider>
   );
 }

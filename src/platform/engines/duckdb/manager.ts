@@ -66,6 +66,25 @@ export class DuckDBManager {
   private db: AsyncDuckDB | null = null;
   private conn: AsyncDuckDBConnection | null = null;
   private initPromise: Promise<void> | null = null;
+  private listeners = new Set<() => void>();
+
+  /** Suscripción a cambios de estado (paneles sincronizados). */
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private emit(): void {
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch {
+        // Un panel roto no rompe el motor.
+      }
+    }
+  }
 
   getStatus(): EngineStatus {
     return this.status;
@@ -87,10 +106,12 @@ export class DuckDBManager {
     }
     this.status = "initializing";
     this.lastError = null;
+    this.emit();
     this.initPromise = this.doInit().then(
       () => {
         this.status = "ready";
         this.initPromise = null;
+        this.emit();
       },
       (cause: unknown) => {
         this.status = "error";
@@ -99,6 +120,7 @@ export class DuckDBManager {
           message: messageOf(cause),
         };
         this.initPromise = null;
+        this.emit();
         void this.release();
       },
     );
@@ -156,6 +178,7 @@ export class DuckDBManager {
     await this.release();
     this.lastPing = null;
     this.status = "closed";
+    this.emit();
   }
 
   // ---- 0A.3: importación CSV y consultas internas (SQL controlada por la app) ----
@@ -368,6 +391,7 @@ export class DuckDBManager {
     await this.release();
     this.lastPing = null;
     this.status = "idle";
+    this.emit();
     await this.init();
   }
 

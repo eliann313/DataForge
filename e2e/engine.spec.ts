@@ -7,6 +7,7 @@ test("el motor arranca diferido y el ciclo cerrar/reiniciar recupera", async ({
   page,
 }) => {
   await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
 
   // Sin inicialización automática.
   await expect(page.getByText("Estado: Motor no inicializado")).toBeVisible();
