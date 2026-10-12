@@ -17,6 +17,7 @@ export interface PipelineFilter {
 export type PipelineStep =
   | { id: string; type: "filter"; filter: PipelineFilter }
   | { id: string; type: "select"; columns: string[] }
+  | { id: string; type: "dropNulls"; columns: string[] }
   | { id: string; type: "rename"; column: string; newName: string }
   | { id: string; type: "deduplicate" }
   | { id: string; type: "sort"; column: string; direction: "asc" | "desc" };
@@ -135,6 +136,18 @@ export function validatePipeline(
         const missing = step.columns.find((name) => !hasColumn(columns, name));
         if (missing) return fail(`La selección referencia una columna que ya no existe: ${missing}.`, step.id);
         columns = step.columns.map((name) => ({ ...findColumn(columns, name)! }));
+        break;
+      }
+      case "dropNulls": {
+        if (step.columns.length === 0) {
+          return fail("Seleccione al menos una columna para revisar nulos.", step.id);
+        }
+        const normalized = step.columns.map(normalizeName);
+        if (new Set(normalized).size !== normalized.length) {
+          return fail("La selección de columnas para nulos contiene repetidas.", step.id);
+        }
+        const missing = step.columns.find((name) => !hasColumn(columns, name));
+        if (missing) return fail(`La selección de nulos referencia una columna que ya no existe: ${missing}.`, step.id);
         break;
       }
       case "rename": {

@@ -1,6 +1,6 @@
 # DataForge — Roadmap maestro
 
-> **Estado al 2026-10-12:** R1 (0A–3B; E1–E6) está cerrado y verificado. R2/fase 4 está activa; hay un primer corte local de pipelines implementado y probado, todavía no publicado. El resto del roadmap sigue siendo plan hasta que código y pruebas demuestren su avance.
+> **Estado al 2026-10-12:** R1 (0A–3B; E1–E6) está cerrado y verificado. R2/fase 4 está activa; hay un primer corte de pipelines implementado en una PR abierta, todavía fuera de la demo pública. El resto del roadmap sigue siendo plan hasta que código y pruebas demuestren su avance.
 
 **Objetivo:** construir una plataforma de análisis de datos autoservicio, en español, con procesamiento local en el navegador, proyectos persistentes, visualizaciones, pipelines reproducibles e instrumentos científicos especializados.  
 **Alcance:** proyecto educativo y de portfolio; objetivo de infraestructura sin servicios pagos.  
@@ -179,7 +179,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Objetivo:** preparación y composición de datos con trazabilidad.
 
-**Avance verificado (2026-10-12, R2 inicial):** pipeline de pasos tipados para filtrar, seleccionar y renombrar columnas, eliminar filas exactamente duplicadas y ordenar; los filtros preservan textos que parecen numéricos y validan comparaciones según el tipo físico. Incluye vista previa, creación de versiones derivadas como vistas DuckDB de sesión y activación de versiones anteriores. La fuente importada se conserva intacta. El alcance restante de fase 4 incluye más operaciones de limpieza, definiciones de pipeline guardables, múltiples fuentes y validación de UNION/JOIN. La persistencia portable y los informes pertenecen a fase 5.
+**Avance verificado (2026-10-12, R2 inicial):** pipeline de pasos tipados para filtrar, seleccionar y renombrar columnas, quitar filas nulas según las columnas elegidas, eliminar filas exactamente duplicadas y ordenar; los filtros preservan textos que parecen numéricos y validan comparaciones según el tipo físico. Incluye vista previa, creación de versiones derivadas como vistas DuckDB de sesión y activación de versiones anteriores. La fuente importada se conserva intacta. El alcance restante de fase 4 incluye reemplazo/normalización y conversión de tipos, definiciones de pipeline guardables, múltiples fuentes y validación de UNION/JOIN. La persistencia portable y los informes pertenecen a fase 5.
 
 **Alcance**
 - Renombrar columnas, transformar tipos, normalizar fechas/texto, filtrar, ordenar, deduplicar, tratar nulos, crear expresiones y agregaciones.

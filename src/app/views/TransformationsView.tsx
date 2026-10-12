@@ -39,6 +39,7 @@ function stepName(step: PipelineStep): string {
   switch (step.type) {
     case "filter": return "Filtrar filas";
     case "select": return "Seleccionar columnas";
+    case "dropNulls": return "Quitar filas con nulos";
     case "rename": return "Renombrar columna";
     case "deduplicate": return "Eliminar duplicados exactos";
     case "sort": return "Ordenar filas";
@@ -113,6 +114,9 @@ export default function TransformationsView({
         step = { id, type, filter: { column: available[0].name, op: "notnull" } };
         break;
       case "select":
+        step = { id, type, columns: available.map((column) => column.name) };
+        break;
+      case "dropNulls":
         step = { id, type, columns: available.map((column) => column.name) };
         break;
       case "rename":
@@ -265,6 +269,7 @@ export default function TransformationsView({
         <div className="flex flex-wrap gap-2" aria-label="Agregar un paso">
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("filter")} className="rounded border border-gray-300 px-2 py-1 text-sm">Agregar filtro</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("select")} className="rounded border border-gray-300 px-2 py-1 text-sm">Seleccionar columnas</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("dropNulls")} className="rounded border border-gray-300 px-2 py-1 text-sm">Quitar filas con nulos</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("rename")} className="rounded border border-gray-300 px-2 py-1 text-sm">Renombrar columna</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("deduplicate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Eliminar duplicados</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("sort")} className="rounded border border-gray-300 px-2 py-1 text-sm">Ordenar filas</button>
@@ -330,6 +335,28 @@ export default function TransformationsView({
                               disabled={busy}
                               onChange={(event) => updateStep(step.id, (current) => {
                                 if (current.type !== "select") return current;
+                                const selected = new Set(current.columns);
+                                if (event.target.checked) selected.add(column.name);
+                                else selected.delete(column.name);
+                                return { ...current, columns: available.map((item) => item.name).filter((name) => selected.has(name)) };
+                              })}
+                            />
+                            {column.name}
+                          </label>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {step.type === "dropNulls" ? (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        {available.map((column) => (
+                          <label key={column.name} className="flex items-center gap-1">
+                            <input
+                              type="checkbox"
+                              checked={step.columns.includes(column.name)}
+                              disabled={busy}
+                              onChange={(event) => updateStep(step.id, (current) => {
+                                if (current.type !== "dropNulls") return current;
                                 const selected = new Set(current.columns);
                                 if (event.target.checked) selected.add(column.name);
                                 else selected.delete(column.name);

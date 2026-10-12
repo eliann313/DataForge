@@ -6,8 +6,8 @@
 > tabular medido (global propuesto hasta 0B/0C), 0A.1–0A.6, E3.1–E3.3, E4
 > (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
 > correlación, hallazgos) y E6 (Finanzas Lite exacta); el primer corte R2 agrega
-> pipelines locales en sesión con filtros tipados. Vitest 51/51; Playwright
-> 70/70 en Chromium/Firefox.
+> pipelines locales en sesión con filtros tipados y descarte de nulos. Vitest
+> 52/52; Playwright 72/72 en Chromium/Firefox.
 > **Fase activa:** R2 (fases 4–5) tras el cierre de R1 el 2026-10-12.
 > 0B/0C siguen como investigación pendiente y no bloquean.
 > Este plan divide las fases existentes en entregas; no agrega fases ni cambia
@@ -114,7 +114,7 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 
 ### Primer corte implementado (2026-10-12)
 
-- Pasos tipados para filtrar filas, seleccionar y renombrar columnas, quitar duplicados exactamente iguales y ordenar.
+- Pasos tipados para filtrar filas, seleccionar y renombrar columnas, quitar filas con nulos en columnas elegidas, quitar duplicados exactamente iguales y ordenar.
 - Los filtros respetan el tipo físico: una igualdad sobre texto conserva valores como `00123`; las comparaciones mayor/menor solo se permiten en columnas numéricas y validan el literal.
 - Vista previa con cantidad de filas antes/después y muestra acotada.
 - Ejecutar crea una vista DuckDB derivada, sin sobrescribir la fuente; se puede activar de nuevo la versión fuente o una derivada.
@@ -123,7 +123,7 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 
 ### Siguiente trabajo dentro de las fases existentes
 
-1. Completar fase 4 con tratamiento explícito de nulos y tipos, guardar y repetir definiciones de pipeline, y gestionar más de un dataset.
+1. Completar fase 4 con reemplazo/normalización de nulos, conversiones tipadas, definiciones de pipeline guardables y más de un dataset.
 2. Implementar APPEND/UNION y JOIN con validación de esquema, cardinalidad y resultados parciales.
 3. Avanzar a fase 5: informe reproducible, exportación y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
 4. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
@@ -131,9 +131,9 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 ### Verificación del corte inicial
 
 Evidencia local del corte: `npm run typecheck` pasó; `npm run lint` pasó;
-`npm test` pasó con 51/51; `npm run build` produjo el export estático; y
-`npm run e2e -- --workers=3` pasó 70/70 en Chromium y Firefox contra ese export.
-`npm run smoke:static` pasó 35/35 en Chromium.
+`npm test` pasó con 52/52; `npm run build` produjo el export estático; y
+`npm run e2e -- --workers=3` pasó 72/72 en Chromium y Firefox contra ese export.
+`npm run smoke:static` pasó 36/36 en Chromium.
 El build se ejecutó con acceso local al navegador/servidor por una restricción de
 Windows/SWC en el entorno restringido. Estas funciones siguen fuera de la demo
 pública R1.

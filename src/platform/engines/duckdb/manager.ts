@@ -1093,6 +1093,13 @@ export function buildPipelineQuery(
         query = `SELECT ${step.columns.map(escapeIdentifier).join(", ")} FROM (${query}) AS ${alias}`;
         columns = step.columns.map((name) => ({ ...columns.find((column) => column.name === name)! }));
         break;
+      case "dropNulls": {
+        const predicates = step.columns
+          .map((name) => `${escapeIdentifier(name)} IS NOT NULL`)
+          .join(" AND ");
+        query = `SELECT * FROM (${query}) AS ${alias} WHERE ${predicates}`;
+        break;
+      }
       case "rename": {
         const newName = step.newName.trim();
         const projected = columns.map((column) =>

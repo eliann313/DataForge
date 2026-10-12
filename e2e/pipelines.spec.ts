@@ -120,3 +120,25 @@ test("selecciona, renombra y ordena sobre versiones reales de DuckDB", async ({ 
   await expect(preview.getByRole("row").nth(1).getByRole("cell")).toHaveText("3");
   await expect(preview.getByRole("row").nth(2).getByRole("cell")).toHaveText("1");
 });
+
+test("quita filas con nulos en las columnas seleccionadas", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "nulos.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("id,valor\n1,A\n,B\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("nulos.csv: 2 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /quitar filas con nulos/i }).click();
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByText(/1 de 2 filas/)).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByRole("row").nth(1).getByRole("cell")).toHaveText(["1", "A"]);
+});

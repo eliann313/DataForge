@@ -44,6 +44,18 @@ describe("validatePipeline", () => {
     ])).error).toMatch(/Ya existe/);
   });
 
+  it("valida las columnas elegidas para quitar filas con nulos", () => {
+    expect(validatePipeline(columns, definition([
+      { id: "n1", type: "dropNulls", columns: ["valor"] },
+    ])).valid).toBe(true);
+    expect(validatePipeline(columns, definition([
+      { id: "n1", type: "dropNulls", columns: [] },
+    ])).error).toMatch(/Seleccione al menos una columna/);
+    expect(validatePipeline(columns, definition([
+      { id: "n1", type: "dropNulls", columns: ["faltante"] },
+    ])).error).toMatch(/ya no existe/);
+  });
+
   it("exige nombre, pasos y valores para los operadores que los necesitan", () => {
     expect(validatePipeline(columns, { id: "p", name: " ", steps: [] }).error).toMatch(/nombre/);
     expect(validatePipeline(columns, definition([])).error).toMatch(/al menos un paso/);

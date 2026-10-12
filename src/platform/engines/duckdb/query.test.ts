@@ -69,6 +69,7 @@ describe("buildPipelineQuery", () => {
       ],
       [
         { id: "filter-1", type: "filter", filter: { column: "producto", op: "eq", value: "x' OR 1=1 --" } },
+        { id: "nulls-1", type: "dropNulls", columns: ["producto", "valor"] },
         { id: "rename-1", type: "rename", column: "valor", newName: 'importe"; DROP TABLE x; --' },
         { id: "select-1", type: "select", columns: ["producto", 'importe"; DROP TABLE x; --'] },
         { id: "dedupe-1", type: "deduplicate" },
@@ -78,6 +79,7 @@ describe("buildPipelineQuery", () => {
 
     expect(query).toContain('FROM "source""; DROP TABLE x; --"');
     expect(query).toContain(`= 'x'' OR 1=1 --'`);
+    expect(query).toContain('"producto" IS NOT NULL AND "valor" IS NOT NULL');
     expect(query).toContain('AS "importe""; DROP TABLE x; --"');
     expect(query).toContain("SELECT DISTINCT *");
     expect(query).toContain('ORDER BY "producto" DESC');
