@@ -233,11 +233,10 @@ Las reglas de trabajo con agentes de IA están en [AGENTS.md](AGENTS.md).
 - [x] Crear repositorio.
 - [x] Consolidar roadmap y arquitectura de planificación.
 - [x] Acotar el MVP, redactar ADR-0001 y ADR-0002 (estado «Propuesto») y separar las reglas de agentes en AGENTS.md.
-- [x] Fase 0A (E1+E2, cerrada 2026-10-12): esqueleto Next.js estático, DuckDB-Wasm en Worker con inicio diferido, CSV/XLSX con esquema, conteo y agregados; E2E 18/18 en Chromium/Firefox, benchmarks 0A.5 y smoke 9/9 en producción Vercel. ADR-0001 aceptado.
+- [x] Fase 0A (E1+E2, cerrada 2026-10-12): esqueleto Next.js estático, DuckDB-Wasm en Worker con inicio diferido, CSV/XLSX con esquema, conteo y agregados; E2E en Chromium/Firefox, benchmarks 0A.5 y smoke 9/9 en producción Vercel. ADR-0001 aceptado.
+- [x] Fase 1 (E3, cerrada 2026-10-12): proyectos/carpetas locales con IndexedDB versionado, shell con sidebar e inspector, ejemplos ficticios, cuota observable y ADR-0003 (OPFS diferido a R2).
+- [ ] Fase 2 (E4, activa): importación multiformato completa y Data Explorer.
 - [ ] Fases 0B y 0C: spikes de Pyodide bajo demanda y de Rust/Wasm (no bloquean R1).
-- [ ] Fase 1 (E3, activa): proyectos locales utilizables (E3.1 dominio+IDB hecho; falta shell/UI).
-- [ ] Cerrar ADR-0002 tabular con comparativa ruta A/B y resultados 0B/0C.
-- [ ] Publicar la primera demo funcional (R1).
 
 ## Documentación y referencias
 

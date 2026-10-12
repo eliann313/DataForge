@@ -4,8 +4,9 @@ Cada ADR documenta una decisión técnica con su contexto, alternativas y criter
 
 | ADR | Decisión | Estado |
 |---|---|---|
-| [0001](./0001-framework-y-exportacion-estatica.md) | Framework de aplicación y exportación estática (Next.js frente a Vite) | Propuesto — se cierra con la fase 0A |
-| [0002](./0002-motores-analiticos-y-criterios-de-corte.md) | Motores analíticos, intercambio de datos y criterios de corte | Propuesto — se cierra con las fases 0A, 0B y 0C |
+| [0001](./0001-framework-y-exportacion-estatica.md) | Framework de aplicación y exportación estática (Next.js frente a Vite) | Aceptado — cerrado con la fase 0A |
+| [0002](./0002-motores-analiticos-y-criterios-de-corte.md) | Motores analíticos, intercambio de datos y criterios de corte | Propuesto — tabular medido; se cierra con 0B y 0C |
+| [0003](./0003-persistencia-opfs-diferido.md) | Persistencia local: IndexedDB en R1, OPFS diferido a R2 | Aceptado — cierra el punto de decisión de E3 |
 
 ## Estados
 

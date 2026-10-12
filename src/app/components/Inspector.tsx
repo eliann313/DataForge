@@ -1,6 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useProjects } from "@/modules/projects/presentation/ProjectsContext";
+
+function formatMB(bytes: number): string {
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
 
 // Inspector contextual (E3): proyecto activo y notas honestas de
 // almacenamiento. Los datasets importados aún no se ligan a proyectos
@@ -10,6 +15,25 @@ export default function Inspector() {
   const folder = active
     ? (folders.find((f) => f.id === active.folderId)?.name ?? "Raíz")
     : null;
+  // Cuota real del navegador (Storage API); null = no observable.
+  const [quota, setQuota] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!navigator.storage?.estimate) return;
+        const { usage, quota: limit } = await navigator.storage.estimate();
+        if (!cancelled && usage !== undefined && limit !== undefined && limit > 0) {
+          setQuota(`${formatMB(usage)} usados de ${formatMB(limit)}`);
+        }
+      } catch {
+        // Sin cuota observable: se informa, no se estima.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   return (
     <aside aria-label="Inspector" className="space-y-4 text-sm">
       <section aria-labelledby="insp-proyecto">
@@ -32,8 +56,14 @@ export default function Inspector() {
         </h2>
         <ul className="list-disc space-y-1 pl-4 text-gray-700">
           <li>Proyectos y carpetas se guardan en este dispositivo (IndexedDB).</li>
+          <li>
+            Cuota del navegador: {quota ?? "no observable en este navegador"}.
+            Si se agota o el navegador limpia datos, los fallos se muestran en
+            pantalla (nunca se pierde en silencio).
+          </li>
           <li>Los archivos importados viven solo en memoria: al recargar se reimportan.</li>
           <li>Todavía no hay datasets ligados a proyectos ni plantillas (fases 2–3B).</li>
+          <li>El respaldo portable completo llega en R2; los datos del navegador pueden perderse por limpieza o cuota.</li>
         </ul>
       </section>
     </aside>
