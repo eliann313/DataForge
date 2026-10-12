@@ -19,6 +19,7 @@ import { escapeIdentifier } from "./contract";
 import {
   MAX_CSV_BYTES,
   checkCSVFile,
+  checkInputFile,
   clampPage,
   escapeStringLiteral,
   problemLabel,
@@ -56,6 +57,110 @@ export interface NumericSummary {
   avg: number;
   min: number;
   max: number;
+}
+
+export type FilterOp =
+  | "contains"
+  | "eq"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "isnull"
+  | "notnull";
+
+export interface DataFilter {
+  column: string;
+  op: FilterOp;
+  value?: string;
+}
+
+export interface DataSort {
+  column: string;
+  dir: "asc" | "desc";
+}
+
+export interface PageResult {
+  rows: ResultRow[];
+  /** Filas totales del dataset (sin filtros). */
+  total: number;
+  /** Filas tras aplicar filtros. */
+  filtered: number;
+}
+
+export interface Frequency {
+  value: unknown;
+  count: number;
+}
+
+export interface ColumnProfile {
+  column: string;
+  total: number;
+  nulls: number;
+  nullPct: number;
+  distinct: number;
+  min: unknown;
+  max: unknown;
+  top: Frequency[];
+}
+
+/**
+ * Construye el WHERE a partir de filtros declarativos. Identificadores
+ * escapados, literales saneados; valores numéricos validados. Sin SQL
+ * arbitraria: operadores cerrados y dirección validada.
+ */
+export function buildWhere(filters: DataFilter[]): string {
+  if (filters.length === 0) return "";
+  const parts = filters.map((f) => {
+    const col = escapeIdentifier(f.column);
+    switch (f.op) {
+      case "isnull":
+        return `${col} IS NULL`;
+      case "notnull":
+        return `${col} IS NOT NULL`;
+      case "contains": {
+        const pattern = escapeLike(requireValue(f));
+        return `CAST(${col} AS VARCHAR) ILIKE ${escapeStringLiteral(`%${pattern}%`)} ESCAPE '\\'`;
+      }
+      case "eq":
+        return `${col} = ${literalValue(requireValue(f))}`;
+      case "gt":
+        return `${col} > ${literalValue(requireValue(f))}`;
+      case "gte":
+        return `${col} >= ${literalValue(requireValue(f))}`;
+      case "lt":
+        return `${col} < ${literalValue(requireValue(f))}`;
+      case "lte":
+        return `${col} <= ${literalValue(requireValue(f))}`;
+    }
+  });
+  return ` WHERE ${parts.join(" AND ")}`;
+}
+
+export function buildOrderBy(sort: DataSort | null): string {
+  if (!sort) return "";
+  if (sort.dir !== "asc" && sort.dir !== "desc") {
+    throw new Error("Dirección de orden inválida");
+  }
+  return `ORDER BY ${escapeIdentifier(sort.column)} ${sort.dir === "asc" ? "ASC" : "DESC"}`;
+}
+
+function requireValue(f: DataFilter): string {
+  if (f.value === undefined || f.value === "") {
+    throw new Error(`El filtro sobre ${f.column} necesita un valor.`);
+  }
+  return f.value;
+}
+
+/** Número validado o literal de texto escapado. */
+function literalValue(raw: string): string {
+  if (/^-?\d+(\.\d+)?$/.test(raw.trim())) return raw.trim();
+  return escapeStringLiteral(raw);
+}
+
+/** Escapa %, _ y \ para ILIKE. */
+function escapeLike(raw: string): string {
+  return raw.replace(/[\\%_]/g, (m) => `\\${m}`);
 }
 
 export class DuckDBManager {
@@ -194,21 +299,38 @@ export class DuckDBManager {
   }
 
   /**
-   * Importa un CSV (UTF-8, con encabezados, coma o punto y coma por
-   * autodetección). Un archivo por vez; la fuente original no se modifica.
-   * Ante fallo conserva la tabla activa anterior.
+   * Importa un CSV (UTF-8). Opciones: delimitador autodetectado (coma/punto
+   * y coma) o explícito, con o sin encabezados. Un archivo por vez; la fuente
+   * original no se modifica. Ante fallo conserva la tabla activa anterior.
    */
-  async importCSV(file: File): Promise<ImportSummary> {
+  async importCSV(
+    file: File,
+    opts?: { delimiter?: "auto" | "," | ";"; header?: boolean },
+  ): Promise<ImportSummary> {
     this.requireConn();
     const check = checkCSVFile(file.name, file.size);
-    if (!check.ok) {
+    if (!check.ok || !file.name.toLowerCase().endsWith(".csv")) {
       throw {
         code: "query-failed",
-        message: problemLabel(check.problem!),
+        message: check.ok
+          ? "Tipo no soportado: se esperaba un .csv."
+          : problemLabel(check.problem!),
       } satisfies EngineError;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
-    return this.importBuffer(file.name, file.size, bytes);
+    const delimiter = opts?.delimiter ?? "auto";
+    const header = opts?.header ?? true;
+    const options =
+      delimiter === "auto"
+        ? `header = ${header}, auto_detect = true`
+        : `header = ${header}, delim = ${escapeStringLiteral(delimiter)}, auto_detect = false`;
+    return this.materialize(
+      file.name,
+      file.size,
+      bytes,
+      REGISTER_NAME,
+      `SELECT * FROM read_csv(${escapeStringLiteral(REGISTER_NAME)}, ${options})`,
+    );
   }
 
   /** Importa texto CSV ya extraído (p. ej. hoja XLSX vía Worker). */
@@ -227,7 +349,68 @@ export class DuckDBManager {
         message: problemLabel("too-large"),
       } satisfies EngineError;
     }
-    return this.importBuffer(displayName, bytes.byteLength, bytes);
+    return this.materialize(
+      displayName,
+      bytes.byteLength,
+      bytes,
+      REGISTER_NAME,
+      `SELECT * FROM read_csv(${escapeStringLiteral(REGISTER_NAME)}, header = true, auto_detect = true)`,
+    );
+  }
+
+  /**
+   * Importa JSON tabular (arreglo de objetos; se aceptan campos anidados,
+   * que llegan como STRUCT). Formas no tabulares se rechazan con mensaje.
+   */
+  async importJSON(file: File): Promise<ImportSummary> {
+    this.requireConn();
+    const check = checkInputFile(file.name, file.size);
+    if (!check.ok || !file.name.toLowerCase().endsWith(".json")) {
+      throw {
+        code: "query-failed",
+        message: check.ok
+          ? "Tipo no soportado en este spike: JSON tabular (.json)."
+          : problemLabel(check.problem!),
+      } satisfies EngineError;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const head = new TextDecoder().decode(bytes.slice(0, 4096)).trimStart();
+    if (!head.startsWith("[")) {
+      throw {
+        code: "query-failed",
+        message:
+          "JSON no tabular: se espera un arreglo de objetos [{...}, ...] (NDJSON en fase 2).",
+      } satisfies EngineError;
+    }
+    return this.materialize(
+      file.name,
+      file.size,
+      bytes,
+      "df_upload.json",
+      `SELECT * FROM read_json(${escapeStringLiteral("df_upload.json")}, format = 'array')`,
+    );
+  }
+
+  /** Importa Parquet vía lectura nativa de DuckDB. */
+  async importParquet(file: File): Promise<ImportSummary> {
+    this.requireConn();
+    const check = checkInputFile(file.name, file.size);
+    if (!check.ok || !file.name.toLowerCase().endsWith(".parquet")) {
+      throw {
+        code: "query-failed",
+        message: check.ok
+          ? "Tipo no soportado en este spike: Parquet (.parquet)."
+          : problemLabel(check.problem!),
+      } satisfies EngineError;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return this.materialize(
+      file.name,
+      file.size,
+      bytes,
+      "df_upload.parquet",
+      `SELECT * FROM read_parquet(${escapeStringLiteral("df_upload.parquet")})`,
+    );
   }
 
   /**
@@ -262,10 +445,12 @@ export class DuckDBManager {
     }
   }
 
-  private async importBuffer(
+  private async materialize(
     displayName: string,
     size: number,
     bytes: Uint8Array,
+    registerName: string,
+    sourceSQL: string,
   ): Promise<ImportSummary> {
     const conn = this.requireConn();
     if (bytes.byteLength === 0) {
@@ -282,10 +467,10 @@ export class DuckDBManager {
         message: "El motor no está listo. Inicialícelo antes de importar.",
       } satisfies EngineError;
     }
-    await db.registerFileBuffer(REGISTER_NAME, bytes);
+    await db.registerFileBuffer(registerName, bytes);
     try {
       await conn.query(
-        `CREATE OR REPLACE TABLE ${escapeIdentifier(STAGING_TABLE)} AS SELECT * FROM read_csv(${escapeStringLiteral(REGISTER_NAME)}, header = true, auto_detect = true)`,
+        `CREATE OR REPLACE TABLE ${escapeIdentifier(STAGING_TABLE)} AS ${sourceSQL}`,
       );
       const columns = await this.readSchema(conn, STAGING_TABLE);
       const rows = await this.readCount(conn, STAGING_TABLE);
@@ -302,11 +487,11 @@ export class DuckDBManager {
       }
       throw {
         code: "query-failed",
-        message: `No se pudo importar el CSV: ${messageOf(cause)}`,
+        message: `No se pudo importar el archivo: ${messageOf(cause)}`,
       } satisfies EngineError;
     } finally {
       try {
-        await db.dropFile(REGISTER_NAME);
+        await db.dropFile(registerName);
       } catch {
         // Liberación best-effort del buffer registrado.
       }
@@ -327,13 +512,79 @@ export class DuckDBManager {
     return this.readCount(this.requireConn(), DATASET_TABLE);
   }
 
-  async getPage(page: number, pageSize: number): Promise<ResultRow[]> {
+  // ---- E4: filtros y orden sobre el dataset completo, profiling ----
+
+  async getPage(
+    page: number,
+    pageSize: number,
+    opts?: { filters?: DataFilter[]; sort?: DataSort | null },
+  ): Promise<PageResult> {
     const conn = this.requireConn();
     const c = clampPage(page, pageSize);
+    const where = buildWhere(opts?.filters ?? []);
+    const order = buildOrderBy(opts?.sort ?? null);
+    const [table, total, filtered] = await Promise.all([
+      conn.query(
+        `SELECT * FROM ${escapeIdentifier(DATASET_TABLE)}${where} ${order} LIMIT ${c.pageSize} OFFSET ${c.offset}`,
+      ),
+      this.readCount(conn, DATASET_TABLE),
+      where
+        ? this.readCountWhere(conn, where)
+        : this.readCount(conn, DATASET_TABLE),
+    ]);
+    return { rows: toJSONRows(table), total, filtered };
+  }
+
+  async countFiltered(filters: DataFilter[]): Promise<number> {
+    const conn = this.requireConn();
+    const where = buildWhere(filters);
+    return where
+      ? this.readCountWhere(conn, where)
+      : this.readCount(conn, DATASET_TABLE);
+  }
+
+  /** Perfil de una columna: nulos, cardinalidad, rango y frecuencias. */
+  async profileColumn(column: string): Promise<ColumnProfile> {
+    const conn = this.requireConn();
+    const col = escapeIdentifier(column);
+    const table = escapeIdentifier(DATASET_TABLE);
+    const stats = toJSONRows(
+      await conn.query(
+        `SELECT COUNT(*) AS total, COUNT(${col}) AS nonnull, COUNT(DISTINCT ${col}) AS distinct_n, MIN(${col}) AS mn, MAX(${col}) AS mx FROM ${table}`,
+      ),
+    )[0] as Record<string, unknown>;
+    const total = Number(stats.total);
+    const nonnull = Number(stats.nonnull);
+    const top = toJSONRows(
+      await conn.query(
+        `SELECT ${col} AS v, COUNT(*) AS c FROM ${table} GROUP BY ${col} ORDER BY c DESC, v LIMIT 5`,
+      ),
+    ).map((r) => ({ value: r.v ?? null, count: Number(r.c) }));
+    return {
+      column,
+      total,
+      nulls: total - nonnull,
+      nullPct: total === 0 ? 0 : Math.round(((total - nonnull) / total) * 1000) / 10,
+      distinct: Number(stats.distinct_n),
+      min: (stats.mn as unknown) ?? null,
+      max: (stats.mx as unknown) ?? null,
+      top,
+    };
+  }
+
+  /**
+   * Duplicados potenciales: filas idénticas en TODAS las columnas.
+   * Definición visible en la UI; detectar ≠ eliminar (limpiar es R2).
+   */
+  async duplicateCount(): Promise<number> {
+    const conn = this.requireConn();
     const table = await conn.query(
-      `SELECT * FROM ${escapeIdentifier(DATASET_TABLE)} LIMIT ${c.pageSize} OFFSET ${c.offset}`,
+      `SELECT COUNT(*) AS n FROM (SELECT * FROM ${escapeIdentifier(DATASET_TABLE)} GROUP BY ALL HAVING COUNT(*) > 1)`,
     );
-    return toJSONRows(table);
+    const row = toJSONRows(table)[0] as Record<string, unknown> | undefined;
+    const groups = row ? Number(row.n) : NaN;
+    if (!Number.isInteger(groups) || groups < 0) throw new Error("Conteo inválido");
+    return groups;
   }
 
   /** Agregación sobre una columna (nombre escapado; sin SQL arbitraria). */
@@ -379,6 +630,19 @@ export class DuckDBManager {
   ): Promise<number> {
     const counted = await conn.query(
       `SELECT COUNT(*) AS n FROM ${escapeIdentifier(table)}`,
+    );
+    const row = toJSONRows(counted)[0] as Record<string, unknown> | undefined;
+    const n = row ? Number(row.n) : NaN;
+    if (!Number.isInteger(n) || n < 0) throw new Error("Conteo inválido");
+    return n;
+  }
+
+  private async readCountWhere(
+    conn: AsyncDuckDBConnection,
+    where: string,
+  ): Promise<number> {
+    const counted = await conn.query(
+      `SELECT COUNT(*) AS n FROM ${escapeIdentifier(DATASET_TABLE)}${where}`,
     );
     const row = toJSONRows(counted)[0] as Record<string, unknown> | undefined;
     const n = row ? Number(row.n) : NaN;

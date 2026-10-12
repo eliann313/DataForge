@@ -25,7 +25,9 @@ describe("checkCSVFile", () => {
       ok: false,
       problem: "too-large",
     });
-    expect(checkCSVFile("a.json", 100)).toEqual({
+    expect(checkCSVFile("a.json", 100).ok).toBe(true);
+    expect(checkCSVFile("a.parquet", 100).ok).toBe(true);
+    expect(checkCSVFile("a.xml", 100)).toEqual({
       ok: false,
       problem: "unsupported-type",
     });
