@@ -17,6 +17,7 @@ import {
 } from "@/modules/pipelines";
 import { useProjects } from "@/modules/projects";
 import { engine } from "@/platform/engines/duckdb/manager";
+import DatasetCombinationPanel from "@/app/components/DatasetCombinationPanel";
 
 const pipelineService = new PipelineService(engine, new IndexedDBPipelineDefinitionRepository());
 
@@ -121,6 +122,16 @@ export default function TransformationsView({
     ? selectedDefinition.id
     : "";
   const definitionsLoading = Boolean(activeProjectId && definitionsState?.projectId !== activeProjectId);
+
+  useEffect(() => engine.onChange(() => {
+    const currentVersions = pipelineService.getVersions();
+    const currentActiveId = pipelineService.getActiveVersionId();
+    setVersions(currentVersions);
+    setActiveVersionId(currentActiveId);
+    setBaseVersionId((current) => currentVersions.some((version) => version.id === current)
+      ? current
+      : currentActiveId ?? currentVersions[0]?.id ?? "");
+  }), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -374,6 +385,13 @@ export default function TransformationsView({
     }
   }
 
+  function acceptCombinationVersion(version: PipelineVersion) {
+    const currentVersions = pipelineService.getVersions();
+    setVersions(currentVersions);
+    setBaseVersionId(version.id);
+    setActiveVersionId(version.id);
+  }
+
   if (versions.length === 0) {
     return (
       <section className="max-w-3xl space-y-3" aria-labelledby="transformaciones-titulo">
@@ -398,6 +416,8 @@ export default function TransformationsView({
           Guarde definiciones en un proyecto de este dispositivo y cree versiones derivadas repetibles. Los archivos y las versiones derivadas permanecen en la sesión; no se guardan con la definición.
         </p>
       </header>
+
+      <DatasetCombinationPanel versions={versions} onVersionCreated={acceptCombinationVersion} />
 
       <section className="space-y-2 rounded border border-gray-200 bg-white p-4" aria-labelledby="pipelines-guardados">
         <h3 id="pipelines-guardados" className="font-semibold">Definiciones guardadas</h3>
@@ -879,7 +899,9 @@ export default function TransformationsView({
                   <td>{version.name}{activeVersionId === version.id ? " (activa)" : ""}</td>
                   <td>{version.rowCount}</td>
                   <td>{version.columns.length}</td>
-                  <td>{version.parentId ? versions.find((parent) => parent.id === version.parentId)?.name ?? "versión previa" : "Fuente original"}</td>
+                  <td>{version.parentIds.length > 0
+                    ? version.parentIds.map((parentId) => versions.find((parent) => parent.id === parentId)?.name ?? "versión previa").join(" + ")
+                    : "Fuente original"}</td>
                   <td>
                     {activeVersionId === version.id ? "Activa" : (
                       <button type="button" disabled={busy} onClick={() => void activateVersion(version)} className="underline">

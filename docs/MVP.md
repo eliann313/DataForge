@@ -1,6 +1,6 @@
 # DataForge — MVP y roadmap operativo
 
-> **Estado:** R1 cerrado el 2026-10-12 (fases 0A–3B, entregas E1–E6). R2/fase 4 está en curso; el primer corte local de pipelines se describe en el [plan de entregas](./primeras-entregas.md). Este documento conserva el alcance del MVP; el [roadmap](./roadmap.md) registra la visión y el estado actual.
+> **Estado:** R1 cerrado el 2026-10-12 (fases 0A–3B, entregas E1–E6). R2/fase 4 está en curso en la PR #16: pipelines, varias fuentes por proyecto en memoria y combinaciones APPEND/JOIN validadas. Los archivos y las versiones no persisten al recargar; el [plan de entregas](./primeras-entregas.md) registra evidencia y pendientes. Este documento conserva el alcance del MVP; el [roadmap](./roadmap.md) registra la visión y el estado actual.
 
 **Principio:** no se reduce la visión, se reduce lo que se intenta construir al mismo tiempo. Cada etapa debe cerrarse con resultados observables antes de decidir la siguiente.
 

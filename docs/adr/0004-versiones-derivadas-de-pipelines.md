@@ -9,7 +9,7 @@ R1 mantiene el dataset importado en memoria dentro de DuckDB-Wasm. Fase 4 necesi
 
 ## Hechos verificados
 
-- La aplicación importa un dataset por vez en el Worker; el archivo y el dataset no persisten al recargar.
+- El primer corte importaba un dataset por vez en el Worker; ADR-0006 amplía el catálogo a varias fuentes aisladas por proyecto sin hacerlas persistentes.
 - Los filtros de E4 solo cambian la vista exploratoria y no generan una versión.
 - El primer corte de fase 4 ejecuta pasos tipados con DuckDB-Wasm y conserva la fuente para volver a ella.
 - La implementación usa vistas DuckDB derivadas, con nombres internos generados por la aplicación. Las consultas reutilizan la vista; el usuario no proporciona SQL ni nombres de tabla.
@@ -22,7 +22,7 @@ R1 mantiene el dataset importado en memoria dentro de DuckDB-Wasm. Fase 4 necesi
 - Aceptar solo pasos declarativos cerrados: filtro, selección de columnas, descarte de filas nulas según columnas elegidas, reemplazo de nulos por un valor explícito, conversión a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`, normalización de fechas a `DATE` con formatos enumerados, normalización de texto (recorte de extremos, cambio de mayúsculas/minúsculas y texto vacío a nulo), renombre, eliminación de filas idénticas y orden final. Escapar identificadores y literales; validar valores numéricos por tipo; no aceptar SQL arbitrario.
 - Antes de previsualizar o crear la vista derivada, validar cada conversión contra los datos del paso anterior. Rechazar valores incompatibles, desbordes y conversiones numéricas o decimales que pierdan precisión; conservar los valores nulos.
 - Resolver literales de filtro según el tipo físico: igualdad sobre texto compara como texto; `gt/gte/lt/lte` requieren columnas numéricas y valores numéricos válidos. Esto conserva códigos con ceros iniciales como `00123`.
-- Mantener estos metadatos y versiones en memoria. No guardar definiciones, archivos ni resultados en OPFS/IndexedDB en este corte.
+- Mantener las fuentes, resultados y metadatos de versión en memoria. ADR-0005 decide por separado guardar solo las definiciones en IndexedDB; archivos y resultados no se guardan en OPFS/IndexedDB.
 - Revisar la estrategia de materialización y persistencia al desarrollar exportación/respaldo portable en fase 5, con mediciones de memoria y ejecución.
 
 ## Alternativas
@@ -36,10 +36,10 @@ R1 mantiene el dataset importado en memoria dentro de DuckDB-Wasm. Fase 4 necesi
 ## Consecuencias y límites
 
 - Un error al validar o crear una vista no cambia la versión activa; la fuente y las vistas previas existentes siguen disponibles.
-- Reimportar reemplaza de forma transaccional el dataset de sesión y elimina primero las vistas derivadas.
+- En el corte inicial una reimportación reemplazaba el único dataset. ADR-0006 cambia el flujo: cada importación agrega una fuente al proyecto activo; quitar una fuente elimina esa fuente y las vistas que dependan de ella.
 - Las versiones desaparecen al cerrar el Worker o recargar. La definición del pipeline no sobrevive a la vista actual ni se guarda en el proyecto.
 - Las vistas pueden recalcular transformaciones en cada lectura; este corte no acredita rendimiento ni capacidad para grandes cadenas.
-- No se consideran completados los criterios completos de fase 4: faltan persistencia de definiciones, varios datasets y validaciones de UNION/JOIN.
+- Esta decisión cubre solo la vida de las versiones en sesión. La persistencia de definiciones, varias fuentes y las semánticas de combinación se resolvieron después en ADR-0005, ADR-0006 y ADR-0007.
 
 ## Evidencia de implementación
 

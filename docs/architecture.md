@@ -1,6 +1,6 @@
 # DataForge — Arquitectura de software
 
-> **Estado:** arquitectura objetivo con partes verificadas. Next.js estático, DuckDB-Wasm en Worker, R1 y definiciones de pipeline guardables por proyecto están implementados en la rama R2. La convivencia con Pyodide/Rust, varios datasets y la persistencia de versiones siguen pendientes. Ver [ADR-0001](adr/0001-framework-y-exportacion-estatica.md), [ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md), [ADR-0004](adr/0004-versiones-derivadas-de-pipelines.md), [ADR-0005](adr/0005-definiciones-de-pipeline-locales.md) y el [roadmap](roadmap.md).
+> **Estado:** arquitectura objetivo con partes verificadas. Next.js estático, DuckDB-Wasm en Worker y R1 están cerrados. La PR #16 incorpora definiciones de pipeline locales, varias fuentes aisladas por proyecto durante la sesión y versiones APPEND/JOIN con linaje de múltiples padres. Las fuentes y versiones aún no persisten al recargar; Pyodide/Rust y el respaldo portable siguen diferidos. Ver [ADR-0001](adr/0001-framework-y-exportacion-estatica.md), [ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md), [ADR-0004](adr/0004-versiones-derivadas-de-pipelines.md), [ADR-0005](adr/0005-definiciones-de-pipeline-locales.md), [ADR-0006](adr/0006-multiples-datasets-en-sesion.md), [ADR-0007](adr/0007-combinaciones-append-y-join.md) y el [roadmap](roadmap.md).
 
 ## 1. Estilo arquitectónico
 
@@ -208,7 +208,7 @@ Entidades propuestas: Folder, Project, DatasetSource, DatasetVersion, DatasetSch
 
 Los identificadores y contratos de persistencia deben ser neutrales a implementación local o conectada. La importación y persistencia deben ser recuperables frente a fallos parciales.
 
-**Implementación actual de R2:** una fuente por sesión. Las definiciones declarativas pueden guardarse por proyecto en IndexedDB y validarse contra el esquema activo; el pipeline ejecuta pasos tipados como vistas DuckDB sobre una versión elegida, sin materializar ni persistir los resultados. La gestión de varias fuentes y uniones sigue pendiente de fase 4.
+**Implementación actual de R2 en la PR #16:** cada fuente se registra en el proyecto activo dentro de la sesión del Worker; cambiar de proyecto aísla las fuentes y recuerda la última versión activa mientras vive el Worker. APPEND/JOIN y los pipelines crean vistas con esquema, conteo, tipo de operación, fuentes originales y padres inmediatos. Quitar una fuente también elimina las vistas que dependan de ella. Los archivos y resultados no se guardan en IndexedDB ni OPFS; las definiciones de pipeline sí se guardan por proyecto y se revalidan al cargarlas. Ver ADR-0006 y ADR-0007.
 
 ## 7. Persistencia y privacidad
 

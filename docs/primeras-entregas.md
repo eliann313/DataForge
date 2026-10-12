@@ -6,10 +6,12 @@
 > tabular medido (global propuesto hasta 0B/0C), 0A.1–0A.6, E3.1–E3.3, E4
 > (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
 > correlación, hallazgos) y E6 (Finanzas Lite exacta); R2 agrega pipelines locales
-> tipados y definiciones guardables por proyecto en IndexedDB, sin persistir los
-> archivos fuente ni sus versiones derivadas. Verificación local: tipado y lint
-> correctos, Vitest 63/63, Playwright 88/88 en Chromium/Firefox y revalidación
-> focal del nuevo flujo 2/2 tras un ajuste de estado de React.
+> tipados, definiciones por proyecto en IndexedDB, varias fuentes aisladas por
+> proyecto durante la sesión, APPEND/UNION ALL y JOIN con cardinalidad/fanout
+> validados. Este incremento pasó tipado, lint, Vitest 67/67 y Playwright de
+> pipelines 32/32 en Chromium/Firefox; el flujo APPEND con limpieza de linaje
+> también pasó 2/2 en ambos navegadores. Build estático correcto y smoke
+> estático 47/47 en Chromium.
 > **Fase activa:** R2 (fases 4–5) tras el cierre de R1 el 2026-10-12.
 > 0B/0C siguen como investigación pendiente y no bloquean.
 > Este plan divide las fases existentes en entregas; no agrega fases ni cambia
@@ -122,26 +124,26 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 - Ejecutar crea una vista DuckDB derivada, sin sobrescribir la fuente; se puede activar de nuevo la versión fuente o una derivada.
 - Conversión explícita a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`. La vista previa y la ejecución rechazan valores incompatibles, desbordes o conversiones que pierdan precisión; los nulos se conservan.
 - Normalización de texto de fecha a `DATE` mediante formatos explícitos (`YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, `DD-MM-YYYY` y `YYYY-MM-DD HH:mm:ss`); las fechas inválidas se rechazan antes de crear una versión.
-- La definición puede guardarse por proyecto en IndexedDB; se valida contra el esquema activo al cargarla. Las versiones derivadas y los datos siguen en la sesión y se pierden al cerrar/recargar. No hay persistencia OPFS, exportación portable, múltiples fuentes ni UNION/JOIN en este corte.
+- La definición puede guardarse por proyecto en IndexedDB y se valida contra el esquema activo al cargarla. Varias fuentes y versiones de cada proyecto viven solo en el Worker durante la sesión. APPEND conserva duplicados con `UNION ALL`, valida tipos/mapeos; JOIN verifica tipos de clave, cardinalidad y fanout y exige confirmación antes de aceptar multiplicación de filas. Las combinaciones guardan ambos padres y todas las fuentes de linaje. Quitar una fuente elimina sus vistas dependientes. Los archivos y resultados se pierden al cerrar/recargar; OPFS y exportación portable siguen diferidos a fase 5.
+- Las pruebas E2E cubren aislamiento de proyectos, duplicados en APPEND, rechazo por cardinalidad incorrecta, confirmación de fanout y limpieza de versiones al quitar una fuente.
 - Los identificadores SQL se escapan, los valores de filtro se codifican y no se acepta SQL libre. Un error de validación no crea ni activa una versión.
 
 ### Siguiente trabajo dentro de las fases existentes
 
-1. Incorporar más de un dataset por proyecto y conservar el linaje sin persistir archivos por implicación.
-2. Implementar APPEND/UNION y JOIN con validación de esquema, cardinalidad y resultados parciales.
-3. Avanzar a fase 5: informe reproducible, exportación y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
-4. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
+1. Revisar CI y la PR #16 con el SHA actual; el incremento aún no está integrado ni publicado.
+2. Una vez aceptado el cierre de fase 4, avanzar a fase 5: informe reproducible, exportación y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
+3. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
 
 ### Verificación del corte local de fase 4
 
-Evidencia de este corte: `npm run typecheck` y `npm run lint` pasaron; `npm test`
-pasó con 63/63; `npm run e2e -- --workers=3` pasó 88/88 en Chromium y Firefox
-contra el servidor local de Next.js. Después del último ajuste de estado en la
-UI, el recorrido de guardar, recargar, reimportar y cargar una definición pasó
-2/2 en Chromium y Firefox. El build estático y el smoke estático no se repitieron
-en este incremento; la evidencia del corte anterior sigue registrada en
-[ADR-0004](adr/0004-versiones-derivadas-de-pipelines.md). Estas funciones siguen
-fuera de la demo pública R1.
+Evidencia del incremento actual: `npm run typecheck`, `npm run lint` y `npm test`
+pasaron; Vitest: 67/67. `npm run e2e -- --workers=1 e2e/pipelines.spec.ts`
+pasó 32/32 en Chromium y Firefox contra Next.js local. Tras ampliar la prueba de
+APPEND para quitar una fuente y comprobar que desaparecen sus vistas derivadas,
+ese recorrido pasó 2/2 en Chromium/Firefox. `npm run build` generó el export
+estático y `npm run smoke:static` pasó 47/47 en Chromium. El smoke detectó y se
+ajustó una expectativa E2E desactualizada sobre el texto real del contexto de
+proyecto. Estos cambios siguen fuera de la demo pública R1.
 
 ## Evidencia histórica del backlog 0A (E1–E2)
 

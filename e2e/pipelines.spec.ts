@@ -79,9 +79,142 @@ test("crea una versión derivada sin alterar la fuente y permite activarla otra 
   await expect(page.getByText("numeros.csv: 5 filas, 3 columnas")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: /^transformaciones$/i }).click();
   const replacementVersions = page.locator('section[aria-labelledby="pipeline-versiones"]');
-  await expect(replacementVersions.getByRole("row")).toHaveCount(2);
+  await expect(replacementVersions.getByRole("row")).toHaveCount(4);
   await expect(replacementVersions.getByText("numeros.csv (activa)")).toBeVisible();
-  await expect(replacementVersions.getByText(/Preparación/)).toHaveCount(0);
+  await expect(replacementVersions.getByText(/Preparación/)).toBeVisible();
+  const preservedSource = replacementVersions.getByRole("row").nth(1);
+  await preservedSource.getByRole("button", { name: /usar versión/i }).click();
+  await expect(replacementVersions.getByText("duplicadas.csv (activa)")).toBeVisible();
+});
+
+test("mantiene varias fuentes por proyecto y aísla el proyecto activo", async ({ page }) => {
+  const firstProject = `Fuentes-${Date.now()}`;
+  const otherProject = `Otro-${Date.now()}`;
+  await page.goto("/");
+  await page.getByLabel(/nombre de proyecto nuevo/i).fill(firstProject);
+  await page.getByRole("button", { name: /^crear proyecto$/i }).click();
+  await expect(page.getByText(firstProject, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles(path.resolve("public/demo-data/duplicadas.csv"));
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("duplicadas.csv: 3 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.locator("#csv-file").setInputFiles(path.resolve("public/demo-data/numeros.csv"));
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("numeros.csv: 5 filas, 3 columnas")).toBeVisible({ timeout: 30_000 });
+
+  const datasets = page.locator('section[aria-labelledby="datasets-sesion"]');
+  await expect(datasets.getByRole("listitem")).toHaveCount(2);
+  const firstSource = datasets.getByRole("listitem").filter({ hasText: "duplicadas.csv" }).first();
+  await firstSource.getByRole("button", { name: /activar dataset/i }).click();
+  await expect(page.getByText("duplicadas.csv: 3 filas, 2 columnas")).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: /^inicio$/i }).click();
+  await page.getByLabel(/nombre de proyecto nuevo/i).fill(otherProject);
+  await page.getByRole("button", { name: /^crear proyecto$/i }).click();
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await expect(datasets.getByText(/No hay fuentes cargadas/)).toBeVisible({ timeout: 15_000 });
+  await page.getByRole("button", { name: /^inicio$/i }).click();
+  await page.getByRole("radio", { name: `Abrir ${firstProject}` }).check();
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await expect(datasets.getByRole("listitem")).toHaveCount(2);
+  await expect(datasets.getByRole("listitem").filter({ hasText: "duplicadas.csv" }).first()).toContainText("(activa)");
+});
+
+test("APPEND mapea esquemas diferentes y conserva filas repetidas con UNION ALL", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "origen-a.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("id,valor\n1,A\n1,A\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("origen-a.csv: 2 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "origen-b.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("id,etiqueta\n2,B\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("origen-b.csv: 1 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  const combinations = page.locator('section[aria-labelledby="combinaciones-datasets"]');
+  await combinations.getByLabel("Fuente izquierda").selectOption({ label: "origen-a.csv · 2 filas" });
+  await combinations.getByLabel("Fuente derecha").selectOption({ label: "origen-b.csv · 1 filas" });
+  await expect(combinations.getByLabel("Nombre de salida APPEND 1")).toBeVisible();
+  await combinations.getByRole("button", { name: /vista previa append/i }).click();
+
+  const preview = combinations.locator('section[aria-labelledby="append-vista-previa"]');
+  await expect(preview.getByText(/resultado: 3/)).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByRole("cell", { name: "1", exact: true })).toHaveCount(2);
+  await combinations.getByRole("button", { name: /crear versión append/i }).click();
+  const versions = page.locator('section[aria-labelledby="pipeline-versiones"]');
+  await expect(versions.getByText(/Anexar fuentes · APPEND \(activa\)/)).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  const datasets = page.locator('section[aria-labelledby="datasets-sesion"]');
+  page.once("dialog", (dialog) => void dialog.accept());
+  await datasets.getByRole("listitem").filter({ hasText: "origen-a.csv" }).getByRole("button", { name: /quitar de la sesión/i }).click();
+  await expect(datasets.getByRole("listitem")).toHaveCount(1);
+  await expect(datasets.getByText(/origen-b\.csv/)).toBeVisible();
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await expect(versions.getByRole("row")).toHaveCount(2);
+  await expect(versions.getByText(/Anexar fuentes · APPEND/)).toHaveCount(0);
+});
+
+test("JOIN exige cardinalidad, muestra fanout y bloquea su creación hasta confirmarlo", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "clientes.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("id,nombre\n1,Ana\n2,Beto\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("clientes.csv: 2 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "movimientos.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("customer_id,importe\n1,10\n1,20\n2,5\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("movimientos.csv: 3 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  const combinations = page.locator('section[aria-labelledby="combinaciones-datasets"]');
+  await combinations.getByRole("button", { name: /^join$/i }).click();
+  await combinations.getByLabel("Fuente izquierda").selectOption({ label: "clientes.csv · 2 filas" });
+  await combinations.getByLabel("Fuente derecha").selectOption({ label: "movimientos.csv · 3 filas" });
+  await combinations.getByLabel("Tipo de JOIN").selectOption("left");
+  await combinations.getByLabel("Cardinalidad del JOIN").selectOption("many-to-one");
+  await combinations.getByRole("button", { name: /agregar par de claves/i }).click();
+  await combinations.getByLabel("Clave izquierda JOIN 1").selectOption("id");
+  await combinations.getByLabel("Clave derecha JOIN 1").selectOption("customer_id");
+  await combinations.getByRole("button", { name: /vista previa join/i }).click();
+  await expect(combinations.getByRole("status")).toContainText(/claves únicas en el lado derecha/i, { timeout: 30_000 });
+  await expect(page.locator('section[aria-labelledby="pipeline-versiones"] tbody tr')).toHaveCount(2);
+
+  await combinations.getByLabel("Cardinalidad del JOIN").selectOption("one-to-many");
+  await combinations.getByRole("button", { name: /vista previa join/i }).click();
+  const preview = combinations.locator('section[aria-labelledby="join-vista-previa"]');
+  await expect(preview.getByText(/resultado: 3/)).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByText(/repite 1 filas de la izquierda/i)).toBeVisible();
+  const create = combinations.getByRole("button", { name: /crear versión join/i });
+  await expect(create).toBeDisabled();
+  await combinations.getByLabel(/confirmo que revisé la vista previa/i).check();
+  await expect(create).toBeEnabled();
+  await create.click();
+  await expect(page.locator('section[aria-labelledby="pipeline-versiones"]').getByText(/Relacionar fuentes · JOIN \(activa\)/)).toBeVisible({ timeout: 30_000 });
 });
 
 test("una definición inválida no crea ni activa una versión", async ({ page }) => {

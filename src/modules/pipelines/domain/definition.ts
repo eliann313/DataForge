@@ -130,8 +130,17 @@ export function isNumericPipelineValue(value: string): boolean {
 /** Referencia lógica a la fuente o a una versión derivada durante la sesión. */
 export interface PipelineVersion {
   id: string;
+  /** Fuente principal para compatibilidad con versiones anteriores del contrato. */
+  sourceId: string;
+  /** Todas las fuentes originales que intervienen en esta versión. */
+  sourceIds: string[];
+  projectId: string | null;
   name: string;
+  /** Padre principal para compatibilidad con la navegación de versiones. */
   parentId: string | null;
+  /** Todos los padres inmediatos; permite representar APPEND y JOIN. */
+  parentIds: string[];
+  operationType: "source" | "pipeline" | "append" | "join";
   pipelineId: string | null;
   rowCount: number;
   columns: PipelineColumn[];

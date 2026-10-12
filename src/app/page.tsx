@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { ProjectsProvider } from "@/modules/projects";
+import { useEffect, useState } from "react";
+import { ProjectsProvider, useProjects } from "@/modules/projects";
+import { engine } from "@/platform/engines/duckdb/manager";
 import Inspector from "./components/Inspector";
 import Sidebar, { type ViewName } from "./components/Sidebar";
 import TopBar from "./components/TopBar";
@@ -15,9 +16,22 @@ import type { ExampleRequest } from "@/platform/engines/duckdb/ImportPanel";
 // Shell E3: sidebar oscura, contenido claro, inspector contextual.
 // Sin rutas dinámicas (exportación estática): la vista es estado local.
 export default function Home() {
+  return (
+    <ProjectsProvider>
+      <WorkspaceHome />
+    </ProjectsProvider>
+  );
+}
+
+function WorkspaceHome() {
+  const { activeId } = useProjects();
   const [view, setView] = useState<ViewName>("inicio");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [example, setExample] = useState<ExampleRequest | null>(null);
+
+  useEffect(() => {
+    engine.selectProject(activeId);
+  }, [activeId]);
 
   function navigate(v: ViewName) {
     setView(v);
@@ -31,7 +45,7 @@ export default function Home() {
   }
 
   return (
-    <ProjectsProvider>
+    <>
       <a
         href="#contenido"
         className="sr-only focus:not-sr-only focus:absolute focus:bg-white focus:p-2"
@@ -75,6 +89,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-    </ProjectsProvider>
+    </>
   );
 }

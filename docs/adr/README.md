@@ -9,6 +9,8 @@ Cada ADR documenta una decisión técnica con su contexto, alternativas y criter
 | [0003](./0003-persistencia-opfs-diferido.md) | Persistencia local: IndexedDB en R1; OPFS y respaldo portable pendientes de fase 5 | Aceptado — cierra el punto de decisión de E3 |
 | [0004](./0004-versiones-derivadas-de-pipelines.md) | Versiones derivadas de pipelines dentro de la sesión | Aceptado — alcance inicial de R2/fase 4 |
 | [0005](./0005-definiciones-de-pipeline-locales.md) | Definiciones de pipeline guardadas por proyecto en IndexedDB | Aceptado — R2/fase 4 |
+| [0006](./0006-multiples-datasets-en-sesion.md) | Varias fuentes por proyecto dentro de la sesión DuckDB | Aceptado — R2/fase 4 |
+| [0007](./0007-combinaciones-append-y-join.md) | Semántica y validación de APPEND/JOIN con linaje múltiple | Aceptado — R2/fase 4 |
 
 ## Estados
 

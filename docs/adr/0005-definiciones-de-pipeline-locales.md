@@ -10,7 +10,7 @@ La fase 4 requiere poder repetir una preparación de datos. ADR-0004 mantuvo las
 ## Hechos verificados
 
 - Los proyectos y carpetas ya persisten metadatos en IndexedDB (`dataforge`).
-- DuckDB-Wasm mantiene una sola fuente y sus vistas derivadas en memoria del Worker; cerrar o recargar pierde esos datos.
+- DuckDB-Wasm mantiene fuentes y vistas derivadas en memoria del Worker; ADR-0006 describe su aislamiento por proyecto y ADR-0007 el linaje de las combinaciones. Cerrar o recargar pierde esos datos.
 - Los pasos disponibles son uniones cerradas de tipos conocidos, no SQL libre.
 - Las definiciones pueden referirse a columnas que falten o cambien de tipo en otro archivo; deben validarse antes de reutilizarlas.
 
@@ -35,7 +35,7 @@ La fase 4 requiere poder repetir una preparación de datos. ADR-0004 mantuvo las
 - Las definiciones sobreviven una recarga en el mismo navegador y dispositivo; el dataset debe importarse otra vez.
 - Una incompatibilidad de columnas o tipos bloquea la carga al editor y deja intacta la definición guardada.
 - La persistencia local puede perderse por limpieza del navegador, cuota o cambio de dispositivo; el respaldo portable todavía no está implementado.
-- Esta entrega no completa fase 4: faltan varios datasets, APPEND/UNION, JOIN validado y control de multiplicación de filas/importes.
+- Esta decisión cubre la persistencia local de definiciones, no de archivos ni resultados. Las varias fuentes y las validaciones APPEND/JOIN posteriores se documentan en ADR-0006 y ADR-0007; los criterios locales de fase 4 se describen en el roadmap.
 
 ## Verificación del incremento
 

@@ -6,8 +6,13 @@ import { MemoryPipelineDefinitionRepository } from "../infrastructure/memory";
 
 const source: PipelineVersion = {
   id: "source-1",
+  sourceId: "source-1",
+  sourceIds: ["source-1"],
+  projectId: "project-1",
   name: "datos.csv",
   parentId: null,
+  parentIds: [],
+  operationType: "source",
   pipelineId: null,
   rowCount: 3,
   columns: [{ name: "valor", type: "INTEGER", nullable: false }],
