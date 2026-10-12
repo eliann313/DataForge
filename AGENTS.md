@@ -5,8 +5,8 @@ Este archivo reúne las reglas de trabajo con agentes de IA. El [README](./READM
 ## 1. Antes de proponer cambios
 
 1. Leer, en este orden: [README](./README.md), [MVP](./docs/MVP.md), [roadmap](./docs/roadmap.md), [arquitectura](./docs/architecture.md) y los [ADR](./docs/adr/README.md) relevantes.
-2. Revisar el **estado real del repositorio**: hoy contiene documentación, no código. No describir como implementado lo que solo está planificado.
-3. Respetar la **fase activa** y sus criterios de aceptación. La fase activa actual es la 0A. No agregar funcionalidades de fases posteriores porque aparezcan en un mockup.
+2. Revisar el **estado real del repositorio**: contiene aplicación, documentación y pruebas. No describir como implementado lo que solo está planificado; la evidencia del código y sus verificaciones tiene prioridad sobre snapshots antiguos.
+3. Respetar la **fase activa** y sus criterios de aceptación. R1 (E1–E6) está cerrado; la fase activa es R2, fase 4. Confirmar el avance en `docs/primeras-entregas.md` y `docs/roadmap.md`. No agregar funcionalidades de fases posteriores porque aparezcan en un mockup.
 
 ## 2. Arquitectura
 

@@ -1,6 +1,6 @@
 # DataForge — MVP y roadmap operativo
 
-> **Estado:** planificación. Nada de lo descrito está implementado. Este documento acota qué se construye primero; el [roadmap](./roadmap.md) conserva la visión completa del producto.
+> **Estado:** R1 cerrado el 2026-10-12 (fases 0A–3B, entregas E1–E6). R2/fase 4 está en curso; el primer corte local de pipelines se describe en el [plan de entregas](./primeras-entregas.md). Este documento conserva el alcance del MVP; el [roadmap](./roadmap.md) registra la visión y el estado actual.
 
 **Principio:** no se reduce la visión, se reduce lo que se intenta construir al mismo tiempo. Cada etapa debe cerrarse con resultados observables antes de decidir la siguiente.
 
@@ -20,13 +20,13 @@ Todo funciona localmente: los datos no salen del navegador.
 
 | Etapa | Contenido | Prioridad |
 |---|---|---|
-| **0A** | Next.js (o Vite, según [ADR-0001](./adr/0001-framework-y-exportacion-estatica.md)), TypeScript, DuckDB-Wasm, CSV/XLSX, Worker, vista previa, mediciones y despliegue estático | Inmediata |
-| **0B – 0C** | Spikes acotados de Pyodide (0B) y Rust/Wasm (0C) | Investigación acotada, en paralelo o después de 0A |
-| **1** | UI base, proyectos locales | Alta |
-| **2** | Importación completa y Data Explorer | Alta |
-| **3** | Estadística descriptiva y gráficos básicos | Alta |
-| **3B** | **Finanzas Lite** | Alta |
-| 4 – 5 | Pipelines, múltiples datasets, informes | Media |
+| **0A** | Next.js, TypeScript, DuckDB-Wasm, CSV/XLSX, Worker, mediciones y despliegue estático | Cerrada; ADR-0001 aceptado |
+| **0B – 0C** | Spikes acotados de Pyodide (0B) y Rust/Wasm (0C) | Pendientes; no bloquean R1 |
+| **1** | UI base, proyectos locales | Cerrada (E3) |
+| **2** | Importación completa y Data Explorer | Cerrada (E4) |
+| **3** | Estadística descriptiva y gráficos básicos | Cerrada (E5) |
+| **3B** | **Finanzas Lite** | Cerrada; cierra R1 (E6) |
+| 4 – 5 | Pipelines, múltiples datasets, informes | R2 activo; fase 4 en curso |
 | 6 – 7B | Finanzas completas, ventas y encuestas | Media |
 | 8 – 10 | Python científico, series temporales, Rust/DTW, optimización | Posterior |
 | IA | IA local, asistente y text-to-SQL controlado | Posterior |
@@ -68,7 +68,7 @@ Siguen siendo parte de la visión y no se descartan; simplemente no condicionan 
 
 ## 5. Reglas de ejecución
 
-1. **Primero 0A.** No se agregan herramientas ni fases al roadmap antes de completar ese hito. La siguiente decisión surge de resultados técnicos observables.
+1. **Respetar la fase activa.** 0A está cerrada; avanzar con R2/fase 4 según criterios y evidencia. No sumar dependencias o trabajo de fases posteriores sin necesidad demostrable.
 2. Las mediciones siguen el protocolo del [ADR-0002](./adr/0002-motores-analiticos-y-criterios-de-corte.md): equipo, navegador, versiones, tamaños reales y varias ejecuciones.
 3. Cada etapa se cierra con la *Definition of Done* del [roadmap](./roadmap.md#7-calidad-por-fase--definition-of-done).
 4. Los límites de capacidad del README son hipótesis hasta que existan benchmarks.

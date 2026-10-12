@@ -9,6 +9,7 @@ import DatosView from "./views/DatosView";
 import AnalysisView from "./views/AnalysisView";
 import FinanceView from "./views/FinanceView";
 import InicioView, { type ExampleDataset } from "./views/InicioView";
+import TransformationsView from "./views/TransformationsView";
 import type { ExampleRequest } from "@/platform/engines/duckdb/ImportPanel";
 
 // Shell E3: sidebar oscura, contenido claro, inspector contextual.
@@ -66,6 +67,8 @@ export default function Home() {
                 <AnalysisView />
               ) : view === "finanzas" ? (
                 <FinanceView />
+              ) : view === "transformaciones" ? (
+                <TransformationsView onImportData={() => navigate("datos")} />
               ) : null}
             </main>
             <Inspector />

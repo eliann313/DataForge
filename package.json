@@ -2,7 +2,7 @@
   "name": "dataforge",
   "version": "0.1.0",
   "private": true,
-  "description": "DataForge — plataforma local-first de análisis de datos. Fase 0A: esqueleto Next.js estático (spike técnico, sin funcionalidades de producto).",
+  "description": "DataForge — análisis de datos local-first en navegador. R1 cerrado; fase 4 en curso con pipelines locales.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

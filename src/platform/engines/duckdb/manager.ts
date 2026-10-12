@@ -24,6 +24,16 @@ import {
   escapeStringLiteral,
   problemLabel,
 } from "./csv";
+import {
+  validatePipeline,
+  isNumericPipelineColumn,
+  type PipelineColumn,
+  type PipelineDefinition,
+  type PipelineExecutionPort,
+  type PipelinePreview,
+  type PipelineStep,
+  type PipelineVersion,
+} from "../../../modules/pipelines";
 
 interface DuckDBBundle {
   mainModule?: string;
@@ -31,10 +41,29 @@ interface DuckDBBundle {
   pthreadWorker?: string;
 }
 
-/** Tabla activa del spike. Nombre interno fijo: nunca usa el nombre del archivo. */
+/** Tabla fuente importada. Los pipelines crean vistas derivadas sin modificarla. */
 export const DATASET_TABLE = "df_dataset";
 const STAGING_TABLE = "df_dataset_next";
 const REGISTER_NAME = "df_upload.csv";
+const MAX_DERIVED_VERSIONS = 32;
+
+interface StoredPipelineVersion extends PipelineVersion {
+  tableName: string;
+  isView: boolean;
+}
+
+function toPublicPipelineVersion(version: StoredPipelineVersion): PipelineVersion {
+  return {
+    id: version.id,
+    name: version.name,
+    parentId: version.parentId,
+    pipelineId: version.pipelineId,
+    rowCount: version.rowCount,
+    columns: version.columns.map((column) => ({ ...column })),
+    stepCount: version.stepCount,
+    createdAt: version.createdAt,
+  };
+}
 
 export interface ColumnInfo {
   name: string;
@@ -161,29 +190,43 @@ export interface ColumnProfile {
  * escapados, literales saneados; valores numéricos validados. Sin SQL
  * arbitraria: operadores cerrados y dirección validada.
  */
-export function buildWhere(filters: DataFilter[]): string {
+export function buildWhere(
+  filters: DataFilter[],
+  columns?: readonly PipelineColumn[],
+): string {
   if (filters.length === 0) return "";
   const parts = filters.map((f) => {
     const col = escapeIdentifier(f.column);
+    const column = columns?.find((candidate) => candidate.name === f.column);
+    const value = f.op === "isnull" || f.op === "notnull" ? null : requireValue(f);
+    const comparison = f.op === "gt" || f.op === "gte" || f.op === "lt" || f.op === "lte";
+    if (column && comparison && !isNumericPipelineColumn(column)) {
+      throw new Error(`Los filtros de comparación requieren una columna numérica: ${f.column}.`);
+    }
+    const filterValue = value === null
+      ? ""
+      : column && f.op !== "contains"
+        ? typedFilterValue(value, column)
+        : literalValue(value);
     switch (f.op) {
       case "isnull":
         return `${col} IS NULL`;
       case "notnull":
         return `${col} IS NOT NULL`;
       case "contains": {
-        const pattern = escapeLike(requireValue(f));
+        const pattern = escapeLike(value ?? "");
         return `CAST(${col} AS VARCHAR) ILIKE ${escapeStringLiteral(`%${pattern}%`)} ESCAPE '\\'`;
       }
       case "eq":
-        return `${col} = ${literalValue(requireValue(f))}`;
+        return `${col} = ${filterValue}`;
       case "gt":
-        return `${col} > ${literalValue(requireValue(f))}`;
+        return `${col} > ${filterValue}`;
       case "gte":
-        return `${col} >= ${literalValue(requireValue(f))}`;
+        return `${col} >= ${filterValue}`;
       case "lt":
-        return `${col} < ${literalValue(requireValue(f))}`;
+        return `${col} < ${filterValue}`;
       case "lte":
-        return `${col} <= ${literalValue(requireValue(f))}`;
+        return `${col} <= ${filterValue}`;
     }
   });
   return ` WHERE ${parts.join(" AND ")}`;
@@ -210,12 +253,21 @@ function literalValue(raw: string): string {
   return escapeStringLiteral(raw);
 }
 
+function typedFilterValue(raw: string, column: PipelineColumn): string {
+  if (!isNumericPipelineColumn(column)) return escapeStringLiteral(raw);
+  const value = raw.trim();
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) {
+    throw new Error(`Ingrese un valor numérico válido para ${column.name}.`);
+  }
+  return value;
+}
+
 /** Escapa %, _ y \ para ILIKE. */
 function escapeLike(raw: string): string {
   return raw.replace(/[\\%_]/g, (m) => `\\${m}`);
 }
 
-export class DuckDBManager {
+export class DuckDBManager implements PipelineExecutionPort {
   private status: EngineStatus = "idle";
   private lastError: EngineError | null = null;
   private lastPing: PingResult | null = null;
@@ -224,6 +276,10 @@ export class DuckDBManager {
   private conn: AsyncDuckDBConnection | null = null;
   private initPromise: Promise<void> | null = null;
   private listeners = new Set<() => void>();
+  private activeTable = DATASET_TABLE;
+  private datasetSequence = 0;
+  private versionSequence = 0;
+  private versions: StoredPipelineVersion[] = [];
 
   /** Suscripción a cambios de estado (paneles sincronizados). */
   onChange(listener: () => void): () => void {
@@ -342,12 +398,16 @@ export class DuckDBManager {
 
   private requireConn(): AsyncDuckDBConnection {
     if (this.status !== "ready" || !this.conn) {
-      throw {
-        code: "query-failed",
-        message: "El motor no está listo. Inicialícelo antes de importar.",
-      } satisfies EngineError;
+      // Error real (no objeto plano): todos los paneles lo muestran tal cual.
+      throw new Error("El motor no está listo. Inicialícelo antes de operar.");
     }
     return this.conn;
+  }
+
+  private requireVersion(versionId: string): StoredPipelineVersion {
+    const version = this.versions.find((candidate) => candidate.id === versionId);
+    if (!version) throw new Error("La versión de datos no está disponible en esta sesión.");
+    return version;
   }
 
   /**
@@ -526,10 +586,40 @@ export class DuckDBManager {
       );
       const columns = await this.readSchema(conn, STAGING_TABLE);
       const rows = await this.readCount(conn, STAGING_TABLE);
-      await conn.query(`DROP TABLE IF EXISTS ${escapeIdentifier(DATASET_TABLE)}`);
-      await conn.query(
-        `ALTER TABLE ${escapeIdentifier(STAGING_TABLE)} RENAME TO ${escapeIdentifier(DATASET_TABLE)}`,
-      );
+      await conn.query("BEGIN TRANSACTION");
+      try {
+        for (const version of [...this.versions].reverse()) {
+          if (version.isView) {
+            await conn.query(`DROP VIEW IF EXISTS ${escapeIdentifier(version.tableName)}`);
+          }
+        }
+        await conn.query(`DROP TABLE IF EXISTS ${escapeIdentifier(DATASET_TABLE)}`);
+        await conn.query(
+          `ALTER TABLE ${escapeIdentifier(STAGING_TABLE)} RENAME TO ${escapeIdentifier(DATASET_TABLE)}`,
+        );
+        await conn.query("COMMIT");
+      } catch (cause) {
+        try {
+          await conn.query("ROLLBACK");
+        } catch {
+          // Conserva el fallo original; DuckDB descarta la transacción al cerrar.
+        }
+        throw cause;
+      }
+      const sourceId = `source-${++this.datasetSequence}`;
+      this.versions = [{
+        id: sourceId,
+        name: displayName,
+        parentId: null,
+        pipelineId: null,
+        rowCount: rows,
+        columns,
+        stepCount: 0,
+        createdAt: new Date().toISOString(),
+        tableName: DATASET_TABLE,
+        isView: false,
+      }];
+      this.activeTable = DATASET_TABLE;
       return { fileName: displayName, bytes: size, rows, columns, durationMs: Math.round(performance.now() - started) };
     } catch (cause) {
       try {
@@ -551,17 +641,115 @@ export class DuckDBManager {
   }
 
   hasDataset(): Promise<boolean> {
-    return this.readCount(this.requireConn(), DATASET_TABLE)
+    const activeTable = this.activeTable;
+    return this.readCount(this.requireConn(), activeTable)
       .then(() => true)
       .catch(() => false);
   }
 
   getSchema(): Promise<ColumnInfo[]> {
-    return this.readSchema(this.requireConn(), DATASET_TABLE);
+    return this.readSchema(this.requireConn(), this.activeTable);
   }
 
   getCount(): Promise<number> {
-    return this.readCount(this.requireConn(), DATASET_TABLE);
+    return this.readCount(this.requireConn(), this.activeTable);
+  }
+
+  getDatasetVersions(): PipelineVersion[] {
+    return this.versions.map(toPublicPipelineVersion);
+  }
+
+  getActiveDatasetVersionId(): string | null {
+    return this.versions.find((version) => version.tableName === this.activeTable)?.id ?? null;
+  }
+
+  async getVersionColumns(versionId: string): Promise<PipelineColumn[]> {
+    const version = this.requireVersion(versionId);
+    return this.readSchema(this.requireConn(), version.tableName);
+  }
+
+  async previewPipeline(
+    baseVersionId: string,
+    steps: PipelineStep[],
+    limit: number,
+  ): Promise<PipelinePreview> {
+    const conn = this.requireConn();
+    const base = this.requireVersion(baseVersionId);
+    const validation = validatePipeline(base.columns, {
+      id: "preview",
+      name: "Vista previa",
+      steps,
+    });
+    if (!validation.valid) throw new Error(validation.error ?? "El pipeline no es válido.");
+    const query = buildPipelineQuery(base.tableName, base.columns, steps);
+    const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
+    const [countTable, previewTable] = await Promise.all([
+      conn.query(`SELECT COUNT(*) AS n FROM (${query}) AS ${escapeIdentifier("df_preview_count")}`),
+      conn.query(`SELECT * FROM (${query}) AS ${escapeIdentifier("df_preview_rows")} LIMIT ${safeLimit}`),
+    ]);
+    const countRow = toJSONRows(countTable)[0] as Record<string, unknown> | undefined;
+    const outputRowCount = countRow ? Number(countRow.n) : NaN;
+    if (!Number.isInteger(outputRowCount) || outputRowCount < 0) {
+      throw new Error("No se pudo contar el resultado de la vista previa.");
+    }
+    return {
+      inputRowCount: base.rowCount,
+      outputRowCount,
+      columns: validation.columns,
+      rows: toJSONRows(previewTable),
+    };
+  }
+
+  async executePipeline(
+    baseVersionId: string,
+    definition: PipelineDefinition,
+  ): Promise<PipelineVersion> {
+    const conn = this.requireConn();
+    const base = this.requireVersion(baseVersionId);
+    const validation = validatePipeline(base.columns, definition);
+    if (!validation.valid) throw new Error(validation.error ?? "El pipeline no es válido.");
+    if (this.versions.length - 1 >= MAX_DERIVED_VERSIONS) {
+      throw new Error(`Se alcanzó el límite de ${MAX_DERIVED_VERSIONS} versiones derivadas en esta sesión. Importe nuevamente el archivo para comenzar otra sesión.`);
+    }
+
+    const sequence = ++this.versionSequence;
+    const tableName = `df_pipeline_${sequence}`;
+    const query = buildPipelineQuery(base.tableName, base.columns, definition.steps);
+    try {
+      await conn.query(`CREATE VIEW ${escapeIdentifier(tableName)} AS ${query}`);
+      const [rowCount, columns] = await Promise.all([
+        this.readCount(conn, tableName),
+        this.readSchema(conn, tableName),
+      ]);
+      const version: StoredPipelineVersion = {
+        id: `version-${this.datasetSequence}-${sequence}`,
+        name: `${definition.name.trim()} · versión ${this.versions.length}`,
+        parentId: base.id,
+        pipelineId: definition.id,
+        rowCount,
+        columns,
+        stepCount: definition.steps.length,
+        createdAt: new Date().toISOString(),
+        tableName,
+        isView: true,
+      };
+      this.versions.push(version);
+      this.activeTable = tableName;
+      return toPublicPipelineVersion(version);
+    } catch (cause) {
+      try {
+        await conn.query(`DROP VIEW IF EXISTS ${escapeIdentifier(tableName)}`);
+      } catch {
+        // El error de la ejecución tiene prioridad sobre la limpieza.
+      }
+      throw new Error(`No se pudo crear la versión derivada: ${messageOf(cause)}`);
+    }
+  }
+
+  async activateDatasetVersion(versionId: string): Promise<void> {
+    const version = this.requireVersion(versionId);
+    this.requireConn();
+    this.activeTable = version.tableName;
   }
 
   // ---- E4: filtros y orden sobre el dataset completo, profiling ----
@@ -573,33 +761,37 @@ export class DuckDBManager {
   ): Promise<PageResult> {
     const conn = this.requireConn();
     const c = clampPage(page, pageSize);
-    const where = buildWhere(opts?.filters ?? []);
+    const schema = await this.getSchema();
+    const where = buildWhere(opts?.filters ?? [], schema);
     const order = buildOrderBy(opts?.sort ?? null);
+    const activeTable = this.activeTable;
     const [table, total, filtered] = await Promise.all([
       conn.query(
-        `SELECT * FROM ${escapeIdentifier(DATASET_TABLE)}${where} ${order} LIMIT ${c.pageSize} OFFSET ${c.offset}`,
+        `SELECT * FROM ${escapeIdentifier(activeTable)}${where} ${order} LIMIT ${c.pageSize} OFFSET ${c.offset}`,
       ),
-      this.readCount(conn, DATASET_TABLE),
+      this.readCount(conn, activeTable),
       where
-        ? this.readCountWhere(conn, where)
-        : this.readCount(conn, DATASET_TABLE),
+        ? this.readCountWhere(conn, where, activeTable)
+        : this.readCount(conn, activeTable),
     ]);
     return { rows: toJSONRows(table), total, filtered };
   }
 
   async countFiltered(filters: DataFilter[]): Promise<number> {
     const conn = this.requireConn();
-    const where = buildWhere(filters);
+    const schema = await this.getSchema();
+    const where = buildWhere(filters, schema);
+    const activeTable = this.activeTable;
     return where
-      ? this.readCountWhere(conn, where)
-      : this.readCount(conn, DATASET_TABLE);
+      ? this.readCountWhere(conn, where, activeTable)
+      : this.readCount(conn, activeTable);
   }
 
   /** Perfil de una columna: nulos, cardinalidad, rango y frecuencias. */
   async profileColumn(column: string): Promise<ColumnProfile> {
     const conn = this.requireConn();
     const col = escapeIdentifier(column);
-    const table = escapeIdentifier(DATASET_TABLE);
+    const table = escapeIdentifier(this.activeTable);
     const stats = toJSONRows(
       await conn.query(
         `SELECT COUNT(*) AS total, COUNT(${col}) AS nonnull, COUNT(DISTINCT ${col}) AS distinct_n, MIN(${col}) AS mn, MAX(${col}) AS mx FROM ${table}`,
@@ -631,7 +823,7 @@ export class DuckDBManager {
   async duplicateCount(): Promise<number> {
     const conn = this.requireConn();
     const table = await conn.query(
-      `SELECT COUNT(*) AS n FROM (SELECT * FROM ${escapeIdentifier(DATASET_TABLE)} GROUP BY ALL HAVING COUNT(*) > 1)`,
+      `SELECT COUNT(*) AS n FROM (SELECT * FROM ${escapeIdentifier(this.activeTable)} GROUP BY ALL HAVING COUNT(*) > 1)`,
     );
     const row = toJSONRows(table)[0] as Record<string, unknown> | undefined;
     const groups = row ? Number(row.n) : NaN;
@@ -646,7 +838,7 @@ export class DuckDBManager {
   async describeNumeric(column: string): Promise<NumericDescription> {
     const conn = this.requireConn();
     const col = escapeIdentifier(column);
-    const table = escapeIdentifier(DATASET_TABLE);
+    const table = escapeIdentifier(this.activeTable);
     const row = toJSONRows(
       await conn.query(
         `SELECT COUNT(*) AS total, COUNT(${col}) AS valid, SUM(${col}) AS s, AVG(${col}) AS a, MEDIAN(${col}) AS med, MODE(${col}) AS mode, MIN(${col}) AS mn, MAX(${col}) AS mx, VAR_SAMP(${col}) AS var, STDDEV_SAMP(${col}) AS std, QUANTILE_CONT(${col}, 0.25) AS q1, QUANTILE_CONT(${col}, 0.75) AS q3 FROM ${table}`,
@@ -684,8 +876,9 @@ export class DuckDBManager {
   async frequencies(column: string, limit = 20): Promise<FrequencyTable> {
     const conn = this.requireConn();
     const col = escapeIdentifier(column);
-    const table = escapeIdentifier(DATASET_TABLE);
-    const valid = await this.readCountWhere(conn, ` WHERE ${col} IS NOT NULL`);
+    const activeTable = this.activeTable;
+    const table = escapeIdentifier(activeTable);
+    const valid = await this.readCountWhere(conn, ` WHERE ${col} IS NOT NULL`, activeTable);
     const rows = toJSONRows(
       await conn.query(
         `SELECT ${col} AS v, COUNT(*) AS c FROM ${table} WHERE ${col} IS NOT NULL GROUP BY ${col} ORDER BY c DESC, v LIMIT ${Math.min(Math.max(1, limit), 100)}`,
@@ -710,7 +903,7 @@ export class DuckDBManager {
   ): Promise<GroupedRow[]> {
     const conn = this.requireConn();
     const g = escapeIdentifier(groupCol);
-    const table = escapeIdentifier(DATASET_TABLE);
+    const table = escapeIdentifier(this.activeTable);
     const select =
       agg === "count"
         ? "COUNT(*) AS y"
@@ -734,7 +927,7 @@ export class DuckDBManager {
       throw new Error(`Sin valores numéricos en ${column}`);
     }
     const col = escapeIdentifier(column);
-    const table = escapeIdentifier(DATASET_TABLE);
+    const table = escapeIdentifier(this.activeTable);
     if (desc.min === desc.max) {
       return { column, bins: b, lo: desc.min, hi: desc.max, width: 0, counts: [desc.valid] };
     }
@@ -757,7 +950,7 @@ export class DuckDBManager {
     const conn = this.requireConn();
     const a = escapeIdentifier(colA);
     const b = escapeIdentifier(colB);
-    const table = escapeIdentifier(DATASET_TABLE);
+    const table = escapeIdentifier(this.activeTable);
     const row = toJSONRows(
       await conn.query(
         `SELECT CORR(${a}, ${b}) AS r, COUNT(*) AS n FROM ${table} WHERE ${a} IS NOT NULL AND ${b} IS NOT NULL`,
@@ -772,7 +965,7 @@ export class DuckDBManager {
     const conn = this.requireConn();
     const col = escapeIdentifier(column);
     const table = await conn.query(
-      `SELECT COUNT(${col}) AS n, SUM(${col}) AS s, AVG(${col}) AS a, MIN(${col}) AS mn, MAX(${col}) AS mx FROM ${escapeIdentifier(DATASET_TABLE)}`,
+      `SELECT COUNT(${col}) AS n, SUM(${col}) AS s, AVG(${col}) AS a, MIN(${col}) AS mn, MAX(${col}) AS mx FROM ${escapeIdentifier(this.activeTable)}`,
     );
     const row = toJSONRows(table)[0] as Record<string, unknown> | undefined;
     const num = (v: unknown): number => {
@@ -820,9 +1013,10 @@ export class DuckDBManager {
   private async readCountWhere(
     conn: AsyncDuckDBConnection,
     where: string,
+    table = this.activeTable,
   ): Promise<number> {
     const counted = await conn.query(
-      `SELECT COUNT(*) AS n FROM ${escapeIdentifier(DATASET_TABLE)}${where}`,
+      `SELECT COUNT(*) AS n FROM ${escapeIdentifier(table)}${where}`,
     );
     const row = toJSONRows(counted)[0] as Record<string, unknown> | undefined;
     const n = row ? Number(row.n) : NaN;
@@ -867,7 +1061,63 @@ export class DuckDBManager {
         // Ídem.
       }
     }
+    this.activeTable = DATASET_TABLE;
+    this.versions = [];
   }
+}
+
+/** Construye SQL cerrado desde operaciones validadas; nunca recibe SQL del usuario. */
+export function buildPipelineQuery(
+  baseTable: string,
+  baseColumns: readonly PipelineColumn[],
+  steps: PipelineStep[],
+): string {
+  const validation = validatePipeline(baseColumns, {
+    id: "sql-builder",
+    name: "Pipeline",
+    steps,
+  });
+  if (!validation.valid) throw new Error(validation.error ?? "El pipeline no es válido.");
+
+  let query = `SELECT * FROM ${escapeIdentifier(baseTable)}`;
+  let columns = baseColumns.map((column) => ({ ...column }));
+  let finalSort: Extract<PipelineStep, { type: "sort" }> | null = null;
+
+  for (const [index, step] of steps.entries()) {
+    const alias = escapeIdentifier(`df_step_${index + 1}`);
+    switch (step.type) {
+      case "filter":
+        query = `SELECT * FROM (${query}) AS ${alias}${buildWhere([step.filter], columns)}`;
+        break;
+      case "select":
+        query = `SELECT ${step.columns.map(escapeIdentifier).join(", ")} FROM (${query}) AS ${alias}`;
+        columns = step.columns.map((name) => ({ ...columns.find((column) => column.name === name)! }));
+        break;
+      case "rename": {
+        const newName = step.newName.trim();
+        const projected = columns.map((column) =>
+          column.name === step.column
+            ? `${escapeIdentifier(column.name)} AS ${escapeIdentifier(newName)}`
+            : escapeIdentifier(column.name),
+        );
+        query = `SELECT ${projected.join(", ")} FROM (${query}) AS ${alias}`;
+        columns = columns.map((column) =>
+          column.name === step.column ? { ...column, name: newName } : column,
+        );
+        break;
+      }
+      case "deduplicate":
+        query = `SELECT DISTINCT * FROM (${query}) AS ${alias}`;
+        break;
+      case "sort":
+        finalSort = step;
+        break;
+    }
+  }
+  if (finalSort) {
+    query = `SELECT * FROM (${query}) AS ${escapeIdentifier("df_sorted")} ORDER BY ${escapeIdentifier(finalSort.column)} ${finalSort.direction === "asc" ? "ASC" : "DESC"}`;
+  }
+  return query;
 }
 
 function messageOf(cause: unknown): string {

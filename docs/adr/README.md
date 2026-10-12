@@ -6,7 +6,8 @@ Cada ADR documenta una decisión técnica con su contexto, alternativas y criter
 |---|---|---|
 | [0001](./0001-framework-y-exportacion-estatica.md) | Framework de aplicación y exportación estática (Next.js frente a Vite) | Aceptado — cerrado con la fase 0A |
 | [0002](./0002-motores-analiticos-y-criterios-de-corte.md) | Motores analíticos, intercambio de datos y criterios de corte | Propuesto — tabular medido; se cierra con 0B y 0C |
-| [0003](./0003-persistencia-opfs-diferido.md) | Persistencia local: IndexedDB en R1, OPFS diferido a R2 | Aceptado — cierra el punto de decisión de E3 |
+| [0003](./0003-persistencia-opfs-diferido.md) | Persistencia local: IndexedDB en R1; OPFS y respaldo portable pendientes de fase 5 | Aceptado — cierra el punto de decisión de E3 |
+| [0004](./0004-versiones-derivadas-de-pipelines.md) | Versiones derivadas de pipelines dentro de la sesión | Aceptado — alcance inicial de R2/fase 4 |
 
 ## Estados
 

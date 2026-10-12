@@ -2,8 +2,8 @@
 
 > **Versión:** 1.0 — 10 de octubre de 2026  
 > **Repositorio:** [eliann313/DataForge](https://github.com/eliann313/DataForge) · Rama principal: **main**  
-> **Estado al redactar:** planificación y documentación; todavía sin código de aplicación ni benchmarks concluyentes.  
-> **Fase activa:** **0A — Fundamento tabular**.  
+> **Estado al redactar (10-10-2026):** planificación y documentación, sin código de aplicación. Ese estado es histórico; R1 se cerró el 12-10-2026 y el checkout actual contiene la aplicación.
+> **Fase activa al redactar:** **0A — Fundamento tabular**. **Fase actual:** R2 / fase 4; primer corte de pipelines local, no publicado.
 > **Carácter:** documento de transferencia de contexto para colaboradores y agentes de IA, **no una orden de implementar todas las fases**.
 
 Este documento consolida la visión, el MVP, la arquitectura, el modelo de datos, las decisiones, el roadmap completo y las reglas de ejecución. Es una **fotografía de planificación**: antes de modificar el proyecto se debe inspeccionar el estado real del repositorio. En caso de divergencia, las implementaciones verificadas, pruebas y ADR aceptados tienen prioridad; el alcance inmediato se controla en [MVP.md](./MVP.md), el detalle vivo de fases en [roadmap.md](./roadmap.md) y las reglas para agentes en [AGENTS.md](../AGENTS.md).
@@ -620,9 +620,9 @@ No hay fechas de entrega comprometidas. Cada release debe entregar valor autóno
 
 ---
 
-## 16. Plan operativo inmediato: fase 0A
+## 16. Plan original de fase 0A (cerrada el 2026-10-12)
 
-**Estado verificado al redactar:** documentos y mockups publicados, sin aplicación ni pruebas de motor. No declarar nada implementado hasta verificar código nuevo.
+**Estado al redactar:** documentos y mockups publicados, sin aplicación ni pruebas de motor. Las tareas siguientes describen el plan histórico de 0A, completado después mediante E1 y E2; no son el backlog activo.
 
 Orden sugerido de issues:
 
@@ -752,4 +752,4 @@ El objetivo es hacer **análisis útiles, correctos y reproducibles con mínima 
 
 > **Primero construir una aplicación que resuelva correctamente problemas comunes de análisis de datos. Después aumentar su profundidad científica, especialización e integración.**
 
-La complejidad tecnológica debe responder a necesidades medibles, no a la acumulación de frameworks o algoritmos. La siguiente decisión práctica es **completar fase 0A** y demostrar que el motor tabular funciona en un navegador real.
+La complejidad tecnológica debe responder a necesidades medibles, no a la acumulación de frameworks o algoritmos. R1 está cerrado; el trabajo actual continúa en **R2/fase 4**, comenzando por pipelines reproducibles que preservan la fuente. Completar 0B/0C sigue siendo opcional y no bloquea R2.
