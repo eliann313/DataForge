@@ -4,7 +4,7 @@
 
 DataForge busca que cualquier persona pueda **importar, explorar, limpiar, combinar, analizar, visualizar y exportar datos** sin configurar un entorno científico ni subir sus archivos a un backend de procesamiento. Un usuario puede analizar una planilla; otro puede construir pipelines reproducibles, trabajar con varios datasets y aplicar análisis estadístico avanzado.
 
-> **Estado: planificación y validación arquitectónica.** Las características que se describen a continuación están **previstas, no implementadas**. El repositorio actualmente contiene documentación; no hay aún aplicación desplegada ni benchmarks que certifiquen el rendimiento.
+> **Estado: planificación y validación arquitectónica, con spike 0A en curso en la rama `develop`** (esqueleto estático, DuckDB-Wasm en Worker, CSV/XLSX, E2E y benchmarks locales; ver [primeras entregas](docs/primeras-entregas.md)). Las características que se describen a continuación están **previstas, no implementadas** salvo ese spike. No hay aún aplicación desplegada; los umbrales de capacidad son hipótesis hasta completar las mediciones del [ADR-0002](docs/adr/0002-motores-analiticos-y-criterios-de-corte.md).
 
 **Documentación:** [MVP y prioridades](docs/MVP.md) · [Roadmap completo](docs/roadmap.md) · [Roadmap técnico maestro](docs/roadmap-tecnico.md) · [Arquitectura de software](docs/architecture.md) · [Decisiones (ADR)](docs/adr/README.md) · [Reglas para agentes](AGENTS.md)
 
@@ -233,8 +233,8 @@ Las reglas de trabajo con agentes de IA están en [AGENTS.md](AGENTS.md).
 - [x] Crear repositorio.
 - [x] Consolidar roadmap y arquitectura de planificación.
 - [x] Acotar el MVP, redactar ADR-0001 y ADR-0002 (estado «Propuesto») y separar las reglas de agentes en AGENTS.md.
-- [ ] Fase 0A: esqueleto (Next.js o Vite según ADR-0001), DuckDB-Wasm en un Worker, importar CSV/XLSX y mostrar vista previa.
-- [ ] Fase 0A: mediciones y despliegue estático en Vercel.
+- [x] Fase 0A (E1, en rama `develop`): esqueleto Next.js estático, DuckDB-Wasm en Worker con inicio diferido, importar CSV/XLSX y vista previa con esquema, conteo y agregados (E2E 18/18 en Chromium/Firefox, benchmarks 0A.5 registrados).
+- [ ] Fase 0A (E2, resto): smoke sobre URL real de **Vercel** (bloqueador: sin acceso al hosting en este entorno), XLSX comparativo ruta A/B y cierre formal de ADR-0001.
 - [ ] Fases 0B y 0C: spikes de Pyodide bajo demanda y de Rust/Wasm.
 - [ ] Cerrar ADR-0001 y ADR-0002 con resultados medidos.
 - [ ] Publicar la primera demo funcional (R1).

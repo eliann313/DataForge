@@ -1,0 +1,36 @@
+name: Propuesta de funcionalidad
+description: Proponer una capacidad nueva para DataForge
+title: "[feat]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Problema a resolver
+      description: Qué necesidad de análisis cubre, sin proponer solución todavía.
+    validations:
+      required: true
+  - type: textarea
+    id: propuesta
+    attributes:
+      label: Propuesta
+    validations:
+      required: true
+  - type: input
+    id: fase
+    attributes:
+      label: Fase del roadmap
+      description: Ej.: E3, fase 2. Que aparezca en un mockup no la incluye en el alcance.
+    validations:
+      required: true
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas consideradas
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Verificaciones
+      options:
+        - label: No requiere backend, cuentas ni nube (o lo justifica)
+        - label: Respeta local-first y procesamiento en el navegador

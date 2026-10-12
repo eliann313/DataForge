@@ -1,0 +1,186 @@
+{
+  "protocolo": "ADR-0002",
+  "fecha": "2026-10-12T02:21:41.901Z",
+  "equipo": {
+    "platform": "win32 10.0.26300",
+    "arch": "x64",
+    "cpu": "AMD Ryzen 5 8645HS w/ Radeon 760M Graphics x12",
+    "memGB": 15
+  },
+  "software": {
+    "navegador": "Chromium 156.0.8078.4",
+    "duckdbWasm": "1.33.1-dev57.0 (sabor eh, bundle local)",
+    "xlsx": "0.18.5",
+    "next": "16.4.0",
+    "node": "v24.21.0"
+  },
+  "ejecucionesPorEscenario": 5,
+  "escenarios": [
+    {
+      "archivo": "csv-1k-10.csv",
+      "filas": 1000,
+      "columnas": 10,
+      "bytes": 81848,
+      "medianaInitMs": 1890,
+      "rangoInitMs": [
+        1385,
+        2114
+      ],
+      "medianaImportWallMs": 238,
+      "rangoImportWallMs": [
+        225,
+        250
+      ],
+      "corridas": [
+        {
+          "initMs": 2114,
+          "importWallMs": 250,
+          "importEngineMs": 135,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1915,
+          "importWallMs": 225,
+          "importEngineMs": 119,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1890,
+          "importWallMs": 238,
+          "importEngineMs": 123,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1398,
+          "importWallMs": 246,
+          "importEngineMs": 111,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1385,
+          "importWallMs": 236,
+          "importEngineMs": 121,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        }
+      ]
+    },
+    {
+      "archivo": "csv-10k-20.csv",
+      "filas": 10000,
+      "columnas": 20,
+      "bytes": 1675007,
+      "medianaInitMs": 1402,
+      "rangoInitMs": [
+        1373,
+        1905
+      ],
+      "medianaImportWallMs": 269,
+      "rangoImportWallMs": [
+        236,
+        349
+      ],
+      "corridas": [
+        {
+          "initMs": 1377,
+          "importWallMs": 264,
+          "importEngineMs": 152,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1373,
+          "importWallMs": 269,
+          "importEngineMs": 143,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1402,
+          "importWallMs": 269,
+          "importEngineMs": 159,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1905,
+          "importWallMs": 349,
+          "importEngineMs": 166,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1901,
+          "importWallMs": 236,
+          "importEngineMs": 135,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        }
+      ]
+    },
+    {
+      "archivo": "csv-100k-20.csv",
+      "filas": 100000,
+      "columnas": 20,
+      "bytes": 17148715,
+      "medianaInitMs": 1881,
+      "rangoInitMs": [
+        1376,
+        1917
+      ],
+      "medianaImportWallMs": 867,
+      "rangoImportWallMs": [
+        850,
+        877
+      ],
+      "corridas": [
+        {
+          "initMs": 1888,
+          "importWallMs": 868,
+          "importEngineMs": 284,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1881,
+          "importWallMs": 867,
+          "importEngineMs": 344,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1917,
+          "importWallMs": 877,
+          "importEngineMs": 268,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1376,
+          "importWallMs": 864,
+          "importEngineMs": 271,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        },
+        {
+          "initMs": 1381,
+          "importWallMs": 850,
+          "importEngineMs": 290,
+          "longtasks": 0,
+          "heapDeltaMB": 0
+        }
+      ]
+    },
+    {
+      "archivo": "csv-100k-30.csv",
+      "filas": 100000,
+      "columnas": 30,
+      "bytes": 25722248,
+      "resultado": "rechazado por límite orientativo de 20 MB (comportamiento esperado del spike)"
+    }
+  ]
+}
