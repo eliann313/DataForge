@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_CSV_BYTES,
+  MAX_XLSX_BYTES,
   checkCSVFile,
   clampPage,
   escapeStringLiteral,
@@ -19,7 +20,12 @@ describe("checkCSVFile", () => {
       ok: false,
       problem: "too-large",
     });
-    expect(checkCSVFile("a.xlsx", 100)).toEqual({
+    expect(checkCSVFile("a.xlsx", 100).ok).toBe(true);
+    expect(checkCSVFile("a.xlsx", MAX_XLSX_BYTES + 1)).toEqual({
+      ok: false,
+      problem: "too-large",
+    });
+    expect(checkCSVFile("a.json", 100)).toEqual({
       ok: false,
       problem: "unsupported-type",
     });

@@ -17,6 +17,7 @@ import type {
 } from "./contract";
 import { escapeIdentifier } from "./contract";
 import {
+  MAX_CSV_BYTES,
   checkCSVFile,
   clampPage,
   escapeStringLiteral,
@@ -173,7 +174,7 @@ export class DuckDBManager {
    * Ante fallo conserva la tabla activa anterior.
    */
   async importCSV(file: File): Promise<ImportSummary> {
-    const conn = this.requireConn();
+    this.requireConn();
     const check = checkCSVFile(file.name, file.size);
     if (!check.ok) {
       throw {
@@ -182,6 +183,66 @@ export class DuckDBManager {
       } satisfies EngineError;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
+    return this.importBuffer(file.name, file.size, bytes);
+  }
+
+  /** Importa texto CSV ya extraído (p. ej. hoja XLSX vía Worker). */
+  async importCSVText(displayName: string, csv: string): Promise<ImportSummary> {
+    this.requireConn();
+    const bytes = new TextEncoder().encode(csv);
+    if (bytes.byteLength === 0) {
+      throw {
+        code: "query-failed",
+        message: problemLabel("empty"),
+      } satisfies EngineError;
+    }
+    if (bytes.byteLength > MAX_CSV_BYTES) {
+      throw {
+        code: "query-failed",
+        message: problemLabel("too-large"),
+      } satisfies EngineError;
+    }
+    return this.importBuffer(displayName, bytes.byteLength, bytes);
+  }
+
+  /**
+   * Sonda de ruta A (0A.4): lectura XLSX directa con DuckDB-Wasm en la
+   * versión fijada. Registra el resultado sin asumir soporte.
+   */
+  async probeXLSXNative(
+    xlsxBytes: Uint8Array,
+  ): Promise<{ supported: boolean; detail: string }> {
+    const conn = this.requireConn();
+    const db = this.db;
+    if (!db) throw new Error("Motor no listo");
+    const name = "df_probe.xlsx";
+    await db.registerFileBuffer(name, xlsxBytes);
+    try {
+      const table = await conn.query(
+        `SELECT * FROM read_xlsx(${escapeStringLiteral(name)}) LIMIT 5`,
+      );
+      const rows = toJSONRows(table);
+      return {
+        supported: true,
+        detail: `read_xlsx directo leyó ${rows.length} filas (límite 5)`,
+      };
+    } catch (cause) {
+      return { supported: false, detail: messageOf(cause) };
+    } finally {
+      try {
+        await db.dropFile(name);
+      } catch {
+        // Liberación best-effort.
+      }
+    }
+  }
+
+  private async importBuffer(
+    displayName: string,
+    size: number,
+    bytes: Uint8Array,
+  ): Promise<ImportSummary> {
+    const conn = this.requireConn();
     if (bytes.byteLength === 0) {
       throw {
         code: "query-failed",
@@ -206,7 +267,7 @@ export class DuckDBManager {
       await conn.query(
         `ALTER TABLE ${escapeIdentifier(STAGING_TABLE)} RENAME TO ${escapeIdentifier(DATASET_TABLE)}`,
       );
-      return { fileName: file.name, bytes: file.size, rows, columns };
+      return { fileName: displayName, bytes: size, rows, columns };
     } catch (cause) {
       try {
         await conn.query(`DROP TABLE IF EXISTS ${escapeIdentifier(STAGING_TABLE)}`);

@@ -8,11 +8,11 @@ export default function Home() {
       <p className="kicker">DataForge · Fase 0A — Fundamento tabular</p>
       <h1>Esqueleto técnico (spike 0A en curso)</h1>
       <p>
-        Esta página verifica los ítems <strong>0A.1–0A.3 / E1</strong> del plan
-        de primeras entregas: instalación reproducible, tipado estricto, lint,
-        build estático, motor DuckDB-Wasm en Worker con inicio diferido,
-        importación CSV real con esquema, conteo, agregación y preview paginada.
-        No es la landing definitiva ni el workspace.
+        Esta página verifica los ítems <strong>0A.1–0A.4 / E1–E2</strong> del
+        plan de primeras entregas: instalación reproducible, tipado estricto,
+        lint, build estático, motor DuckDB-Wasm en Worker con inicio diferido,
+        importación CSV y XLSX con esquema, conteo, agregación y preview
+        paginada. No es la landing definitiva ni el workspace.
       </p>
       <EnginePanel />
       <ImportPanel />
@@ -28,7 +28,7 @@ export default function Home() {
       <section aria-labelledby="fuera">
         <h2 id="fuera">Fuera de este alcance</h2>
         <ul>
-          <li>XLSX, JSON tabular y Parquet (0A.4 en adelante).</li>
+          <li>JSON tabular y Parquet (fase 2).</li>
           <li>Proyectos, Data Explorer, gráficos y Finanzas Lite (fases 1–3B).</li>
           <li>Cuentas, nube, IA remota y servidores (requieren aprobación).</li>
         </ul>

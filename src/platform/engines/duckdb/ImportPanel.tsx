@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ResultRow } from "./contract";
 import {
   DEFAULT_PAGE_SIZE,
@@ -11,6 +11,7 @@ import {
   type ImportSummary,
   type NumericSummary,
 } from "./manager";
+import { XLSXBridge, type SheetInfo } from "./xlsx-bridge";
 
 type Phase =
   | "empty"
@@ -59,33 +60,100 @@ export default function ImportPanel() {
   const [file, setFile] = useState<File | null>(null);
   const [st, setSt] = useState<State>(initial);
   const [busy, setBusy] = useState(false);
+  const [sheets, setSheets] = useState<SheetInfo[] | null>(null);
+  const [sheet, setSheet] = useState("");
+  const [probe, setProbe] = useState<string | null>(null);
+  const bridgeRef = useRef<XLSXBridge | null>(null);
 
   const totalPages =
     st.summary && st.summary.rows > 0
       ? Math.max(1, Math.ceil(st.summary.rows / DEFAULT_PAGE_SIZE))
       : 1;
 
+  async function showResult(summary: ImportSummary) {
+    const numericColumn = firstNumeric(summary.columns);
+    const [rows, numeric] = await Promise.all([
+      engine.getPage(1, DEFAULT_PAGE_SIZE),
+      numericColumn
+        ? engine.summarizeNumeric(numericColumn)
+        : Promise.resolve(null),
+    ]);
+    setSt({
+      phase: "result",
+      summary,
+      page: 1,
+      rows,
+      numericColumn,
+      numeric,
+      message: null,
+    });
+  }
+
   async function doImport(target: File) {
+    setBusy(true);
+    setSheets(null);
+    setSt((s) => ({ ...s, phase: "importing", message: null }));
+    try {
+      if (target.name.toLowerCase().endsWith(".xlsx")) {
+        // Ruta B (0A.4): parser JS en Worker → CSV → importador general.
+        const bridge = new XLSXBridge();
+        bridgeRef.current?.dispose();
+        bridgeRef.current = bridge;
+        const found = await bridge.list(target);
+        if (found.length === 0) {
+          throw new Error("El XLSX no contiene hojas.");
+        }
+        setSheets(found);
+        setSheet(found[0].name);
+        setSt((s) => ({ ...s, phase: "empty", message: null }));
+      } else {
+        const summary = await engine.importCSV(target);
+        await showResult(summary);
+      }
+    } catch (cause) {
+      const message =
+        cause instanceof Error
+          ? cause.message
+          : (cause as { message?: string })?.message ?? "Error desconocido";
+      setSt((s) => ({ ...s, phase: "error", message }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doProbe() {
+    setBusy(true);
+    try {
+      // Sonda de ruta A (0A.4) con fixture mínimo versionado.
+      const res = await fetch("demo-data/sonda.xlsx");
+      if (!res.ok) throw new Error(`Sonda no disponible (HTTP ${res.status})`);
+      const verdict = await engine.probeXLSXNative(
+        new Uint8Array(await res.arrayBuffer()),
+      );
+      setProbe(
+        `Lectura nativa (read_xlsx): ${verdict.supported ? "soportada" : "no soportada"} — ${verdict.detail}`,
+      );
+    } catch (cause) {
+      const message =
+        cause instanceof Error ? cause.message : "Error en la sonda";
+      setSt((s) => ({ ...s, message }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doImportSheet() {
+    const bridge = bridgeRef.current;
+    if (!bridge || !file || !sheet) return;
     setBusy(true);
     setSt((s) => ({ ...s, phase: "importing", message: null }));
     try {
-      const summary = await engine.importCSV(target);
-      const numericColumn = firstNumeric(summary.columns);
-      const [rows, numeric] = await Promise.all([
-        engine.getPage(1, DEFAULT_PAGE_SIZE),
-        numericColumn
-          ? engine.summarizeNumeric(numericColumn)
-          : Promise.resolve(null),
-      ]);
-      setSt({
-        phase: "result",
-        summary,
-        page: 1,
-        rows,
-        numericColumn,
-        numeric,
-        message: null,
-      });
+      const extracted = await bridge.extract(sheet);
+      const summary = await engine.importCSVText(
+        `${file.name}#${extracted.sheet}`,
+        extracted.csv,
+      );
+      await showResult(summary);
     } catch (cause) {
       const message =
         cause instanceof Error
@@ -132,22 +200,27 @@ export default function ImportPanel() {
 
   return (
     <section aria-labelledby="importar">
-      <h2 id="importar">Importar CSV (0A.3)</h2>
+      <h2 id="importar">Importar CSV/XLSX (0A.3–0A.4)</h2>
       <p>
-        UTF-8, con encabezados, delimitador coma o punto y coma
-        (autodetectado), campos entrecomillados. Límite orientativo: 20 MB.
-        Aún no soportado: otras codificaciones, sin encabezados, otros
-        delimitadores, XLSX (0A.4). El archivo original no se modifica; la
+        CSV: UTF-8, con encabezados, coma o punto y coma (autodetectado),
+        campos entrecomillados, límite 20 MB. XLSX: hojas tabulares vía parser
+        en Worker (ruta B), límite 10 MB comprimido; no se ejecutan fórmulas
+        (se usa el valor almacenado) y las fechas pueden llegar como número de
+        serie. Aún no soportado: otras codificaciones, sin encabezados, otros
+        delimitadores, JSON/Parquet. El archivo original no se modifica; la
         tabla en memoria se reemplaza al importar otro archivo.
       </p>
       <p>
-        <label htmlFor="csv-file">Elegir archivo CSV: </label>
+        <label htmlFor="csv-file">Elegir archivo: </label>
         <input
           id="csv-file"
           type="file"
-          accept=".csv,text/csv"
+          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           disabled={busy}
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          onChange={(e) => {
+            setFile(e.target.files?.[0] ?? null);
+            setSheets(null);
+          }}
         />{" "}
         <button
           type="button"
@@ -158,8 +231,40 @@ export default function ImportPanel() {
         </button>
       </p>
 
-      {st.phase === "empty" ? (
-        <p role="status">Sin dataset: elija un CSV e impórtelo.</p>
+      {sheets && sheets.length > 0 ? (
+        <p>
+          <label htmlFor="sheet">Hoja: </label>
+          <select
+            id="sheet"
+            value={sheet}
+            disabled={busy}
+            onChange={(e) => setSheet(e.target.value)}
+          >
+            {sheets.map((s) => (
+              <option key={s.name} value={s.name}>
+                {s.name} ({s.rows}×{s.cols})
+              </option>
+            ))}
+          </select>{" "}
+          <button
+            type="button"
+            disabled={busy || !sheet}
+            onClick={() => void doImportSheet()}
+          >
+            Importar hoja
+          </button>
+        </p>
+      ) : null}
+
+      <p>
+        <button type="button" disabled={busy} onClick={() => void doProbe()}>
+          Probar lectura nativa XLSX
+        </button>
+      </p>
+      {probe ? <p role="status">{probe}</p> : null}
+
+      {st.phase === "empty" && !sheets ? (
+        <p role="status">Sin dataset: elija un archivo e impórtelo.</p>
       ) : null}
       {st.phase === "importing" ? (
         <p role="status">Importando y consultando…</p>

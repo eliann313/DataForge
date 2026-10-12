@@ -2,6 +2,7 @@
 // se prueban en Node con Vitest.
 
 export const MAX_CSV_BYTES = 20 * 1024 * 1024; // Límite inicial orientativo (README/R1).
+export const MAX_XLSX_BYTES = 10 * 1024 * 1024; // Ídem XLSX (comprimido; la expansión se informa).
 export const MAX_PAGE_SIZE = 100;
 export const DEFAULT_PAGE_SIZE = 20;
 
@@ -15,11 +16,19 @@ export interface FileCheck {
   problem?: FileProblem;
 }
 
-/** Validación previa: tipo, vacío y límite. El contenido lo valida DuckDB. */
+/** Validación previa: tipo, vacío y límite. El contenido lo valida el motor. */
 export function checkCSVFile(name: string, bytes: number): FileCheck {
-  if (!/\.csv$/i.test(name)) return { ok: false, problem: "unsupported-type" };
+  return checkInputFile(name, bytes);
+}
+
+export function checkInputFile(name: string, bytes: number): FileCheck {
+  const lower = name.toLowerCase();
+  const isCSV = lower.endsWith(".csv");
+  const isXLSX = lower.endsWith(".xlsx");
+  if (!isCSV && !isXLSX) return { ok: false, problem: "unsupported-type" };
   if (bytes === 0) return { ok: false, problem: "empty" };
-  if (bytes > MAX_CSV_BYTES) return { ok: false, problem: "too-large" };
+  const limit = isXLSX ? MAX_XLSX_BYTES : MAX_CSV_BYTES;
+  if (bytes > limit) return { ok: false, problem: "too-large" };
   return { ok: true };
 }
 
@@ -30,7 +39,7 @@ export function problemLabel(problem: FileProblem): string {
     case "too-large":
       return `Supera el límite orientativo de ${MAX_CSV_BYTES / (1024 * 1024)} MB por archivo.`;
     case "unsupported-type":
-      return "Tipo no soportado en este spike: solo .csv (XLSX llega en 0A.4).";
+      return "Tipo no soportado en este spike: solo .csv y .xlsx.";
   }
 }
 
