@@ -7,7 +7,7 @@
 > (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
 > correlación, hallazgos) y E6 (Finanzas Lite exacta); E2E 62/62 en
 > Chromium/Firefox, Vitest 41/41.
-> **Fase activa:** cierre de R1 (verificación de los dos recorridos + demo).
+> **Fase activa:** R2 (fases 4–5) tras el cierre de R1 el 2026-10-12.
 > 0B/0C siguen como investigación pendiente y no bloquean.
 > Este plan divide las fases existentes en entregas; no agrega fases ni cambia
 > los criterios del MVP.
