@@ -114,6 +114,9 @@ Límites vigentes (orientativos, sin cambiar): CSV 20 MB, XLSX 10 MB comprimido.
 La variante densa 100k×30 (25,7 MB) evidencia el corte del límite; la ingesta por
 lotes o un límite mayor pertenecen a fases posteriores, no a este spike.
 
+**Cierre tabular 0A (2026-10-12):** Worker/WASM mismo-origen verificados también
+en producción Vercel (smoke 9/9 Chromium contra la URL pública, motor operativo).
+
 Este ADR sigue **Propuesto** hasta 0B/0C; no se afirma la convivencia con Python/Rust.
 
 ## Referencias
