@@ -1,0 +1,35 @@
+{
+  "name": "dataforge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DataForge — plataforma local-first de análisis de datos. Fase 0A: esqueleto Next.js estático (spike técnico, sin funcionalidades de producto).",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install --with-deps chromium"
+  },
+  "dependencies": {
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/node": "24.10.0",
+    "@types/react": "19.2.0",
+    "@types/react-dom": "19.2.0",
+    "eslint": "9.39.0",
+    "eslint-config-next": "16.4.0",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  },
+  "engines": {
+    "node": ">=20 <25"
+  }
+}

@@ -58,3 +58,13 @@ Proteger frente a archivos malformados o hostiles (ZIP/XML), inyección SQL, iny
 1. Registrar decisiones de arquitectura en [`docs/adr`](./docs/adr/README.md) y actualizar el roadmap al avanzar.
 2. Mantener README y documentos alineados con la implementación real.
 3. Seguir el estilo de commits existente (Conventional Commits: `docs:`, `feat:`, `fix:`, etc.).
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
