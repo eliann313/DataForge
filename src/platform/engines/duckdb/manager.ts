@@ -13,12 +13,46 @@ import type {
   EngineError,
   EngineStatus,
   PingResult,
+  ResultRow,
 } from "./contract";
+import { escapeIdentifier } from "./contract";
+import {
+  checkCSVFile,
+  clampPage,
+  escapeStringLiteral,
+  problemLabel,
+} from "./csv";
 
 interface DuckDBBundle {
   mainModule?: string;
   mainWorker?: string;
   pthreadWorker?: string;
+}
+
+/** Tabla activa del spike. Nombre interno fijo: nunca usa el nombre del archivo. */
+export const DATASET_TABLE = "df_dataset";
+const STAGING_TABLE = "df_dataset_next";
+const REGISTER_NAME = "df_upload.csv";
+
+export interface ColumnInfo {
+  name: string;
+  type: string;
+  nullable: boolean;
+}
+
+export interface ImportSummary {
+  fileName: string;
+  bytes: number;
+  rows: number;
+  columns: ColumnInfo[];
+}
+
+export interface NumericSummary {
+  count: number;
+  sum: number;
+  avg: number;
+  min: number;
+  max: number;
 }
 
 export class DuckDBManager {
@@ -121,6 +155,150 @@ export class DuckDBManager {
     this.status = "closed";
   }
 
+  // ---- 0A.3: importación CSV y consultas internas (SQL controlada por la app) ----
+
+  private requireConn(): AsyncDuckDBConnection {
+    if (this.status !== "ready" || !this.conn) {
+      throw {
+        code: "query-failed",
+        message: "El motor no está listo. Inicialícelo antes de importar.",
+      } satisfies EngineError;
+    }
+    return this.conn;
+  }
+
+  /**
+   * Importa un CSV (UTF-8, con encabezados, coma o punto y coma por
+   * autodetección). Un archivo por vez; la fuente original no se modifica.
+   * Ante fallo conserva la tabla activa anterior.
+   */
+  async importCSV(file: File): Promise<ImportSummary> {
+    const conn = this.requireConn();
+    const check = checkCSVFile(file.name, file.size);
+    if (!check.ok) {
+      throw {
+        code: "query-failed",
+        message: problemLabel(check.problem!),
+      } satisfies EngineError;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (bytes.byteLength === 0) {
+      throw {
+        code: "query-failed",
+        message: problemLabel("empty"),
+      } satisfies EngineError;
+    }
+    const db = this.db;
+    if (!db) {
+      throw {
+        code: "query-failed",
+        message: "El motor no está listo. Inicialícelo antes de importar.",
+      } satisfies EngineError;
+    }
+    await db.registerFileBuffer(REGISTER_NAME, bytes);
+    try {
+      await conn.query(
+        `CREATE OR REPLACE TABLE ${escapeIdentifier(STAGING_TABLE)} AS SELECT * FROM read_csv(${escapeStringLiteral(REGISTER_NAME)}, header = true, auto_detect = true)`,
+      );
+      const columns = await this.readSchema(conn, STAGING_TABLE);
+      const rows = await this.readCount(conn, STAGING_TABLE);
+      await conn.query(`DROP TABLE IF EXISTS ${escapeIdentifier(DATASET_TABLE)}`);
+      await conn.query(
+        `ALTER TABLE ${escapeIdentifier(STAGING_TABLE)} RENAME TO ${escapeIdentifier(DATASET_TABLE)}`,
+      );
+      return { fileName: file.name, bytes: file.size, rows, columns };
+    } catch (cause) {
+      try {
+        await conn.query(`DROP TABLE IF EXISTS ${escapeIdentifier(STAGING_TABLE)}`);
+      } catch {
+        // Limpieza best-effort tras fallo.
+      }
+      throw {
+        code: "query-failed",
+        message: `No se pudo importar el CSV: ${messageOf(cause)}`,
+      } satisfies EngineError;
+    } finally {
+      try {
+        await db.dropFile(REGISTER_NAME);
+      } catch {
+        // Liberación best-effort del buffer registrado.
+      }
+    }
+  }
+
+  hasDataset(): Promise<boolean> {
+    return this.readCount(this.requireConn(), DATASET_TABLE)
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  getSchema(): Promise<ColumnInfo[]> {
+    return this.readSchema(this.requireConn(), DATASET_TABLE);
+  }
+
+  getCount(): Promise<number> {
+    return this.readCount(this.requireConn(), DATASET_TABLE);
+  }
+
+  async getPage(page: number, pageSize: number): Promise<ResultRow[]> {
+    const conn = this.requireConn();
+    const c = clampPage(page, pageSize);
+    const table = await conn.query(
+      `SELECT * FROM ${escapeIdentifier(DATASET_TABLE)} LIMIT ${c.pageSize} OFFSET ${c.offset}`,
+    );
+    return toJSONRows(table);
+  }
+
+  /** Agregación sobre una columna (nombre escapado; sin SQL arbitraria). */
+  async summarizeNumeric(column: string): Promise<NumericSummary> {
+    const conn = this.requireConn();
+    const col = escapeIdentifier(column);
+    const table = await conn.query(
+      `SELECT COUNT(${col}) AS n, SUM(${col}) AS s, AVG(${col}) AS a, MIN(${col}) AS mn, MAX(${col}) AS mx FROM ${escapeIdentifier(DATASET_TABLE)}`,
+    );
+    const row = toJSONRows(table)[0] as Record<string, unknown> | undefined;
+    const num = (v: unknown): number => {
+      const n = typeof v === "bigint" ? Number(v) : Number(v);
+      if (!Number.isFinite(n)) throw new Error(`Agregado no numérico en ${column}`);
+      return n;
+    };
+    if (!row) throw new Error(`Sin filas para resumir ${column}`);
+    return {
+      count: num(row.n),
+      sum: num(row.s),
+      avg: num(row.a),
+      min: num(row.mn),
+      max: num(row.mx),
+    };
+  }
+
+  private async readSchema(
+    conn: AsyncDuckDBConnection,
+    table: string,
+  ): Promise<ColumnInfo[]> {
+    const described = await conn.query(
+      `DESCRIBE ${escapeIdentifier(table)}`,
+    );
+    return toJSONRows(described).map((r) => ({
+      name: String(r.column_name),
+      type: String(r.column_type),
+      nullable: String(r.null).toUpperCase() === "YES",
+    }));
+  }
+
+  private async readCount(
+    conn: AsyncDuckDBConnection,
+    table: string,
+  ): Promise<number> {
+    const counted = await conn.query(
+      `SELECT COUNT(*) AS n FROM ${escapeIdentifier(table)}`,
+    );
+    const row = toJSONRows(counted)[0] as Record<string, unknown> | undefined;
+    const n = row ? Number(row.n) : NaN;
+    if (!Number.isInteger(n) || n < 0) throw new Error("Conteo inválido");
+    return n;
+  }
+
   /** Reinicia el Worker. Si cerrar exige reimportar, la UI lo indica. */
   async restart(): Promise<void> {
     await this.release();
@@ -163,6 +341,23 @@ export class DuckDBManager {
 function messageOf(cause: unknown): string {
   if (cause instanceof Error && cause.message) return cause.message;
   return "Fallo desconocido al inicializar DuckDB-Wasm";
+}
+
+/** Convierte una tabla Arrow a filas JSON; BigInt → Number (conteos) o texto. */
+function toJSONRows(table: { toArray(): Array<{ toJSON(): unknown }> }): ResultRow[] {
+  return table.toArray().map((r) => {
+    const row = r.toJSON() as Record<string, unknown>;
+    const out: ResultRow = {};
+    for (const [k, v] of Object.entries(row)) {
+      out[k] =
+        typeof v === "bigint"
+          ? Number.isSafeInteger(Number(v))
+            ? Number(v)
+            : String(v)
+          : v;
+    }
+    return out;
+  });
 }
 
 // Instancia compartida por la UI técnica del spike.

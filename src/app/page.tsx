@@ -1,4 +1,5 @@
 import EnginePanel from "@/platform/engines/duckdb/EnginePanel";
+import ImportPanel from "@/platform/engines/duckdb/ImportPanel";
 import "./page.css";
 
 export default function Home() {
@@ -7,12 +8,14 @@ export default function Home() {
       <p className="kicker">DataForge · Fase 0A — Fundamento tabular</p>
       <h1>Esqueleto técnico (spike 0A en curso)</h1>
       <p>
-        Esta página verifica los ítems <strong>0A.1–0A.2 / E1</strong> del plan
+        Esta página verifica los ítems <strong>0A.1–0A.3 / E1</strong> del plan
         de primeras entregas: instalación reproducible, tipado estricto, lint,
-        build estático, motor DuckDB-Wasm en Worker con inicio diferido y
-        reinicio. No es la landing definitiva ni el workspace.
+        build estático, motor DuckDB-Wasm en Worker con inicio diferido,
+        importación CSV real con esquema, conteo, agregación y preview paginada.
+        No es la landing definitiva ni el workspace.
       </p>
       <EnginePanel />
+      <ImportPanel />
       <section aria-labelledby="verifica">
         <h2 id="verifica">Qué verifica este esqueleto</h2>
         <ul>
@@ -25,7 +28,7 @@ export default function Home() {
       <section aria-labelledby="fuera">
         <h2 id="fuera">Fuera de este alcance</h2>
         <ul>
-          <li>Importación CSV/XLSX y consultas de datos (0A.3 en adelante).</li>
+          <li>XLSX, JSON tabular y Parquet (0A.4 en adelante).</li>
           <li>Proyectos, Data Explorer, gráficos y Finanzas Lite (fases 1–3B).</li>
           <li>Cuentas, nube, IA remota y servidores (requieren aprobación).</li>
         </ul>
