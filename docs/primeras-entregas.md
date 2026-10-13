@@ -1,24 +1,29 @@
 # DataForge — Plan de primeras entregas
 
-> **Estado:** plan de ejecución, con E1–E6 cerradas (R1 funcional completo).
-> **Fecha:** 2026-10-11 (plan); **avance:** 2026-10-12 en rama `develop`.
+> **Estado:** E1–E6 cerradas; R1 completo. Seguimiento actual: R2 / fase 4.
+> **Fecha:** 2026-10-11 (plan); **avance:** 2026-10-12 en `codex/r2-phase4-pipelines` (PR #16 hacia `develop`).
 > **Base verificada:** documentación, ADR-0001 y ADR-0003 aceptados, ADR-0002 con
 > tabular medido (global propuesto hasta 0B/0C), 0A.1–0A.6, E3.1–E3.3, E4
 > (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
-> correlación, hallazgos) y E6 (Finanzas Lite exacta); E2E 62/62 en
-> Chromium/Firefox, Vitest 41/41.
-> **Fase activa:** cierre de R1 (verificación de los dos recorridos + demo).
+> correlación, hallazgos) y E6 (Finanzas Lite exacta); R2 agrega pipelines locales
+> tipados, definiciones por proyecto en IndexedDB, varias fuentes aisladas por
+> proyecto durante la sesión, APPEND/UNION ALL y JOIN con cardinalidad/fanout
+> validados. Este incremento pasó tipado, lint, Vitest 67/67 y Playwright de
+> pipelines 32/32 en Chromium/Firefox; el flujo APPEND con limpieza de linaje
+> también pasó 2/2 en ambos navegadores. Build estático correcto y smoke
+> estático 47/47 en Chromium.
+> **Fase activa:** R2 (fases 4–5) tras el cierre de R1 el 2026-10-12.
 > 0B/0C siguen como investigación pendiente y no bloquean.
 > Este plan divide las fases existentes en entregas; no agrega fases ni cambia
 > los criterios del MVP.
 
 ## Objetivo y alcance decidido
 
-Llegar a **R1** mediante seis entregas demostrables: importar y consultar un archivo; validar Excel y el hosting; organizar proyectos locales; explorar calidad; analizar y graficar; registrar Finanzas Lite.
+El objetivo original de llegar a **R1** mediante seis entregas demostrables ya se cumplió: importar y consultar un archivo; validar Excel y el hosting; organizar proyectos locales; explorar calidad; analizar y graficar; registrar Finanzas Lite.
 
-La primera entrega debe resolver un recorrido completo con un CSV real. La segunda cierra la viabilidad de 0A antes de invertir en la interfaz definitiva. El MVP termina con Finanzas Lite, no con una maqueta ni con una tabla de ejemplo.
+La primera entrega resolvió un recorrido completo con un CSV real. La segunda cerró la viabilidad de 0A antes de invertir en la interfaz definitiva. El MVP terminó con Finanzas Lite; la siguiente fase ya no es parte del MVP.
 
-El orden es **E1 → E2 → E3 → E4 → E5 → E6**. Solo E1 y E2 tienen backlog inmediato. E3–E6 se refinan al cerrar 0A, usando sus resultados. Todas las entregas están pendientes y no hay fechas comprometidas.
+El orden ejecutado fue **E1 → E2 → E3 → E4 → E5 → E6**. Las condiciones detalladas debajo conservan el alcance y la evidencia de esas entregas; ya no son backlog pendiente. La fase activa actual es 4 dentro de R2.
 
 ## Entregas y condiciones de cierre
 
@@ -32,6 +37,8 @@ El orden es **E1 → E2 → E3 → E4 → E5 → E6**. Solo E1 y E2 tienen backl
 | **E6 — Finanzas Lite y cierre de R1** | 3B | Registrar ingresos/gastos manualmente y recuperar resumen mensual ARS/USD tras recargar | CRUD persistente, totales exactos por moneda, gráficos y recorridos completos de R1 verificados en demo pública |
 
 E1 es un incremento técnico revisable, **no cierra 0A ni equivale a R1**. E2 cierra únicamente 0A; 0B/0C siguen como investigación pendiente y no bloquean el producto.
+
+El cierre de E1–E6 se verificó en la demo pública R1. El avance de fase 4 que sigue está en el checkout local y todavía no forma parte de esa demo.
 
 ### E1 — CSV real de punta a punta
 
@@ -107,7 +114,40 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 
 **Cierre de R1:** una persona nueva importa CSV/XLSX, revisa calidad y genera estadística y gráfico; otra registra movimientos sin archivo, recarga y recupera totales exactos ARS/USD. Ambas recorren la demo sin cuenta. README, límites, mediciones y capturas describen la implementación real.
 
-## Backlog inmediato de 0A
+## R2 / fase 4 — avance actual
+
+### Cortes locales implementados (2026-10-12)
+
+- Pasos tipados para filtrar filas, seleccionar y renombrar columnas, quitar filas con nulos en columnas elegidas, reemplazar nulos, quitar duplicados exactamente iguales y ordenar.
+- Los filtros respetan el tipo físico: una igualdad sobre texto conserva valores como `00123`; las comparaciones mayor/menor solo se permiten en columnas numéricas y validan el literal.
+- Vista previa con cantidad de filas antes/después y muestra acotada.
+- Ejecutar crea una vista DuckDB derivada, sin sobrescribir la fuente; se puede activar de nuevo la versión fuente o una derivada.
+- Conversión explícita a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`. La vista previa y la ejecución rechazan valores incompatibles, desbordes o conversiones que pierdan precisión; los nulos se conservan.
+- Normalización de texto de fecha a `DATE` mediante formatos explícitos (`YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, `DD-MM-YYYY` y `YYYY-MM-DD HH:mm:ss`); las fechas inválidas se rechazan antes de crear una versión.
+- La definición puede guardarse por proyecto en IndexedDB y se valida contra el esquema activo al cargarla. Varias fuentes y versiones de cada proyecto viven solo en el Worker durante la sesión. APPEND conserva duplicados con `UNION ALL`, valida tipos/mapeos; JOIN verifica tipos de clave, cardinalidad y fanout y exige confirmación antes de aceptar multiplicación de filas. Las combinaciones guardan ambos padres y todas las fuentes de linaje. Quitar una fuente elimina sus vistas dependientes. Los archivos y resultados se pierden al cerrar/recargar; OPFS y exportación portable siguen diferidos a fase 5.
+- Las pruebas E2E cubren aislamiento de proyectos, duplicados en APPEND, rechazo por cardinalidad incorrecta, confirmación de fanout y limpieza de versiones al quitar una fuente.
+- Los identificadores SQL se escapan, los valores de filtro se codifican y no se acepta SQL libre. Un error de validación no crea ni activa una versión.
+
+### Siguiente trabajo dentro de las fases existentes
+
+1. Revisar CI y la PR #16 con el SHA actual; el incremento aún no está integrado ni publicado.
+2. Una vez aceptado el cierre de fase 4, avanzar a fase 5: informe reproducible, exportación y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
+3. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
+
+### Verificación del corte local de fase 4
+
+Evidencia del incremento actual: `npm run typecheck`, `npm run lint` y `npm test`
+pasaron; Vitest: 67/67. `npm run e2e -- --workers=1 e2e/pipelines.spec.ts`
+pasó 32/32 en Chromium y Firefox contra Next.js local. Tras ampliar la prueba de
+APPEND para quitar una fuente y comprobar que desaparecen sus vistas derivadas,
+ese recorrido pasó 2/2 en Chromium/Firefox. `npm run build` generó el export
+estático y `npm run smoke:static` pasó 47/47 en Chromium. El smoke detectó y se
+ajustó una expectativa E2E desactualizada sobre el texto real del contexto de
+proyecto. Estos cambios siguen fuera de la demo pública R1.
+
+## Evidencia histórica del backlog 0A (E1–E2)
+
+Los siguientes ítems se completaron al cerrar 0A. Se conservan para trazabilidad; ya no son trabajo abierto.
 
 Los siguientes ítems están listos para convertirse en issues/PRs. Son identificadores de planificación local; **no se crearon issues en GitHub**.
 
@@ -122,7 +162,7 @@ Los siguientes ítems están listos para convertirse en issues/PRs. Son identifi
 
 Comprobar el build estático desde 0A.1 y ensayar hosting cuando funcione 0A.3 para detectar problemas pronto; **el cierre** de 0A.6 exige toda la evidencia previa.
 
-Cada PR debe contener alcance, criterios satisfechos, pruebas realmente ejecutadas y limitaciones. No agrupar los seis ítems en una única revisión. No instalar dependencias adelantadas ni crear el árbol completo de módulos.
+El trabajo de 0A se entregó por cortes revisables. Para R2, cada cambio sigue registrando alcance, criterios satisfechos, pruebas realmente ejecutadas y limitaciones. No instalar dependencias adelantadas ni crear el árbol completo de módulos.
 
 ## Protocolo de validación y decisiones de corte
 
@@ -151,4 +191,4 @@ Los textos legales siguen siendo borradores no publicables. Preparar avisos sobr
 
 Fuentes revisadas: [README](../README.md), [AGENTS](../AGENTS.md), [MVP](MVP.md), [roadmap](roadmap.md), [roadmap técnico](roadmap-tecnico.md), [arquitectura](architecture.md), [ADR](adr/README.md), [diseño](design/README.md), los tres PNG originales, [IA](ai-assistant.md), [autenticación](authentication.md), [integraciones](integrations.md) y borradores de [términos](legal/terms-of-use.md), [privacidad](legal/privacy-policy.md) y [avisos](legal/ai-financial-disclaimer.md).
 
-Al cerrar una entrega, actualizar su estado en este documento y la fase correspondiente en el roadmap, adjuntar evidencia reproducible y revisar el siguiente alcance. La fase activa continúa siendo **0A** hasta cumplir E2.
+Al cerrar un corte, actualizar su estado en este documento y la fase correspondiente en el roadmap, adjuntar evidencia reproducible y revisar el siguiente alcance. R1 está cerrado; la fase activa sigue siendo **4 (R2)** hasta completar los criterios de la fase y después avanzar a fase 5.

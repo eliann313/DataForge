@@ -1,6 +1,6 @@
 # DataForge — Arquitectura de software
 
-> **Estado:** propuesta arquitectónica. Se validará en fase 0; no implica que los componentes ya estén desarrollados. Las decisiones de framework y de motores se registran en el [ADR-0001](adr/0001-framework-y-exportacion-estatica.md) y el [ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md); el alcance inmediato está en [MVP.md](MVP.md).
+> **Estado:** arquitectura objetivo con partes verificadas. Next.js estático, DuckDB-Wasm en Worker y R1 están cerrados. La PR #16 incorpora definiciones de pipeline locales, varias fuentes aisladas por proyecto durante la sesión y versiones APPEND/JOIN con linaje de múltiples padres. Las fuentes y versiones aún no persisten al recargar; Pyodide/Rust y el respaldo portable siguen diferidos. Ver [ADR-0001](adr/0001-framework-y-exportacion-estatica.md), [ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md), [ADR-0004](adr/0004-versiones-derivadas-de-pipelines.md), [ADR-0005](adr/0005-definiciones-de-pipeline-locales.md), [ADR-0006](adr/0006-multiples-datasets-en-sesion.md), [ADR-0007](adr/0007-combinaciones-append-y-join.md) y el [roadmap](roadmap.md).
 
 ## 1. Estilo arquitectónico
 
@@ -208,9 +208,13 @@ Entidades propuestas: Folder, Project, DatasetSource, DatasetVersion, DatasetSch
 
 Los identificadores y contratos de persistencia deben ser neutrales a implementación local o conectada. La importación y persistencia deben ser recuperables frente a fallos parciales.
 
+**Implementación actual de R2 en la PR #16:** cada fuente se registra en el proyecto activo dentro de la sesión del Worker; cambiar de proyecto aísla las fuentes y recuerda la última versión activa mientras vive el Worker. APPEND/JOIN y los pipelines crean vistas con esquema, conteo, tipo de operación, fuentes originales y padres inmediatos. Quitar una fuente también elimina las vistas que dependan de ella. Los archivos y resultados no se guardan en IndexedDB ni OPFS; las definiciones de pipeline sí se guardan por proyecto y se revalidan al cargarlas. Ver ADR-0006 y ADR-0007.
+
 ## 7. Persistencia y privacidad
 
-**Inicial:** IndexedDB para metadatos/configuración y OPFS para ficheros o estructuras tabulares según viabilidad; exportación/importación de proyectos como respaldo. La persistencia está sujeta a cuotas, limpieza por usuario/navegador y disponibilidad en dispositivo.
+**Objetivo:** IndexedDB para metadatos/configuración y OPFS para ficheros o estructuras tabulares cuando el flujo lo justifique; exportación/importación de proyectos como respaldo. La persistencia está sujeta a cuotas, limpieza por usuario/navegador y disponibilidad en dispositivo.
+
+**Real hasta el corte actual de R2:** metadatos de proyectos y definiciones de pipeline en IndexedDB; datasets y vistas derivadas viven en memoria del Worker y se pierden al cerrarlo o recargar. OPFS y el respaldo portable siguen diferidos.
 
 **Futuro opcional:** autenticación y Neon PostgreSQL para cuentas, carpetas y configuraciones sincronizadas; almacenamiento privado de objetos si se aprueba subir datasets. No usar PostgreSQL como repositorio principal de archivos grandes. Autorización por propietario verificada del lado del servidor. **Ningún archivo se sincroniza sin consentimiento.**
 
@@ -224,7 +228,7 @@ Las plantillas de finanzas contienen información potencialmente sensible. Evita
 - Evitar acceder a File API, OPFS, IndexedDB o WebAssembly en SSR/build.
 - Para navegación a proyectos locales, usar rutas estáticas y parámetros de consulta/estado; no asumir renderización dinámica de IDs de proyecto mediante exportación estática.
 - Autenticación y Route Handlers requerirán migrar a despliegue Next.js con capacidad servidor, conservando landing estática donde convenga.
-- La exportación estática de Next.js no admite headers configurados en `next.config`. Si hicieran falta COOP/COEP, se declararían en `vercel.json` (a verificar en la fase 0A). No se activan globalmente sin necesidad: pueden afectar recursos de terceros y futuros flujos de autenticación.
+- La exportación estática de Next.js no admite headers configurados en `next.config`. La implementación verificada usa DuckDB-Wasm monohilo y no necesita COOP/COEP; no se activan globalmente sin necesidad.
 - Revisar COOP/COEP/CSP y dependencias de recursos remotos antes de optar por memoria compartida o Workers multihilo.
 
 ## 9. Calidad, límites y responsabilidades
@@ -241,18 +245,15 @@ Las plantillas de finanzas contienen información potencialmente sensible. Evita
 
 Las reglas para agentes de IA y colaboradores están en [AGENTS.md](../AGENTS.md).
 
-## 11. Decisiones por validar en fase 0
+## 11. Estado de decisiones y experimentos pendientes
 
 Se registran en el [ADR-0001](adr/0001-framework-y-exportacion-estatica.md) y el [ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md), con criterios de corte y alternativas.
 
-- Framework: Next.js con exportación estática frente a Vite + React.
-- Viabilidad real de DuckDB-Wasm + Pyodide + Rust/Wasm en hosting estático.
-- Mecanismo óptimo de intercambio entre Worker/runtimes.
-- Compatibilidad XLSX (lectura directa con DuckDB-Wasm o parser JavaScript) y manejo de archivos grandes.
-- Política de Workers y mecanismos de cancelación.
-- OPFS: límites, persistencia y recuperación.
-- Tamaño y entrega de assets WASM/Python en hosting estático.
-- Seguridad de origen compartido, CORS y aislamiento si se requiere multihilo.
+- Framework: Next.js con exportación estática, aceptado en ADR-0001.
+- DuckDB-Wasm, Worker, CSV/XLSX y hosting estático verificados para el alcance tabular de 0A; ADR-0002 mantiene pendientes los motores Python/Rust.
+- Mecanismo de intercambio entre Worker/runtimes cuando se realicen los spikes 0B/0C.
+- OPFS y persistencia de datasets: diferidos; el primer corte R2 usa vistas de sesión (ADR-0003/0004).
+- Tamaño, arranque y memoria de Pyodide/Rust, más aislamiento si una capacidad multihilo llegara a justificarlo.
 
 **Principio rector:** arquitectura visible por funcionalidades, dominio independiente, casos de uso comprobables y adaptadores sustituibles, sin sacrificar la simplicidad del producto inicial.
 

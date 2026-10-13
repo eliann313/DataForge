@@ -18,3 +18,4 @@ export {
   IndexedDBProjectRepository,
   IndexedDBFolderRepository,
 } from "./infrastructure/indexeddb";
+export { ProjectsProvider, useProjects } from "./presentation/ProjectsContext";

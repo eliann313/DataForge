@@ -33,7 +33,6 @@ function fmtCell(v: unknown): string {
 // agregados, correlación justificada y hallazgos por reglas transparentes.
 export default function AnalysisView() {
   const [columns, setColumns] = useState<ColumnInfo[]>([]);
-  const [status, setStatus] = useState<"empty" | "ready" | "error">("empty");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -61,10 +60,7 @@ export default function AnalysisView() {
 
   async function applySchema(schema: ColumnInfo[]) {
     setColumns(schema);
-    if (schema.length === 0) {
-      setStatus("empty");
-    } else {
-      setStatus("ready");
+    if (schema.length > 0) {
       setDescCol((c) => c || schema[0].name);
       setFreqCol((c) => c || schema[0].name);
       setXCol((c) => c || schema[0].name);
@@ -77,7 +73,8 @@ export default function AnalysisView() {
     try {
       await applySchema(await fetchSchema());
     } catch {
-      setStatus("error");
+      // Se conserva el esquema anterior (si había): el error se muestra
+      // junto a los últimos datos, nunca reemplazándolos.
       setMessage("Sin dataset: importe un archivo en Datos primero.");
     } finally {
       setBusy(false);
@@ -94,7 +91,6 @@ export default function AnalysisView() {
         if (!cancelled) await applySchema(schema);
       } catch {
         if (!cancelled) {
-          setStatus("error");
           setMessage("Sin dataset: importe un archivo en Datos primero.");
         }
       } finally {
@@ -202,7 +198,7 @@ export default function AnalysisView() {
     }
   }
 
-  if (status === "empty" || status === "error") {
+  if (columns.length === 0) {
     return (
       <div className="space-y-2">
         <p role="status">

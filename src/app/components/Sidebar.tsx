@@ -17,7 +17,7 @@ const ITEMS: { id: ViewName; label: string; ready: boolean }[] = [
   { id: "datos", label: "Datos", ready: true },
   { id: "analisis", label: "Análisis", ready: true },
   { id: "finanzas", label: "Finanzas", ready: true },
-  { id: "transformaciones", label: "Transformaciones", ready: false },
+  { id: "transformaciones", label: "Transformaciones", ready: true },
   { id: "laboratorio", label: "Laboratorio", ready: false },
   { id: "informes", label: "Informes", ready: false },
 ];
