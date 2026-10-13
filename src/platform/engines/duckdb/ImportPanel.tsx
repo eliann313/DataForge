@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { DatasetSource } from "../../../modules/datasets";
 import type { ResultRow } from "./contract";
 import { DEFAULT_PAGE_SIZE } from "./csv";
 import FilterSort from "./FilterSort";
@@ -77,8 +78,10 @@ function defaultRoles(columns: ColumnInfo[]): Record<string, SemanticRole> {
 // y agregación. Detectar no es limpiar (R2). Sin SQL arbitraria.
 export default function ImportPanel({
   example,
+  projectId,
 }: {
   example?: ExampleRequest | null;
+  projectId: string | null;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [st, setSt] = useState<State>(initial);
@@ -91,7 +94,14 @@ export default function ImportPanel({
   const [filters, setFilters] = useState<DataFilter[]>([]);
   const [sort, setSort] = useState<DataSort | null>(null);
   const [roles, setRoles] = useState<Record<string, SemanticRole>>({});
+  const [datasetSnapshot, setDatasetSnapshot] = useState(() => ({
+    projectId: engine.getCurrentProjectId(),
+    sources: engine.getDatasetSources(),
+    activeSourceId: engine.getActiveSourceId(),
+    activeVersionId: engine.getActiveDatasetVersionId(),
+  }));
   const bridgeRef = useRef<XLSXBridge | null>(null);
+  const summaryVersionRef = useRef<string | null>(null);
 
   const totalPages =
     st.filtered > 0 ? Math.max(1, Math.ceil(st.filtered / DEFAULT_PAGE_SIZE)) : 1;
@@ -114,7 +124,7 @@ export default function ImportPanel({
           setFile(downloaded);
           if (engine.getStatus() !== "ready") await engine.init();
           if (!cancelled) {
-            const summary = await engine.importCSV(downloaded);
+            const summary = await engine.importCSV(downloaded, { projectId });
             if (!cancelled) await showResult(summary);
           }
         }
@@ -127,9 +137,10 @@ export default function ImportPanel({
     return () => {
       cancelled = true;
     };
-  }, [example]);
+  }, [example, projectId]);
 
   async function showResult(summary: ImportSummary) {
+    summaryVersionRef.current = summary.versionId;
     const numericColumn = firstNumeric(summary.columns);
     const [page, numeric] = await Promise.all([
       engine.getPage(1, DEFAULT_PAGE_SIZE),
@@ -150,6 +161,59 @@ export default function ImportPanel({
       message: null,
     });
   }
+
+  useEffect(() => {
+    const loadActiveSummary = async (summary: ImportSummary) => {
+      summaryVersionRef.current = summary.versionId;
+      const numericColumn = firstNumeric(summary.columns);
+      const [page, numeric] = await Promise.all([
+        engine.getPage(1, DEFAULT_PAGE_SIZE),
+        numericColumn ? engine.summarizeNumeric(numericColumn) : Promise.resolve(null),
+      ]);
+      setFilters([]);
+      setSort(null);
+      setRoles(defaultRoles(summary.columns));
+      setSt({
+        phase: "result",
+        summary,
+        page: 1,
+        rows: page.rows,
+        total: page.total,
+        filtered: page.filtered,
+        numericColumn,
+        numeric,
+        message: null,
+      });
+    };
+    const sync = () => {
+      setDatasetSnapshot({
+        projectId: engine.getCurrentProjectId(),
+        sources: engine.getDatasetSources(),
+        activeSourceId: engine.getActiveSourceId(),
+        activeVersionId: engine.getActiveDatasetVersionId(),
+      });
+      const current = engine.getActiveDatasetSummary();
+      if (current && current.versionId !== summaryVersionRef.current) {
+        void loadActiveSummary(current).catch((cause: unknown) => {
+          setSt((previous) => ({ ...previous, phase: "error", message: cause instanceof Error ? cause.message : "No se pudo activar el dataset." }));
+        });
+      } else if (!current && summaryVersionRef.current !== null) {
+        summaryVersionRef.current = null;
+        setSt(initial);
+        setFilters([]);
+        setSort(null);
+        setRoles({});
+      }
+    };
+    const unsubscribe = engine.onChange(sync);
+    const active = engine.getActiveDatasetSummary();
+    if (active) {
+      void loadActiveSummary(active).catch((cause: unknown) => {
+        setSt((previous) => ({ ...previous, phase: "error", message: cause instanceof Error ? cause.message : "No se pudo recuperar el dataset activo." }));
+      });
+    }
+    return unsubscribe;
+  }, []);
 
   function fail(cause: unknown) {
     const message =
@@ -177,11 +241,11 @@ export default function ImportPanel({
         setSheet(found[0].name);
         setSt((s) => ({ ...s, phase: "empty", message: null }));
       } else if (lower.endsWith(".csv")) {
-        await showResult(await engine.importCSV(target, { delimiter, header }));
+        await showResult(await engine.importCSV(target, { delimiter, header, projectId }));
       } else if (lower.endsWith(".json")) {
-        await showResult(await engine.importJSON(target));
+        await showResult(await engine.importJSON(target, { projectId }));
       } else if (lower.endsWith(".parquet")) {
-        await showResult(await engine.importParquet(target));
+        await showResult(await engine.importParquet(target, { projectId }));
       } else {
         throw new Error("Tipo no soportado: solo .csv, .xlsx, .json tabular y .parquet.");
       }
@@ -200,7 +264,7 @@ export default function ImportPanel({
     try {
       const extracted = await bridge.extract(sheet);
       await showResult(
-        await engine.importCSVText(`${file.name}#${extracted.sheet}`, extracted.csv),
+        await engine.importCSVText(`${file.name}#${extracted.sheet}`, extracted.csv, { projectId }),
       );
     } catch (cause) {
       fail(cause);
@@ -262,7 +326,36 @@ export default function ImportPanel({
     }
   }
 
+  async function activateSource(source: DatasetSource) {
+    setBusy(true);
+    try {
+      await engine.activateDatasetVersion(source.id);
+      const summary = engine.getActiveDatasetSummary();
+      if (!summary) throw new Error("No se pudo recuperar la fuente seleccionada.");
+      await showResult(summary);
+    } catch (cause) {
+      fail(cause);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSource(source: DatasetSource) {
+    if (!window.confirm(`¿Quitar «${source.name}» de esta sesión? Se eliminarán sus versiones derivadas.`)) return;
+    setBusy(true);
+    try {
+      await engine.removeDataset(source.id);
+    } catch (cause) {
+      fail(cause);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const isCSV = file !== null && file.name.toLowerCase().endsWith(".csv");
+  const visibleSources = datasetSnapshot.projectId === projectId ? datasetSnapshot.sources : [];
+  const activeSourceId = datasetSnapshot.projectId === projectId ? datasetSnapshot.activeSourceId : null;
+  const activeVersionId = datasetSnapshot.projectId === projectId ? datasetSnapshot.activeVersionId : null;
 
   return (
     <section aria-labelledby="importar">
@@ -274,6 +367,40 @@ export default function ImportPanel({
         codificaciones alternativas ni corrección silenciosa: lo no soportado se
         informa. Selección de columnas y cambio de tipos son transformaciones (R2).
       </p>
+      <section className="my-4 space-y-2 rounded border border-gray-200 bg-white p-3" aria-labelledby="datasets-sesion">
+        <h3 id="datasets-sesion" className="font-semibold">Datasets de este proyecto en la sesión</h3>
+        <p className="text-sm text-gray-600">Las fuentes se mantienen en memoria hasta cerrar o recargar. Puede importar más de una; quitar una fuente también elimina sus versiones derivadas.</p>
+        {visibleSources.length === 0 ? (
+          <p className="text-sm text-gray-600">No hay fuentes cargadas en este proyecto durante la sesión.</p>
+        ) : (
+          <ul className="space-y-1">
+            {visibleSources.map((source) => (
+              <li key={source.id} className="flex flex-wrap items-center gap-2 text-sm">
+                <span>
+                  {source.name} · {source.rowCount} filas · {source.columns.length} columnas
+                  {source.id === activeSourceId ? " (activa)" : ""}
+                </span>
+                <button
+                  type="button"
+                  disabled={busy || activeVersionId === source.id}
+                  onClick={() => void activateSource(source)}
+                  className="underline"
+                >
+                  {source.id === activeSourceId ? "Usar fuente original" : "Activar dataset"}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void removeSource(source)}
+                  className="text-red-700 underline"
+                >
+                  Quitar de la sesión
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       <p>
         <label htmlFor="csv-file">Elegir archivo: </label>
         <input

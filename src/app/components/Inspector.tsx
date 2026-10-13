@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useProjects } from "@/modules/projects/presentation/ProjectsContext";
+import { useProjects } from "@/modules/projects";
 
 function formatMB(bytes: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`;
@@ -62,7 +62,7 @@ export default function Inspector() {
             pantalla (nunca se pierde en silencio).
           </li>
           <li>Los archivos importados viven solo en memoria: al recargar se reimportan.</li>
-          <li>Todavía no hay datasets ligados a proyectos ni plantillas (fases 2–3B).</li>
+          <li>Los datasets del proyecto activo quedan en memoria durante esta sesión; no se guardan los archivos.</li>
           <li>El respaldo portable completo llega en R2; los datos del navegador pueden perderse por limpieza o cuota.</li>
         </ul>
       </section>

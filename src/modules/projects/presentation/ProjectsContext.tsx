@@ -9,14 +9,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  IndexedDBFolderRepository,
-  IndexedDBProjectRepository,
-  ProjectError,
-  ProjectsService,
-  type Folder,
-  type Project,
-} from "../index";
+import { ProjectsService } from "../application/service";
+import { ProjectError } from "../domain/errors";
+import type { Folder } from "../domain/folder";
+import type { Project } from "../domain/project";
+import { IndexedDBFolderRepository, IndexedDBProjectRepository } from "../infrastructure/indexeddb";
 
 const ACTIVE_KEY = "df-active-project";
 

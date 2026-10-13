@@ -27,9 +27,12 @@ comprometido); el Inspector muestra la cuota real vía `storage.estimate()`.
 - **R1:** metadatos en IndexedDB (esquema v1, una transacción por operación,
   errores visibles, E3.1–E3.3); datasets solo en memoria con reimportación
   explícita; cuota observable en el Inspector.
-- **OPFS no es requisito de ningún módulo en R1.** La persistencia de archivos
-  se decide en R2 junto al respaldo portable (exportar/importar proyecto),
-  antes que como caché implícito.
+- **R2/fase 4 inicial:** las transformaciones crean vistas derivadas en DuckDB
+  dentro del Worker. La fuente permanece intacta; metadatos de versión y pasos
+  duran únicamente en la sesión. No se agrega OPFS ni caché implícita. Ver
+  [ADR-0004](./0004-versiones-derivadas-de-pipelines.md).
+- **Persistencia duradera:** se decidirá al diseñar respaldo/exportación
+  portable de fase 5, usando los requisitos y mediciones de los flujos R2.
 
 ## Criterios y descarte
 
@@ -37,11 +40,12 @@ comprometido); el Inspector muestra la cuota real vía `storage.estimate()`.
   CSV/XLSX es explícito y barato según benchmarks 0A.5.
 - OPFS añade semántica de desalojo/cuota por navegador sin valor de usuario
   en R1; adoptarlo ahora sería infraestructura especulativa.
-- Se reconsidera si un flujo R2 (respaldo, datasets grandes recurrentes) lo
-  justifica con mediciones.
+- Se reconsiderará antes de cerrar fase 5 si un flujo de respaldo portable o
+  datasets grandes recurrentes lo justifica con mediciones.
 
 ## Consecuencias
 
-- La UI debe decir (y dice): qué se guarda, qué se reimporta y que el respaldo
-  portable llega en R2. Fallos de cuota/escritura son visibles, nunca silenciosos.
-- No se escribe código OPFS hasta la decisión R2.
+- La UI debe decir qué se conserva entre sesiones. El primer corte R2 no guarda
+  las versiones derivadas al recargar; el respaldo portable se resolverá en fase 5.
+  Fallos de cuota/escritura son visibles, nunca silenciosos.
+- No se escribe código OPFS hasta decidir el respaldo portable y la persistencia en la fase 5.

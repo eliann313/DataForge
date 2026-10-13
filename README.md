@@ -4,11 +4,11 @@
 
 DataForge busca que cualquier persona pueda **importar, explorar, limpiar, combinar, analizar, visualizar y exportar datos** sin configurar un entorno científico ni subir sus archivos a un backend de procesamiento. Un usuario puede analizar una planilla; otro puede construir pipelines reproducibles, trabajar con varios datasets y aplicar análisis estadístico avanzado.
 
-> **Estado: R1 cerrado el 2026-10-12** (E1–E6 verificadas en demo pública con E2E 31/31; ver [primeras entregas](docs/primeras-entregas.md)). Las características de R2 en adelante están **previstas, no implementadas**. Demo pública: `https://data-forge-analysis.vercel.app/` (sigue al último merge a `main`). Los umbrales de capacidad son hipótesis hasta completar las mediciones del [ADR-0002](docs/adr/0002-motores-analiticos-y-criterios-de-corte.md).
+> **Estado: R1 cerrado el 2026-10-12** (E1–E6 verificadas en la demo pública con E2E 31/31). **R2/fase 4 sigue en curso:** la PR #16 incorpora pipelines tipados, definiciones locales por proyecto, varias fuentes aisladas por proyecto durante la sesión, APPEND/UNION ALL con mapeo de esquema y JOIN con cardinalidad y fanout validados. Los bytes de origen y las versiones siguen en memoria; solo se guardan las definiciones en IndexedDB. El incremento actual está probado localmente y aún no está publicado en la demo. Ver [avance y próximos cortes](docs/primeras-entregas.md). Demo pública R1: `https://data-forge-analysis.vercel.app/` (sigue al último merge a `main`). Los umbrales de capacidad son hipótesis hasta completar las mediciones del [ADR-0002](docs/adr/0002-motores-analiticos-y-criterios-de-corte.md).
 
 **Documentación:** [MVP y prioridades](docs/MVP.md) · [Roadmap completo](docs/roadmap.md) · [Roadmap técnico maestro](docs/roadmap-tecnico.md) · [Arquitectura de software](docs/architecture.md) · [Decisiones (ADR)](docs/adr/README.md) · [Reglas para agentes](AGENTS.md)
 
-**Ejecución inicial:** [Plan de primeras entregas](docs/primeras-entregas.md), con seis entregas hasta R1 y backlog inmediato de la fase 0A.
+**Ejecución:** [Plan de primeras entregas](docs/primeras-entregas.md), con E1–E6 cerradas y avance actual de R2/fase 4.
 
 ## ¿Para quién es?
 
@@ -143,7 +143,7 @@ Más información: [Arquitectura](docs/architecture.md).
 - Subida explícita y voluntaria a almacenamiento privado si se desarrolla sincronización completa.
 - Datos y ejecución locales por defecto, también para personas registradas.
 
-El candidato principal es **Next.js con exportación estática** para landing y aplicación; la decisión se confirma en la fase 0A ([ADR-0001](docs/adr/0001-framework-y-exportacion-estatica.md)). Una futura autenticación dinámica obligará a revisar el modo de despliegue; no forma parte del MVP.
+La aplicación usa **Next.js con exportación estática**, decisión aceptada al cerrar 0A ([ADR-0001](docs/adr/0001-framework-y-exportacion-estatica.md)). Una futura autenticación dinámica obligará a revisar el modo de despliegue; no forma parte del MVP.
 
 ## Objetivos de capacidad (no garantías)
 
@@ -234,13 +234,14 @@ Las reglas de trabajo con agentes de IA están en [AGENTS.md](AGENTS.md).
 - [x] Consolidar roadmap y arquitectura de planificación.
 - [x] Acotar el MVP, redactar ADR-0001 y ADR-0002 (estado «Propuesto») y separar las reglas de agentes en AGENTS.md.
 - [x] Fase 0A (E1+E2, cerrada 2026-10-12): esqueleto Next.js estático, DuckDB-Wasm en Worker con inicio diferido, CSV/XLSX con esquema, conteo y agregados; E2E en Chromium/Firefox, benchmarks 0A.5 y smoke 9/9 en producción Vercel. ADR-0001 aceptado.
-- [x] Fase 1 (E3, cerrada 2026-10-12): proyectos/carpetas locales con IndexedDB versionado, shell con sidebar e inspector, ejemplos ficticios, cuota observable y ADR-0003 (OPFS diferido a R2).
+- [x] Fase 1 (E3, cerrada 2026-10-12): proyectos/carpetas locales con IndexedDB versionado, shell con sidebar e inspector, ejemplos ficticios, cuota observable y ADR-0003 (OPFS y respaldo portable diferidos a fase 5).
 - [x] Fase 2 (E4, cerrada 2026-10-12): CSV/JSON/Parquet/XLSX, filtros y orden sobre DuckDB, roles semánticos editables, profiling con definiciones visibles.
 - [x] Fase 3 (E5, cerrada 2026-10-12): descriptivos exactos (varianza muestral, cuantiles continuos), ECharts con alternativa tabular, correlación justificada y hallazgos por reglas.
 - [x] Finanzas Lite (E6/3B, cerrada 2026-10-12): CRUD manual ARS/USD en centavos exactos, resumen mensual por moneda sin conversión, gráficos y persistencia local.
 - [x] Cierre de R1 (2026-10-12): recorridos importar→estadística→gráfico y finanzas→recarga verificados con E2E 31/31 en la demo pública; E2E total 62/62, Vitest 41/41.
 - [ ] Fases 0B y 0C: spikes de Pyodide bajo demanda y de Rust/Wasm (no bloquean R1).
-- [ ] R2 (fases 4–5): limpieza, pipelines, múltiples datasets e informes.
+- [x] R2 / fase 4 — cortes locales en curso: pipeline con filtros tipados, selección/renombre, descarte y reemplazo de nulos, normalización de texto/fechas, conversiones explícitas a tipos comunes, deduplicación exacta y orden; valores incompatibles o con pérdida de precisión se rechazan antes de crear una versión.
+- [ ] R2 restante (fases 4–5): más transformaciones, múltiples datasets, uniones validadas, persistencia portable e informes.
 
 ## Documentación y referencias
 

@@ -39,7 +39,7 @@ test("la navegación conserva el proyecto activo", async ({ page }) => {
 
   await page.getByRole("button", { name: /^datos$/i }).click();
   await expect(
-    page.getByText(`Trabajando en el proyecto «${name}»`),
+    page.getByText(`Proyecto activo: «${name}».`),
   ).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: /^inicio$/i }).click();

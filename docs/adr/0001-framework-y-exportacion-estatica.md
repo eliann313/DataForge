@@ -28,7 +28,7 @@ Consecuencias directas para DataForge:
 
 La opción C se descarta para el MVP.
 
-## Decisión provisional
+## Propuesta inicial (superada por el cierre de 0A)
 
 Mantener **A como candidato principal, no como decisión irrevocable**. En la fase 0A se implementa el spike mínimo (Worker con DuckDB-Wasm, importación de un archivo y vista previa) en A y, si el esfuerzo es acotado, también en B, para comparar con los mismos criterios.
 
@@ -49,10 +49,10 @@ Se registran para cada opción, con versiones exactas:
 
 Si B resulta claramente más simple para los motores, sin perder ninguna funcionalidad necesaria del MVP, se adopta B para el workspace y se registra el cambio en este ADR. Si A exige soluciones alternativas que B no necesita, aplica el mismo criterio. La evidencia debe quedar escrita aquí; no se decide por preferencia.
 
-## Consecuencias
+## Consecuencias de la propuesta original
 
-- Hasta cerrar la fase 0A no se instalan dependencias específicas del framework más allá del spike.
-- Este ADR se actualiza con los resultados y pasa a **Aceptado** o **Reemplazado**.
+- Durante 0A se evitaron dependencias específicas que no fueran necesarias para el spike.
+- La decisión vigente y su evidencia final constan en la sección de cierre siguiente.
 
 ## Evidencia parcial 0A.1–0A.5 (2026-10-12, rama `develop`, sin cerrar 0A)
 
@@ -72,9 +72,8 @@ Next 16.4.0, React 19.3.0, TypeScript 5.9 strict, Chromium 156 y Firefox 157.
    optimizar, `allowedDevOrigins: ['127.0.0.1']` solo para el smoke E2E.
 6. Navegación a proyectos locales: pendiente de fase 1 (sin IDs dinámicos).
 
-**Bloqueador explícito:** falta el smoke sobre URL real de Vercel (sin acceso al
-hosting en este entorno); un build local no acredita despliegue. Este ADR sigue
-**Propuesto** hasta ese smoke.
+**Bloqueador registrado en ese corte:** faltaba el smoke sobre URL real de Vercel; un
+build local no acreditaba despliegue. El smoke se completó en la sección siguiente.
 
 ## Cierre 0A (2026-10-12)
 

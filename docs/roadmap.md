@@ -1,13 +1,13 @@
 # DataForge — Roadmap maestro
 
-> **Estado:** planificación / validación arquitectónica. Las funcionalidades descritas están **previstas**, no implementadas, salvo que el código y las pruebas del repositorio demuestren lo contrario.
+> **Estado al 2026-10-12:** R1 (0A–3B; E1–E6) está cerrado y verificado. La PR #16 incorpora en la rama R2 varias fuentes aisladas por proyecto durante la sesión, APPEND/UNION ALL con mapeo y JOIN con validación de claves, cardinalidad y fanout; el corte pasó localmente Vitest 67/67 y Playwright de pipelines 32/32 en Chromium/Firefox. Fase 4 sigue activa hasta revisar y aceptar la PR; nada de este corte se publicó en la demo. El resto del roadmap sigue siendo plan hasta que código y pruebas demuestren su avance.
 
 **Objetivo:** construir una plataforma de análisis de datos autoservicio, en español, con procesamiento local en el navegador, proyectos persistentes, visualizaciones, pipelines reproducibles e instrumentos científicos especializados.  
 **Alcance:** proyecto educativo y de portfolio; objetivo de infraestructura sin servicios pagos.  
 **Arquitectura prevista:** Next.js + TypeScript como candidato principal (Vite + React como alternativa evaluada en el [ADR-0001](adr/0001-framework-y-exportacion-estatica.md)), arquitectura gritona por dominio con capas y puertos/adaptadores aplicados según la complejidad de cada módulo. DuckDB-Wasm, Pyodide y Rust/Wasm se validarán en la fase 0 ([ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md)) antes de adoptarse formalmente.  
 **Prioridad de ejecución:** este roadmap conserva la visión completa del producto. Lo que se construye primero está acotado en [MVP.md](MVP.md). Para transferir el contexto integral de producto, arquitectura, fases y criterios a otros agentes, ver el [roadmap técnico maestro](roadmap-tecnico.md).
 
-**Plan de ejecución:** [Primeras entregas](primeras-entregas.md) divide las fases existentes en seis entregas hasta R1 y detalla el backlog 0A. Todas están pendientes; la fase activa sigue siendo 0A.
+**Plan de ejecución:** [Primeras entregas](primeras-entregas.md) registra E1–E6 cerradas y el avance de R2. Los spikes 0B/0C continúan pendientes y no bloquean el MVP.
 
 ## 1. Visión y alcance
 
@@ -70,7 +70,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Objetivo:** validar, con mediciones, la convivencia de los motores dentro del navegador y el despliegue estático. Se divide en tres spikes que pueden cerrarse por separado. Los umbrales y el protocolo de medición están en el [ADR-0002](adr/0002-motores-analiticos-y-criterios-de-corte.md).
 
-#### Fase 0A — Fundamento tabular (prioridad inmediata)
+#### Fase 0A — Fundamento tabular (cerrada el 2026-10-12)
 
 **Alcance**
 - Esqueleto Next.js/React/TS strict y, si el esfuerzo es acotado, el mismo spike en Vite para comparar ([ADR-0001](adr/0001-framework-y-exportacion-estatica.md)).
@@ -178,6 +178,10 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 ### Fase 4 — Limpieza, pipelines y múltiples datasets
 
 **Objetivo:** preparación y composición de datos con trazabilidad.
+
+**Avance verificado (2026-10-12, R2):** pipeline de pasos tipados para filtrar, seleccionar y renombrar columnas, quitar filas nulas según las columnas elegidas, reemplazar nulos con valores validados, normalizar texto (espacios en los extremos, mayúsculas/minúsculas y texto vacío a nulo) y fechas a `DATE` con formatos de origen explícitos, convertir a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`, eliminar filas exactamente duplicadas y ordenar. Las conversiones y fechas se validan antes de la vista previa y de crear la versión: se rechazan incompatibilidades, desbordes, fechas imposibles, pérdida de escala decimal y conversiones numéricas con pérdida; los nulos se conservan. Los filtros preservan textos que parecen numéricos y validan comparaciones según el tipo físico. Las fuentes originales se conservan intactas. Cada proyecto puede mantener varias fuentes y sus versiones en memoria del Worker; el cambio de proyecto aísla las fuentes. APPEND usa `UNION ALL`, permite mapear columnas por origen, amplía tipos solo dentro de un conjunto SQL cerrado y rellena con `NULL` las columnas ausentes. JOIN admite `INNER` y `LEFT`, requiere claves del mismo tipo compatible y cardinalidad declarada, comprueba unicidad en el lado correspondiente y calcula el fanout; si se repiten filas, exige confirmación antes de crear la versión. Las combinaciones registran ambos padres y todas las fuentes de linaje. Al quitar una fuente se eliminan las vistas que dependan de ella. Las definiciones de pipeline se guardan en IndexedDB por proyecto; archivos y resultados no se guardan ni sobreviven al cierre/recarga. Los informes y el respaldo portable pertenecen a fase 5.
+
+**Criterios de aceptación de fase 4:** fuentes originales inmutables, pipelines repetibles, errores de validación sin versiones parciales y relaciones comprobadas antes de combinar. Este corte los verifica localmente; fase 4 continúa abierta hasta la revisión/aceptación de la PR #16. El build estático pasó y el smoke del export pasó 47/47 en Chromium.
 
 **Alcance**
 - Renombrar columnas, transformar tipos, normalizar fechas/texto, filtrar, ordenar, deduplicar, tratar nulos, crear expresiones y agregaciones.
@@ -389,16 +393,17 @@ Fase 10 no bloquea R5.
 - [x] Publicar README y documentación en español.
 - [ ] Crear PRD y flujos de usuario.
 - [x] Documentar sistema de diseño y mockups como referencias.
-- [x] Redactar ADR-0001 y ADR-0002 (estado «Propuesto», pendientes de resultados).
+- [x] Redactar ADR-0001 y ADR-0002; ADR-0001 aceptado al cerrar 0A, ADR-0002 conserva la decisión global pendiente de 0B/0C.
 - [x] Definir el MVP acotado ([MVP.md](MVP.md)) y mover las reglas de agentes a [AGENTS.md](../AGENTS.md).
-- [ ] Preparar issues acotados de la fase 0A.
-- [ ] Implementar el spike 0A, medir y cerrar el ADR-0001.
-- [ ] Spikes 0B y 0C; cerrar el ADR-0002 con resultados.
-- [ ] Registrar límites reales antes de ampliar el producto.
+- [x] Cerrar R1 con entregas E1–E6, mediciones tabulares y smoke público.
+- [x] Iniciar R2/fase 4 con una primera versión de pipelines locales; evidencia y límites en [primeras entregas](primeras-entregas.md) y [ADR-0004](adr/0004-versiones-derivadas-de-pipelines.md).
+- [ ] Completar fase 4: múltiples datasets con APPEND/UNION y JOIN validados; verificar linaje y evitar multiplicaciones involuntarias.
+- [ ] Avanzar a fase 5: informes y respaldo/exportación portable; decidir almacenamiento duradero con evidencia.
+- [ ] Completar spikes 0B y 0C cuando aporten valor; actualizar ADR-0002 sin bloquear R2.
 
 **Regla rectora:** primero una plataforma que resuelva correctamente análisis comunes; después profundizar con plantillas y ciencia de datos especializada.
 
-**Regla de ejecución:** no se agregan herramientas ni fases al roadmap antes de completar la fase 0A; la siguiente decisión surge de resultados técnicos observables.
+**Regla de ejecución:** 0A y R1 están cerradas. Continuar por R2/fases 4–5 con cortes demostrables, manteniendo los datos locales y las fuentes inmutables.
 
 ## 11. Extensiones aprobadas para planificación (sin bloquear el MVP)
 
