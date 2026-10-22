@@ -363,7 +363,7 @@ export default function ImportPanel({
       <p>
         CSV (UTF-8, delimitador coma/punto y coma, con o sin encabezados),
         XLSX (hojas tabulares vía Worker), JSON tabular (arreglo de objetos) y
-        Parquet. Límites orientativos: 20 MB (10 MB XLSX comprimido). Sin
+        Parquet. Límites orientativos: 20 MB para CSV/JSON/Parquet; 10 MB comprimidos y 64 MiB de expansión para XLSX. Sin
         codificaciones alternativas ni corrección silenciosa: lo no soportado se
         informa. Selección de columnas y cambio de tipos son transformaciones (R2).
       </p>

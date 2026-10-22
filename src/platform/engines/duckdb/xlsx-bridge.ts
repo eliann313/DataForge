@@ -2,6 +2,8 @@
 // se crea un puente por archivo y se libera al terminar.
 "use client";
 
+import { checkInputFile, problemLabel } from "./csv";
+
 export interface SheetInfo {
   name: string;
   rows: number;
@@ -28,6 +30,8 @@ export class XLSXBridge {
   /** Envía el archivo al Worker y devuelve hojas tabulares detectadas. */
   async list(file: File): Promise<SheetInfo[]> {
     this.dispose();
+    const check = checkInputFile(file.name, file.size);
+    if (!check.ok) throw new Error(problemLabel(check.problem!, file.name));
     const worker = new Worker(
       new URL("../../workers/xlsx.worker.ts", import.meta.url),
     );

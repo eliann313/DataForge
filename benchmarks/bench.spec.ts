@@ -88,7 +88,7 @@ test("benchmarks tabulares + evidencia de corte de límite", async ({
     software: {
       navegador: `Chromium ${browserVersion}`,
       duckdbWasm: "1.33.1-dev57.0 (sabor eh, bundle local)",
-      xlsx: "0.18.5",
+      xlsxParser: "read-excel-file 9.3.12 (el harness no mide XLSX)",
       next: "16.4.0",
       node: process.version,
     },

@@ -555,7 +555,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         code: "query-failed",
         message: check.ok
           ? "Tipo no soportado: se esperaba un .csv."
-          : problemLabel(check.problem!),
+          : problemLabel(check.problem!, file.name),
       } satisfies EngineError;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -617,7 +617,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         code: "query-failed",
         message: check.ok
           ? "Tipo no soportado en este spike: JSON tabular (.json)."
-          : problemLabel(check.problem!),
+          : problemLabel(check.problem!, file.name),
       } satisfies EngineError;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -648,7 +648,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         code: "query-failed",
         message: check.ok
           ? "Tipo no soportado en este spike: Parquet (.parquet)."
-          : problemLabel(check.problem!),
+          : problemLabel(check.problem!, file.name),
       } satisfies EngineError;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());

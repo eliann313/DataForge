@@ -123,3 +123,10 @@ Este ADR sigue **Propuesto** hasta 0B/0C; no se afirma la convivencia con Python
 
 - [DuckDB-Wasm: extensiones](https://duckdb.org/docs/current/clients/wasm/extensions)
 - [Pyodide: paquetes incorporados](https://pyodide.org/en/stable/usage/packages-in-pyodide.html)
+
+
+## Actualización de seguridad del parser XLSX (2026-10-21)
+
+Se reemplazó `xlsx@0.18.5` por `read-excel-file@9.3.12` en la ruta B. La versión anterior tenía vulnerabilidades de prototype pollution y ReDoS al leer archivos preparados, y npm no publica una versión corregida de SheetJS CE. El parser nuevo mantiene la lectura dentro del Worker y consume valores almacenados sin ejecutar fórmulas. Esta actualización no vuelve a medir los tiempos históricos de 0A: el benchmark de XLSX debe repetirse antes de atribuir rendimiento al parser nuevo.
+
+Antes de asignar memoria al archivo se rechaza cualquier XLSX mayor a 10 MiB comprimidos. El Worker revisa el directorio central ZIP antes del parseo: rechaza archivos ZIP malformados, ZIP64, volúmenes múltiples, más de 4096 entradas o más de 64 MiB de tamaño descomprimido declarado. El límite de tamaño declarado reduce el riesgo de ZIP bomb; no reemplaza las futuras pruebas de archivos hostiles previstas para fase 11.

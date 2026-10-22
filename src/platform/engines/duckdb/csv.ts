@@ -2,7 +2,8 @@
 // se prueban en Node con Vitest.
 
 export const MAX_CSV_BYTES = 20 * 1024 * 1024; // Límite inicial orientativo (README/R1).
-export const MAX_XLSX_BYTES = 10 * 1024 * 1024; // Ídem XLSX (comprimido; la expansión se informa).
+export const MAX_XLSX_BYTES = 10 * 1024 * 1024; // Límite de entrada XLSX comprimida.
+export const MAX_XLSX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024; // Límite preventivo de expansión ZIP.
 export const MAX_PAGE_SIZE = 100;
 export const DEFAULT_PAGE_SIZE = 20;
 
@@ -36,12 +37,14 @@ export function checkInputFile(name: string, bytes: number): FileCheck {
   return { ok: true };
 }
 
-export function problemLabel(problem: FileProblem): string {
+export function problemLabel(problem: FileProblem, name?: string): string {
   switch (problem) {
     case "empty":
       return "El archivo está vacío.";
     case "too-large":
-      return `Supera el límite orientativo de ${MAX_CSV_BYTES / (1024 * 1024)} MB por archivo.`;
+      const lower = name?.toLowerCase() ?? "";
+      const limit = lower.endsWith(".xlsx") ? MAX_XLSX_BYTES : MAX_CSV_BYTES;
+      return `Supera el límite orientativo de ${limit / (1024 * 1024)} MB por archivo.`;
     case "unsupported-type":
       return "Tipo no soportado: solo .csv, .xlsx, .json tabular y .parquet.";
   }

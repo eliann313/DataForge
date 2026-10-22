@@ -151,11 +151,11 @@ La aplicación usa **Next.js con exportación estática**, decisión aceptada al
 |---|---|
 | Dataset moderado | ~100.000 filas, según ancho, tipos y navegador |
 | CSV / Parquet | Límite inicial orientativo de 20 MB por archivo |
-| Excel XLSX | Límite inicial orientativo de 10 MB por archivo |
+| Excel XLSX | 10 MB comprimidos y 64 MiB de expansión máxima declarada |
 | Estrés posterior | Hasta 500.000 filas / 100 MB en escenarios adecuados |
 | Rendimiento | Workers, lazy loading, paginación, virtualización y agregación |
 
-Estos números son hipótesis que requieren benchmarks; el protocolo de medición y los umbrales provisionales están en el [ADR-0002](docs/adr/0002-motores-analiticos-y-criterios-de-corte.md). **Paginación de tabla no equivale a ingesta por lotes.** Excel comprimido puede expandirse mucho más en memoria.
+Estos números son hipótesis que requieren benchmarks; el protocolo de medición y los umbrales provisionales están en el [ADR-0002](docs/adr/0002-motores-analiticos-y-criterios-de-corte.md). **Paginación de tabla no equivale a ingesta por lotes.** La importación XLSX rechaza archivos que declaren más de 64 MiB de expansión antes de descomprimirlos.
 
 ## Roadmap resumido
 
