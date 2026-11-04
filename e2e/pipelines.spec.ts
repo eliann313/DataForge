@@ -1,5 +1,8 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { DateDay, Decimal, Int32, makeData, makeVector, Table as ArrowTable, tableToIPC, TimestampNanosecond } from "apache-arrow";
+import { Table as ParquetTable, writeParquet } from "parquet-wasm/node";
 
 test("guarda una definición en el proyecto y la recupera al recargar", async ({ page }) => {
   const project = `Pipelines-${Date.now()}`;
@@ -36,6 +39,22 @@ test("guarda una definición en el proyecto y la recupera al recargar", async ({
   await expect(page.locator("main").getByRole("status")).toContainText(/validada contra el esquema actual/i);
   await page.getByRole("button", { name: /vista previa/i }).click();
   await expect(page.locator('section[aria-labelledby="pipeline-vista-previa"]').getByText(/2 de 3 filas/)).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
+  const versions = page.locator('section[aria-labelledby="pipeline-versiones"]');
+  await expect(versions.getByText(/Preparación · versión 1 \(activa\)/)).toBeVisible();
+  await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
+  await expect(versions.getByText(/Preparación · versión 2 \(activa\)/)).toBeVisible();
+  await page.getByRole("button", { name: "Quitar paso" }).click();
+  await page.getByRole("button", { name: "Agregar filtro" }).click();
+  await page.getByRole("button", { name: /^vista previa$/i }).click();
+  await expect(page.locator('section[aria-labelledby="pipeline-vista-previa"]').getByText(/3 de 3 filas/)).toBeVisible();
+  await versions.getByRole("row", { name: /Preparación · versión 1/ }).getByRole("button", { name: "Cargar pasos" }).click();
+  await expect(page.getByText("Se cargó una copia de los pasos ejecutados y su versión de origen.")).toBeVisible();
+  await page.getByRole("button", { name: "Agregar filtro" }).click();
+  await page.getByRole("button", { name: /^vista previa$/i }).click();
+  await expect(page.locator('section[aria-labelledby="pipeline-vista-previa"]').getByText(/2 de 3 filas/)).toBeVisible();
+  await versions.locator("tbody tr").first().getByRole("button", { name: /usar versión/i }).click();
+  await expect(versions.getByText("duplicadas.csv (activa)")).toBeVisible();
 });
 
 test("crea una versión derivada sin alterar la fuente y permite activarla otra vez", async ({ page }) => {
@@ -52,11 +71,25 @@ test("crea una versión derivada sin alterar la fuente y permite activarla otra 
   await page.getByRole("button", { name: /vista previa/i }).click();
   const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
   await expect(preview.getByText(/2 de 3 filas/)).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByText("Grupos de filas completas duplicadas: 1 → 0")).toBeVisible();
+  await expect(preview.getByText("Filas con algún nulo: 0 → 0")).toBeVisible();
+  await expect(preview.getByText("Filas completas que salen: 1 · que entran: 0")).toBeVisible();
 
   await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
   const versions = page.locator('section[aria-labelledby="pipeline-versiones"]');
   await expect(versions.getByText(/Preparación · versión 1 \(activa\)/)).toBeVisible({ timeout: 30_000 });
+  await page.getByLabel("Primera versión para comparar").selectOption({ label: "duplicadas.csv" });
+  await page.getByLabel("Segunda versión para comparar").selectOption({ label: "Preparación · versión 1" });
+  await page.getByRole("button", { name: "Comparar versiones", exact: true }).click();
+  const comparison = page.getByRole("table", { name: "Comparación de versiones" });
+  await expect(comparison.getByRole("row", { name: /^Filas / }).locator("td").nth(0)).toHaveText("3");
+  await expect(comparison.getByRole("row", { name: /^Filas / }).locator("td").nth(1)).toHaveText("2");
+  await expect(comparison.getByRole("row", { name: /Grupos de filas completas duplicadas/ }).locator("td").nth(1)).toHaveText("0");
+  await expect(page.getByText("Copias de filas excedentes en la primera: 1 · en la segunda: 0")).toBeVisible();
 
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await expect(page.getByLabel("Rol semántico de id")).toHaveValue("identificador");
+  await page.getByLabel("Rol semántico de id").selectOption("medida");
   await page.getByRole("button", { name: /^análisis$/i }).click();
   const analysis = page.locator("main");
   await analysis.getByLabel(/columna numérica/i).selectOption("id");
@@ -68,6 +101,9 @@ test("crea una versión derivada sin alterar la fuente y permite activarla otra 
   await source.getByRole("button", { name: /usar versión/i }).click();
   await expect(versions.getByText("duplicadas.csv (activa)")).toBeVisible();
 
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await expect(page.getByLabel("Rol semántico de id")).toHaveValue("identificador");
+  await page.getByLabel("Rol semántico de id").selectOption("medida");
   await page.getByRole("button", { name: /^análisis$/i }).click();
   await analysis.getByLabel(/columna numérica/i).selectOption("id");
   await analysis.getByRole("button", { name: /^calcular$/i }).first().click();
@@ -85,6 +121,88 @@ test("crea una versión derivada sin alterar la fuente y permite activarla otra 
   const preservedSource = replacementVersions.getByRole("row").nth(1);
   await preservedSource.getByRole("button", { name: /usar versión/i }).click();
   await expect(replacementVersions.getByText("duplicadas.csv (activa)")).toBeVisible();
+});
+
+test("calcula una columna numérica y muestra el resultado antes de crear la versión", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles(path.resolve("public/demo-data/numeros.csv"));
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("numeros.csv: 5 filas, 3 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /calcular columna/i }).click();
+  await expect(page.getByLabel("Nombre del resultado 1")).toHaveValue("id_calculado");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByRole("columnheader", { name: "id_calculado" })).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByText("La comparación de filas completas requiere el mismo esquema antes y después.")).toBeVisible();
+  await expect(preview.getByRole("row").nth(1)).toContainText(/151\.5/);
+  await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
+  await expect(page.locator('section[aria-labelledby="pipeline-versiones"]').getByText(/Preparación · versión 1 \(activa\)/)).toBeVisible({ timeout: 30_000 });
+});
+
+test("agrupa por categoría y calcula conteos y sumas", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles(path.resolve("public/demo-data/numeros.csv"));
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("numeros.csv: 5 filas, 3 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /agrupar y agregar/i }).click();
+  await page.getByLabel("Agrupar por categoria").check();
+  await page.getByRole("button", { name: /agregar agregación/i }).click();
+  await page.getByLabel("Operación de agregación 2").selectOption("sum");
+  await page.getByLabel("Columna de agregación 2").selectOption("importe");
+  await page.getByLabel("Nombre de agregación 2").fill("importe_suma");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByRole("row")).toHaveCount(4, { timeout: 30_000 });
+  await expect(preview.getByRole("row").filter({ hasText: "alimentos" })).toContainText("2");
+  await expect(preview.getByRole("row").filter({ hasText: "alimentos" })).toContainText("200.75");
+  await expect(preview.getByRole("row").filter({ hasText: "transporte" })).toContainText("275");
+});
+
+test("exporta CSV seguro y Parquet sin reemplazar la versión activa", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "formula.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("=grupo,valor\n=1+1,2\nnormal,3\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("formula.csv: 2 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+
+  const versions = page.locator('section[aria-labelledby="pipeline-versiones"]');
+  const source = versions.getByRole("row").filter({ hasText: "formula.csv" });
+  const csvDownloadPromise = page.waitForEvent("download");
+  await source.getByRole("button", { name: "Exportar formula.csv a CSV" }).click();
+  const csvDownload = await csvDownloadPromise;
+  expect(csvDownload.suggestedFilename()).toBe("formula.csv");
+  const csvBytes = await readFile(await csvDownload.path());
+  expect(csvBytes.toString("utf8")).toContain('"\'=grupo"');
+  expect(csvBytes.toString("utf8")).toContain("'=1+1");
+
+  const parquetDownloadPromise = page.waitForEvent("download");
+  await source.getByRole("button", { name: "Exportar formula.csv a Parquet" }).click();
+  const parquetDownload = await parquetDownloadPromise;
+  expect(parquetDownload.suggestedFilename()).toBe("formula.parquet");
+  const parquetBytes = await readFile(await parquetDownload.path());
+  expect(parquetBytes.toString("ascii", 0, 4)).toBe("PAR1");
+
+  await expect(source.getByRole("cell").nth(1)).toHaveText("2");
+  await expect(source).toContainText("(activa)");
 });
 
 test("mantiene varias fuentes por proyecto y aísla el proyecto activo", async ({ page }) => {
@@ -167,6 +285,109 @@ test("APPEND mapea esquemas diferentes y conserva filas repetidas con UNION ALL"
   await page.getByRole("button", { name: /^transformaciones$/i }).click();
   await expect(versions.getByRole("row")).toHaveCount(2);
   await expect(versions.getByText(/Anexar fuentes · APPEND/)).toHaveCount(0);
+});
+
+test("APPEND conserva la precisión de timestamps en nanosegundos", async ({ page }) => {
+  const parquet = (nanoseconds: string) => {
+    const vector = makeVector(makeData({ type: new TimestampNanosecond(), data: new BigInt64Array([BigInt(nanoseconds)]) }));
+    return Buffer.from(writeParquet(ParquetTable.fromIPCStream(tableToIPC(new ArrowTable({ fecha: vector }), "stream"))));
+  };
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  for (const [name, value] of [["periodo-a.parquet", "1577836800123456789"], ["periodo-b.parquet", "1577836800987654321"]]) {
+    await page.locator("#csv-file").setInputFiles({ name, mimeType: "application/octet-stream", buffer: parquet(value) });
+    await page.getByRole("button", { name: /importar archivo/i }).click();
+    await expect(page.getByText(`${name}: 1 filas, 1 columnas`)).toBeVisible({ timeout: 30_000 });
+  }
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  const combinations = page.locator('section[aria-labelledby="combinaciones-datasets"]');
+  await combinations.getByLabel("Fuente izquierda").selectOption({ label: "periodo-a.parquet · 1 filas" });
+  await combinations.getByLabel("Fuente derecha").selectOption({ label: "periodo-b.parquet · 1 filas" });
+  await combinations.getByRole("button", { name: /vista previa append/i }).click();
+  await expect(combinations.getByText(/resultado: 2/)).toBeVisible({ timeout: 30_000 });
+  await combinations.getByRole("button", { name: /crear versión append/i }).click();
+  await expect(page.locator('section[aria-labelledby="pipeline-versiones"]').getByText(/Anexar fuentes · APPEND/)).toBeVisible();
+  await page.getByRole("button", { name: /convertir tipo/i }).click();
+  await page.getByLabel("Tipo de destino 1").selectOption("VARCHAR");
+  await page.getByRole("button", { name: /^vista previa$/i }).click();
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByRole("cell", { name: "2020-01-01 00:00:00.123456789" })).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByRole("cell", { name: "2020-01-01 00:00:00.987654321" })).toBeVisible();
+});
+
+test("compara períodos inclusivos, medidas exactas y cambios por clave", async ({ page }) => {
+  const dates = ["2024-01-01", "2024-01-31", "2024-02-01", "2024-02-29"].map((date) => Date.parse(`${date}T00:00:00Z`) / 86_400_000);
+  const words = new Uint32Array(16);
+  [10025, 10025, 11025, 2500].forEach((value, index) => { words[index * 4] = value; });
+  const table = new ArrowTable({
+    fecha: makeVector(makeData({ type: new DateDay(), data: new Int32Array(dates) })),
+    id: makeVector(makeData({ type: new Int32(), data: new Int32Array([1, 2, 1, 3]) })),
+    importe: makeVector(makeData({ type: new Decimal(2, 10, 128), data: words })),
+  });
+  const bytes = writeParquet(ParquetTable.fromIPCStream(tableToIPC(table, "stream")));
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({ name: "periodos.parquet", mimeType: "application/octet-stream", buffer: Buffer.from(bytes) });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("periodos.parquet: 4 filas, 3 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByLabel("Primera versión para comparar").selectOption({ label: "periodos.parquet" });
+  await page.getByLabel("Segunda versión para comparar").selectOption({ label: "periodos.parquet" });
+  await page.getByLabel("Columna de fecha para períodos").selectOption("fecha");
+  await page.getByLabel("Medida para períodos").selectOption("importe");
+  await page.getByLabel("Primer período desde").fill("2024-01-01");
+  await page.getByLabel("Primer período hasta").fill("2024-01-31");
+  await page.getByLabel("Segundo período desde").fill("2024-02-01");
+  await page.getByLabel("Segundo período hasta").fill("2024-02-29");
+  await page.getByLabel("Clave para comparar períodos").selectOption("id");
+  await page.getByLabel(/Confirmo que todos los valores/).check();
+  await page.getByRole("button", { name: "Comparar períodos", exact: true }).click();
+  const results = page.getByRole("table", { name: "Resultados por período" });
+  await expect(results.getByRole("row", { name: /Suma exacta/ }).locator("td").nth(0)).toHaveText("200.50", { timeout: 30_000 });
+  await expect(results.getByRole("row", { name: /Suma exacta/ }).locator("td").nth(1)).toHaveText("135.25");
+  await expect(results.getByRole("row", { name: /Media aproximada/ }).locator("td").nth(1)).toHaveText("67.625");
+  await expect(page.getByText("Claves agregadas: 1 · eliminadas: 1 · modificadas: 1 · sin cambios: 0")).toBeVisible();
+  await page.getByLabel("Clave para comparar períodos").selectOption("importe");
+  await page.getByRole("button", { name: "Comparar períodos", exact: true }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText("La clave debe ser única y no nula", { timeout: 30_000 });
+  await expect(page.getByRole("table", { name: "Resultados por período" })).toHaveCount(0);
+  await page.getByLabel("Primer período desde").fill("2024-02-01");
+  await page.getByRole("button", { name: "Comparar períodos", exact: true }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText("Ingrese períodos válidos", { timeout: 30_000 });
+  await page.getByLabel("Primer período desde").fill("2023-01-01");
+  await page.getByLabel("Primer período hasta").fill("2023-01-31");
+  await page.getByLabel("Clave para comparar períodos").selectOption("id");
+  await page.getByRole("button", { name: "Comparar períodos", exact: true }).click();
+  await expect(results.getByRole("row", { name: /Suma exacta/ }).locator("td").nth(0)).toHaveText("Sin valores", { timeout: 30_000 });
+  await expect(page.getByText("Claves agregadas: 2 · eliminadas: 0 · modificadas: 0 · sin cambios: 0")).toBeVisible();
+});
+
+test("rechaza claves nulas al comparar períodos", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({ name: "sin-clave.csv", mimeType: "text/csv", buffer: Buffer.from("id,fecha,importe\n,2024-01-01,10\n1,2024-02-01,20\n") });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("sin-clave.csv: 2 filas, 3 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByLabel("Primera versión para comparar").selectOption({ label: "sin-clave.csv" });
+  await page.getByLabel("Segunda versión para comparar").selectOption({ label: "sin-clave.csv" });
+  await page.getByLabel("Columna de fecha para períodos").selectOption("fecha");
+  await page.getByLabel("Medida para períodos").selectOption("importe");
+  await page.getByLabel("Primer período desde").fill("2024-01-01");
+  await page.getByLabel("Primer período hasta").fill("2024-01-31");
+  await page.getByLabel("Segundo período desde").fill("2024-02-01");
+  await page.getByLabel("Segundo período hasta").fill("2024-02-29");
+  await page.getByLabel("Clave para comparar períodos").selectOption("id");
+  await page.getByLabel(/Confirmo que todos los valores/).check();
+  await page.getByRole("button", { name: "Comparar períodos", exact: true }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText("La clave debe ser única y no nula", { timeout: 30_000 });
+  await expect(page.getByRole("table", { name: "Resultados por período" })).toHaveCount(0);
 });
 
 test("JOIN exige cardinalidad, muestra fanout y bloquea su creación hasta confirmarlo", async ({ page }) => {
@@ -335,6 +556,11 @@ test("reemplaza nulos con un valor validado según el tipo numérico", async ({ 
   const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
   await expect(preview.getByText(/2 de 2 filas/)).toBeVisible({ timeout: 30_000 });
   await expect(preview.getByRole("row").nth(2).getByRole("cell")).toHaveText(["2", "0"]);
+  await expect(preview.getByText("Filas con algún nulo: 1 → 0")).toBeVisible();
+  await page.getByLabel("Valor de reemplazo 1").fill("0.5");
+  await page.getByRole("button", { name: /^vista previa$/i }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText(/sin pérdida/);
+  await expect(page.locator('section[aria-labelledby="pipeline-vista-previa"]')).toHaveCount(0);
 });
 
 test("normaliza espacios, mayúsculas y texto vacío en una versión derivada", async ({ page }) => {

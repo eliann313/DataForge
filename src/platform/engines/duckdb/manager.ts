@@ -16,6 +16,7 @@ import type {
   ResultRow,
 } from "./contract";
 import { escapeIdentifier } from "./contract";
+import { isNumericMeasure, ROLES, suggestRole, type SemanticRole } from "./semantics";
 import {
   MAX_CSV_BYTES,
   checkCSVFile,
@@ -32,8 +33,15 @@ import {
   type PipelineColumn,
   type PipelineDefinition,
   type PipelineDateFormat,
+  type DatasetExport,
+  type DatasetExportFormat,
   type PipelineExecutionPort,
   type PipelinePreview,
+  type PipelineQuality,
+  type PipelineRowDifferences,
+  type PipelineVersionComparison,
+  type PeriodComparisonRequest,
+  type PeriodComparisonResult,
   type PipelineStep,
   type PipelineTargetType,
   type PipelineVersion,
@@ -48,6 +56,23 @@ import {
   type DatasetSource,
   type JoinDefinition,
 } from "../../../modules/datasets";
+
+type ParquetRuntime = typeof import("parquet-wasm/esm");
+let parquetRuntimePromise: Promise<ParquetRuntime> | null = null;
+
+function loadParquetRuntime(): Promise<ParquetRuntime> {
+  if (!parquetRuntimePromise) {
+    const pending = import("parquet-wasm/esm").then(async (runtime) => {
+      await runtime.default(new URL("/vendor/parquet/parquet_wasm_bg.wasm", window.location.origin));
+      return runtime;
+    });
+    parquetRuntimePromise = pending;
+    void pending.catch(() => {
+      if (parquetRuntimePromise === pending) parquetRuntimePromise = null;
+    });
+  }
+  return parquetRuntimePromise;
+}
 
 interface DuckDBBundle {
   mainModule?: string;
@@ -83,6 +108,7 @@ function toPublicPipelineVersion(version: StoredPipelineVersion): PipelineVersio
     parentIds: [...version.parentIds],
     operationType: version.operationType,
     pipelineId: version.pipelineId,
+    executedDefinition: version.executedDefinition ? JSON.parse(JSON.stringify(version.executedDefinition)) as PipelineDefinition : undefined,
     rowCount: version.rowCount,
     columns: version.columns.map((column) => ({ ...column })),
     stepCount: version.stepCount,
@@ -165,6 +191,11 @@ export interface FrequencyTable {
 export interface GroupedRow {
   x: unknown;
   y: number | null;
+}
+
+export interface GroupedResult {
+  rows: GroupedRow[];
+  truncated: boolean;
 }
 
 export interface Histogram {
@@ -402,7 +433,9 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   private activeVersionByProject = new Map<string | null, string>();
   private datasetSequence = 0;
   private versionSequence = 0;
+  private exportSequence = 0;
   private versions: StoredPipelineVersion[] = [];
+  private semanticRolesByVersion = new Map<string, Record<string, SemanticRole>>();
 
   /** Suscripción a cambios de estado (paneles sincronizados). */
   onChange(listener: () => void): () => void {
@@ -485,6 +518,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
     const conn = await db.connect();
     this.conn = conn;
+    await conn.query(`SET custom_extension_repository = ${escapeStringLiteral(`${window.location.origin}/vendor/duckdb-extensions`)}`);
     this.lastPing = await this.runPing(conn);
   }
 
@@ -549,6 +583,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     opts?: { delimiter?: "auto" | "," | ";"; header?: boolean; projectId?: string | null },
   ): Promise<ImportSummary> {
     this.requireConn();
+    const projectId = this.resolveProjectId(opts?.projectId);
     const check = checkCSVFile(file.name, file.size);
     if (!check.ok || !file.name.toLowerCase().endsWith(".csv")) {
       throw {
@@ -571,7 +606,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       bytes,
       REGISTER_NAME,
       `SELECT * FROM read_csv(${escapeStringLiteral(REGISTER_NAME)}, ${options})`,
-      this.resolveProjectId(opts?.projectId),
+      projectId,
     );
   }
 
@@ -611,6 +646,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
    */
   async importJSON(file: File, opts?: { projectId?: string | null }): Promise<ImportSummary> {
     this.requireConn();
+    const projectId = this.resolveProjectId(opts?.projectId);
     const check = checkInputFile(file.name, file.size);
     if (!check.ok || !file.name.toLowerCase().endsWith(".json")) {
       throw {
@@ -635,13 +671,14 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       bytes,
       "df_upload.json",
       `SELECT * FROM read_json(${escapeStringLiteral("df_upload.json")}, format = 'array')`,
-      this.resolveProjectId(opts?.projectId),
+      projectId,
     );
   }
 
   /** Importa Parquet vía lectura nativa de DuckDB. */
   async importParquet(file: File, opts?: { projectId?: string | null }): Promise<ImportSummary> {
     this.requireConn();
+    const projectId = this.resolveProjectId(opts?.projectId);
     const check = checkInputFile(file.name, file.size);
     if (!check.ok || !file.name.toLowerCase().endsWith(".parquet")) {
       throw {
@@ -658,7 +695,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       bytes,
       "df_upload.parquet",
       `SELECT * FROM read_parquet(${escapeStringLiteral("df_upload.parquet")})`,
-      this.resolveProjectId(opts?.projectId),
+      projectId,
     );
   }
 
@@ -764,8 +801,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         fileBytes: size,
         importDurationMs: durationMs,
       });
-      this.currentProjectId = projectId;
-      this.activeTable = tableName;
+      if (this.currentProjectId === projectId) this.activeTable = tableName;
       this.activeVersionByProject.set(projectId, sourceId);
       this.emit();
       return {
@@ -880,6 +916,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       throw new Error(`No se pudo quitar la fuente «${source.name}»: ${messageOf(cause)}`);
     }
 
+    for (const version of related) this.semanticRolesByVersion.delete(version.id);
     this.versions = this.versions.filter((version) => !version.sourceIds.includes(sourceId));
     const activeWasRemoved = related.some((version) => version.tableName === this.activeTable);
     if (activeWasRemoved) {
@@ -924,9 +961,201 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     return this.versions.find((version) => version.tableName === this.activeTable)?.id ?? null;
   }
 
+  getSemanticRoles(): Record<string, SemanticRole> {
+    const version = this.versions.find((item) => item.tableName === this.activeTable && item.projectId === this.currentProjectId);
+    if (!version) return {};
+    return this.getVersionSemanticRoles(version.id);
+  }
+
+  getVersionSemanticRoles(versionId: string): Record<string, SemanticRole> {
+    const version = this.versions.find((item) => item.id === versionId && item.projectId === this.currentProjectId);
+    if (!version) return {};
+    const overrides = this.semanticRolesByVersion.get(version.id) ?? {};
+    return Object.fromEntries(version.columns.map((column) => [column.name, Object.hasOwn(overrides, column.name) ? overrides[column.name] : suggestRole(column.type, column.name)]));
+  }
+
+  setSemanticRole(columnName: string, role: SemanticRole): void {
+    const version = this.versions.find((item) => item.tableName === this.activeTable && item.projectId === this.currentProjectId);
+    if (!version || !version.columns.some((column) => column.name === columnName)) throw new Error("La columna no existe en la versión activa.");
+    if (!ROLES.includes(role)) throw new Error("El rol semántico no es válido.");
+    this.semanticRolesByVersion.set(version.id, { ...this.semanticRolesByVersion.get(version.id), [columnName]: role });
+    this.emit();
+  }
+
+  private requireNumericMeasure(columnName: string): void {
+    const version = this.versions.find((item) => item.tableName === this.activeTable && item.projectId === this.currentProjectId);
+    const column = version?.columns.find((item) => item.name === columnName);
+    if (!column || !isNumericMeasure(column, this.getSemanticRoles())) {
+      throw new Error(`«${columnName}» no es una medida numérica de la versión activa. Cambie su rol en Datos si corresponde.`);
+    }
+  }
+
   async getVersionColumns(versionId: string): Promise<PipelineColumn[]> {
     const version = this.requireVersion(versionId);
     return this.readSchema(this.requireConn(), version.tableName);
+  }
+
+  async exportDatasetVersion(
+    versionId: string,
+    format: DatasetExportFormat,
+  ): Promise<DatasetExport> {
+    const conn = this.requireConn();
+    const db = this.db;
+    if (!db) throw new Error("El motor no está listo para exportar.");
+    if (format !== "csv" && format !== "parquet") throw new Error("El formato de exportación no es válido.");
+    const version = this.requireVersion(versionId);
+    const fileName = `df_export_${++this.exportSequence}.csv`;
+    const destination = escapeStringLiteral(fileName);
+
+    let exportStage = "ejecutar COPY";
+    try {
+      let bytes: Uint8Array;
+      if (format === "csv") {
+        const select = buildCsvExportQuery(version.tableName, version.columns);
+        await conn.query(`COPY (${select}) TO ${destination} (FORMAT CSV, HEADER FALSE, DELIMITER ',', QUOTE '"', ESCAPE '"')`);
+        exportStage = "leer el archivo temporal";
+        const body = await db.copyFileToBuffer(fileName);
+        const header = new TextEncoder().encode(buildCsvExportHeader(version.columns));
+        bytes = new Uint8Array(header.length + body.length);
+        bytes.set(header);
+        bytes.set(body, header.length);
+      } else {
+        exportStage = "consultar la versión";
+        const result = await conn.query(`SELECT * FROM ${escapeIdentifier(version.tableName)}`);
+        exportStage = "preparar el formato Arrow";
+        const [{ tableToIPC }, parquet] = await Promise.all([
+          import("apache-arrow"),
+          loadParquetRuntime(),
+        ]);
+        const arrowBytes = tableToIPC(result, "stream");
+        exportStage = "escribir el archivo Parquet";
+        const table = parquet.Table.fromIPCStream(arrowBytes);
+        const properties = new parquet.WriterPropertiesBuilder()
+          .setCompression(parquet.Compression.ZSTD)
+          .build();
+        bytes = parquet.writeParquet(table, properties);
+      }
+      if (bytes.byteLength === 0) throw new Error("DuckDB devolvió un archivo vacío.");
+      const safeName = version.name.replace(/\.[^.]+$/, "").normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("en-US")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60) || "dataforge";
+      return {
+        fileName: `${safeName}.${format}`,
+        mediaType: format === "csv" ? "text/csv;charset=utf-8" : "application/vnd.apache.parquet",
+        bytes,
+      };
+    } catch (cause) {
+      throw new Error(`Falló la exportación ${format.toUpperCase()} al ${exportStage}: ${messageOf(cause)}`);
+    } finally {
+      if (format === "csv") await db.dropFile(fileName).catch(() => undefined);
+    }
+  }
+
+  private async readPipelineQuality(conn: AsyncDuckDBConnection, source: string, columns: readonly PipelineColumn[]): Promise<PipelineQuality> {
+    const hasNull = columns.map((column) => `${escapeIdentifier(column.name)} IS NULL`).join(" OR ") || "FALSE";
+    const result = await conn.query(`WITH df_quality AS (${source}) SELECT (SELECT COUNT(*) FROM df_quality WHERE ${hasNull}) AS null_rows, (SELECT COUNT(*) FROM (SELECT * FROM df_quality GROUP BY ALL HAVING COUNT(*) > 1)) AS duplicate_groups`);
+    const row = toJSONRows(result)[0] as Record<string, unknown> | undefined;
+    const rowsWithNull = Number(row?.null_rows);
+    const duplicateGroups = Number(row?.duplicate_groups);
+    if (!Number.isSafeInteger(rowsWithNull) || rowsWithNull < 0 || !Number.isSafeInteger(duplicateGroups) || duplicateGroups < 0) {
+      throw new Error("No se pudo calcular la calidad de la vista previa.");
+    }
+    return { rowsWithNull, duplicateGroups };
+  }
+
+  private async readRowDifferences(conn: AsyncDuckDBConnection, left: string, leftColumns: readonly PipelineColumn[], right: string, rightColumns: readonly PipelineColumn[]): Promise<PipelineRowDifferences | null> {
+    if (leftColumns.length !== rightColumns.length || leftColumns.some((column, index) => column.name !== rightColumns[index].name || column.type !== rightColumns[index].type)) return null;
+    const result = await conn.query(`WITH df_left AS (${left}), df_right AS (${right}) SELECT (SELECT COUNT(*) FROM (SELECT * FROM df_left EXCEPT ALL SELECT * FROM df_right)) AS removed, (SELECT COUNT(*) FROM (SELECT * FROM df_right EXCEPT ALL SELECT * FROM df_left)) AS added`);
+    const row = toJSONRows(result)[0] as Record<string, unknown> | undefined;
+    const removed = Number(row?.removed);
+    const added = Number(row?.added);
+    if (!Number.isSafeInteger(removed) || removed < 0 || !Number.isSafeInteger(added) || added < 0) throw new Error("No se pudieron comparar las filas completas.");
+    return { removed, added };
+  }
+
+  async compareVersions(leftId: string, rightId: string): Promise<PipelineVersionComparison> {
+    const conn = this.requireConn();
+    const left = this.requireVersion(leftId);
+    const right = this.requireVersion(rightId);
+    const leftQuery = `SELECT * FROM ${escapeIdentifier(left.tableName)}`;
+    const rightQuery = `SELECT * FROM ${escapeIdentifier(right.tableName)}`;
+    const [leftQuality, rightQuality, rowDifferences] = await Promise.all([
+      this.readPipelineQuality(conn, leftQuery, left.columns),
+      this.readPipelineQuality(conn, rightQuery, right.columns),
+      this.readRowDifferences(conn, leftQuery, left.columns, rightQuery, right.columns),
+    ]);
+    return { left: { rowCount: left.rowCount, quality: leftQuality }, right: { rowCount: right.rowCount, quality: rightQuality }, rowDifferences };
+  }
+
+  async comparePeriods(request: PeriodComparisonRequest): Promise<PeriodComparisonResult> {
+    const conn = this.requireConn();
+    const left = this.requireVersion(request.leftVersionId);
+    const right = this.requireVersion(request.rightVersionId);
+    if (request.sameUnitsConfirmed !== true) throw new Error("Confirme que los valores de ambos períodos usan la misma unidad y moneda.");
+    const validDate = (value: string) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith("0000")) return false;
+      const parsed = new Date(`${value}T00:00:00Z`);
+      return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    };
+    if (![request.leftFrom, request.leftTo, request.rightFrom, request.rightTo].every(validDate) || request.leftFrom > request.leftTo || request.rightFrom > request.rightTo) {
+      throw new Error("Ingrese períodos válidos con fecha inicial anterior o igual a la final.");
+    }
+    const column = (version: StoredPipelineVersion, name: string) => version.columns.find((item) => item.name === name);
+    const leftDate = column(left, request.dateColumn);
+    const rightDate = column(right, request.dateColumn);
+    if (leftDate?.type.toUpperCase() !== "DATE" || rightDate?.type.toUpperCase() !== "DATE") throw new Error("Elija una columna DATE existente en ambas versiones.");
+    const leftMeasure = column(left, request.measureColumn);
+    const rightMeasure = column(right, request.measureColumn);
+    const leftType = leftMeasure && safeSqlType(leftMeasure.type);
+    const rightType = rightMeasure && safeSqlType(rightMeasure.type);
+    if (!leftType || leftType !== rightType || !/^(?:TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|UHUGEINT|DECIMAL\()/.test(leftType)) {
+      throw new Error("La medida debe tener el mismo tipo entero o decimal exacto en ambas versiones.");
+    }
+    if (this.getVersionSemanticRoles(left.id)[request.measureColumn] !== "medida" || this.getVersionSemanticRoles(right.id)[request.measureColumn] !== "medida") throw new Error("La columna debe tener rol de medida en ambas versiones.");
+    const date = escapeIdentifier(request.dateColumn);
+    const source = (version: StoredPipelineVersion, from: string, to: string) => `SELECT * FROM ${escapeIdentifier(version.tableName)} WHERE ${date} >= CAST(${escapeStringLiteral(from)} AS DATE) AND ${date} <= CAST(${escapeStringLiteral(to)} AS DATE)`;
+    const leftQuery = source(left, request.leftFrom, request.leftTo);
+    const rightQuery = source(right, request.rightFrom, request.rightTo);
+    const measure = escapeIdentifier(request.measureColumn);
+    const counts = (value: unknown) => {
+      const number = Number(value);
+      if (!Number.isSafeInteger(number) || number < 0) throw new Error("El conteo de la comparación no es válido.");
+      return number;
+    };
+    const metrics = async (query: string) => {
+      await this.assertExactMeasurePrecision(conn, `(${query}) AS df_precision`, request.measureColumn, false);
+      const table = await conn.query(`SELECT COUNT(*) AS rows, COUNT(${measure}) AS valid, CAST(SUM(${measure}) AS VARCHAR) AS sum_value, CAST(AVG(${measure}) AS VARCHAR) AS mean_value FROM (${query}) AS df_period`);
+      const row = toJSONRows(table)[0] as Record<string, unknown> | undefined;
+      if (!row) throw new Error("No se pudo calcular la comparación.");
+      const mean = row.mean_value === null ? null : String(row.mean_value);
+      if (mean !== null && !Number.isFinite(Number(mean))) throw new Error("La media excede el rango numérico disponible.");
+      return { rows: counts(row.rows), valid: counts(row.valid), sum: row.sum_value === null ? null : String(row.sum_value), mean };
+    };
+    let keyed: PeriodComparisonResult["keyed"] = null;
+    if (request.keyColumn) {
+      const leftKey = column(left, request.keyColumn);
+      const rightKey = column(right, request.keyColumn);
+      const keyType = leftKey && safeSqlType(leftKey.type);
+      if (!keyType || keyType !== (rightKey && safeSqlType(rightKey.type)) || /^(FLOAT|DOUBLE)/.test(keyType)) throw new Error("La clave debe existir en ambos períodos con el mismo tipo compatible.");
+      if (left.columns.length !== right.columns.length || left.columns.some((item, index) => item.name !== right.columns[index].name || item.type !== right.columns[index].type)) throw new Error("Comparar cambios por clave requiere esquemas idénticos.");
+      const key = escapeIdentifier(request.keyColumn);
+      const validateKey = async (query: string) => {
+        const result = await conn.query(`WITH df_period AS (${query}) SELECT (SELECT COUNT(*) FROM df_period WHERE ${key} IS NULL) AS missing, (SELECT COUNT(*) FROM (SELECT ${key} FROM df_period WHERE ${key} IS NOT NULL GROUP BY ${key} HAVING COUNT(*) > 1)) AS repeated`);
+        const row = toJSONRows(result)[0] as Record<string, unknown> | undefined;
+        if (!row || counts(row.missing) || counts(row.repeated)) throw new Error("La clave debe ser única y no nula dentro de cada período.");
+      };
+      await Promise.all([validateKey(leftQuery), validateKey(rightQuery)]);
+      const changed = left.columns.filter((item) => item.name !== request.keyColumn && item.name !== request.dateColumn).map((item) => `l.${escapeIdentifier(item.name)} IS DISTINCT FROM r.${escapeIdentifier(item.name)}`).join(" OR ") || "FALSE";
+      const result = await conn.query(`WITH df_left AS (${leftQuery}), df_right AS (${rightQuery}) SELECT COUNT(*) FILTER (WHERE l.${key} IS NULL) AS added, COUNT(*) FILTER (WHERE r.${key} IS NULL) AS removed, COUNT(*) FILTER (WHERE l.${key} IS NOT NULL AND r.${key} IS NOT NULL AND (${changed})) AS changed, COUNT(*) FILTER (WHERE l.${key} IS NOT NULL AND r.${key} IS NOT NULL AND NOT (${changed})) AS unchanged FROM df_left l FULL OUTER JOIN df_right r ON l.${key} = r.${key}`);
+      const row = toJSONRows(result)[0] as Record<string, unknown> | undefined;
+      if (!row) throw new Error("No se pudieron comparar las claves.");
+      keyed = { added: counts(row.added), removed: counts(row.removed), changed: counts(row.changed), unchanged: counts(row.unchanged) };
+    }
+    const [leftMetrics, rightMetrics] = await Promise.all([metrics(leftQuery), metrics(rightQuery)]);
+    return { left: leftMetrics, right: rightMetrics, keyed };
   }
 
   async previewPipeline(
@@ -945,9 +1174,12 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     await assertPipelineConversions(conn, base, { id: "preview", name: "Vista previa", steps });
     const query = buildPipelineQuery(base.tableName, base.columns, steps);
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
-    const [countTable, previewTable] = await Promise.all([
+    const [countTable, previewTable, inputQuality, outputQuality, rowDifferences] = await Promise.all([
       conn.query(`SELECT COUNT(*) AS n FROM (${query}) AS ${escapeIdentifier("df_preview_count")}`),
       conn.query(`SELECT * FROM (${query}) AS ${escapeIdentifier("df_preview_rows")} LIMIT ${safeLimit}`),
+      this.readPipelineQuality(conn, `SELECT * FROM ${escapeIdentifier(base.tableName)}`, base.columns),
+      this.readPipelineQuality(conn, query, validation.columns),
+      this.readRowDifferences(conn, `SELECT * FROM ${escapeIdentifier(base.tableName)}`, base.columns, query, validation.columns),
     ]);
     const countRow = toJSONRows(countTable)[0] as Record<string, unknown> | undefined;
     const outputRowCount = countRow ? Number(countRow.n) : NaN;
@@ -957,6 +1189,9 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     return {
       inputRowCount: base.rowCount,
       outputRowCount,
+      inputQuality,
+      outputQuality,
+      rowDifferences,
       columns: validation.columns,
       rows: toJSONRows(previewTable),
     };
@@ -968,7 +1203,8 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   ): Promise<PipelineVersion> {
     const conn = this.requireConn();
     const base = this.requireVersion(baseVersionId);
-    const validation = validatePipeline(base.columns, definition);
+    const executedDefinition = JSON.parse(JSON.stringify(definition)) as PipelineDefinition;
+    const validation = validatePipeline(base.columns, executedDefinition);
     if (!validation.valid) throw new Error(validation.error ?? "El pipeline no es válido.");
     const derivedCount = this.versions.filter(
       (version) => version.sourceIds.includes(base.sourceId) && version.isView,
@@ -979,9 +1215,9 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
 
     const sequence = ++this.versionSequence;
     const tableName = `df_pipeline_${sequence}`;
-    const query = buildPipelineQuery(base.tableName, base.columns, definition.steps);
+    const query = buildPipelineQuery(base.tableName, base.columns, executedDefinition.steps);
     try {
-      await assertPipelineConversions(conn, base, definition);
+      await assertPipelineConversions(conn, base, executedDefinition);
       await conn.query(`CREATE VIEW ${escapeIdentifier(tableName)} AS ${query}`);
       const [rowCount, columns] = await Promise.all([
         this.readCount(conn, tableName),
@@ -992,20 +1228,21 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         sourceId: base.sourceId,
         sourceIds: [...base.sourceIds],
         projectId: base.projectId,
-        name: `${definition.name.trim()} · versión ${derivedCount + 1}`,
+        name: `${executedDefinition.name.trim()} · versión ${derivedCount + 1}`,
         parentId: base.id,
         parentIds: [base.id],
         operationType: "pipeline",
-        pipelineId: definition.id,
+        pipelineId: executedDefinition.id,
+        executedDefinition,
         rowCount,
         columns,
-        stepCount: definition.steps.length,
+        stepCount: executedDefinition.steps.length,
         createdAt: new Date().toISOString(),
         tableName,
         isView: true,
       };
       this.versions.push(version);
-      this.activeTable = tableName;
+      if (this.currentProjectId === base.projectId) this.activeTable = tableName;
       this.activeVersionByProject.set(base.projectId, version.id);
       this.emit();
       return toPublicPipelineVersion(version);
@@ -1096,7 +1333,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     right: StoredPipelineVersion,
     query: string,
   ): Promise<PipelineVersion> {
-    if (left.projectId !== right.projectId || left.projectId !== this.currentProjectId) {
+    if (left.projectId !== right.projectId) {
       throw new Error("No se pueden combinar versiones de proyectos distintos.");
     }
     const sourceIds = [...new Set([...left.sourceIds, ...right.sourceIds])];
@@ -1132,7 +1369,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         isView: true,
       };
       this.versions.push(version);
-      this.activeTable = tableName;
+      if (this.currentProjectId === version.projectId) this.activeTable = tableName;
       this.activeVersionByProject.set(version.projectId, version.id);
       this.emit();
       return toPublicPipelineVersion(version);
@@ -1237,20 +1474,34 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   // Definiciones: varianza/desvío MUESTRALES (n−1); cuantiles continuos
   // (interpolación lineal); mediana = cuantil 0.5; nulos siempre excluidos.
 
+  private async assertExactMeasurePrecision(conn: AsyncDuckDBConnection, table: string, column: string, approximate: boolean): Promise<void> {
+    if (approximate) return;
+    const col = escapeIdentifier(column);
+    const digits = `REGEXP_REPLACE(REGEXP_REPLACE(REPLACE(REGEXP_REPLACE(CAST(${col} AS VARCHAR), '^[-+]', ''), '.', ''), '^0+', ''), '0+$', '')`;
+    const result = await conn.query(`SELECT COUNT(*) AS n FROM ${table} WHERE ${col} IS NOT NULL AND (TRY_CAST(${col} AS DOUBLE) > 9007199254740991 OR TRY_CAST(${col} AS DOUBLE) < -9007199254740991 OR LENGTH(${digits}) > 15)`);
+    const row = toJSONRows(result)[0] as Record<string, unknown> | undefined;
+    const count = Number(row?.n);
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error("No se pudo comprobar la precisión de la columna.");
+    if (count > 0) throw new Error("La columna supera la precisión numérica segura para mostrar sus agregados.");
+  }
+
   async describeNumeric(column: string): Promise<NumericDescription> {
+    this.requireNumericMeasure(column);
     const conn = this.requireConn();
+    const schema = await this.getSchema();
+    const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === column)?.type ?? "");
     const col = escapeIdentifier(column);
     const table = escapeIdentifier(this.requireActiveTable());
+    await this.assertExactMeasurePrecision(conn, table, column, approximate);
     const row = toJSONRows(
       await conn.query(
-        `SELECT COUNT(*) AS total, COUNT(${col}) AS valid, SUM(${col}) AS s, AVG(${col}) AS a, MEDIAN(${col}) AS med, MODE(${col}) AS mode, MIN(${col}) AS mn, MAX(${col}) AS mx, VAR_SAMP(${col}) AS var, STDDEV_SAMP(${col}) AS std, QUANTILE_CONT(${col}, 0.25) AS q1, QUANTILE_CONT(${col}, 0.75) AS q3 FROM ${table}`,
+        `SELECT COUNT(*) AS total, COUNT(${col}) AS valid, CAST(SUM(${col}) AS VARCHAR) AS s, AVG(${col}) AS a, MEDIAN(${col}) AS med, CAST(MODE(${col}) AS VARCHAR) AS mode, CAST(MIN(${col}) AS VARCHAR) AS mn, CAST(MAX(${col}) AS VARCHAR) AS mx, VAR_SAMP(${col}) AS var, STDDEV_SAMP(${col}) AS std, QUANTILE_CONT(${col}, 0.25) AS q1, QUANTILE_CONT(${col}, 0.75) AS q3 FROM ${table}`,
       ),
     )[0] as Record<string, unknown>;
     if (!row) throw new Error(`Sin filas para describir ${column}`);
     const num = (v: unknown): number | null => {
       if (v === null || v === undefined) return null;
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
+      return safeAnalysisNumber(v, !approximate);
     };
     const total = Number(row.total);
     const valid = Number(row.valid);
@@ -1302,22 +1553,27 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     groupCol: string,
     numCol: string | null,
     agg: "count" | "sum" | "mean",
-  ): Promise<GroupedRow[]> {
+  ): Promise<GroupedResult> {
+    if (agg !== "count") {
+      if (!numCol) throw new Error("Elija la columna numérica para la agregación.");
+      this.requireNumericMeasure(numCol);
+    }
     const conn = this.requireConn();
+    const schema = numCol ? await this.getSchema() : [];
+    const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === numCol)?.type ?? "");
     const g = escapeIdentifier(groupCol);
     const table = escapeIdentifier(this.requireActiveTable());
+    if (numCol && agg !== "count") await this.assertExactMeasurePrecision(conn, table, numCol, approximate);
     const select =
       agg === "count"
         ? "COUNT(*) AS y"
-        : numCol
-          ? `${agg === "sum" ? "SUM" : "AVG"}(${escapeIdentifier(numCol)}) AS y`
-          : "COUNT(*) AS y";
+        : agg === "sum" ? `CAST(SUM(${escapeIdentifier(numCol!)}) AS VARCHAR) AS y` : `AVG(${escapeIdentifier(numCol!)}) AS y`;
     const rows = toJSONRows(
       await conn.query(
-        `SELECT ${g} AS x, ${select} FROM ${table} GROUP BY ${g} ORDER BY x LIMIT 500`,
+        `SELECT ${g} AS x, ${select} FROM ${table} GROUP BY ${g} ORDER BY x LIMIT 501`,
       ),
     );
-    return rows.map((r) => ({ x: r.x ?? null, y: r.y === null ? null : Number(r.y) }));
+    return { rows: rows.slice(0, 500).map((r) => ({ x: r.x ?? null, y: r.y === null ? null : safeAnalysisNumber(r.y, !approximate) })), truncated: rows.length > 500 };
   }
 
   /** Histograma por bines iguales (conteo por intervalo, límites visibles). */
@@ -1349,10 +1605,17 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
    * Se informa n de pares válidos y la advertencia: correlación ≠ causalidad.
    */
   async correlation(colA: string, colB: string): Promise<Correlation> {
+    this.requireNumericMeasure(colA);
+    this.requireNumericMeasure(colB);
     const conn = this.requireConn();
     const a = escapeIdentifier(colA);
     const b = escapeIdentifier(colB);
     const table = escapeIdentifier(this.requireActiveTable());
+    const schema = await this.getSchema();
+    for (const column of [colA, colB]) {
+      const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === column)?.type ?? "");
+      await this.assertExactMeasurePrecision(conn, table, column, approximate);
+    }
     const row = toJSONRows(
       await conn.query(
         `SELECT CORR(${a}, ${b}) AS r, COUNT(*) AS n FROM ${table} WHERE ${a} IS NOT NULL AND ${b} IS NOT NULL`,
@@ -1364,16 +1627,19 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
 
   /** Agregación sobre una columna (nombre escapado; sin SQL arbitraria). */
   async summarizeNumeric(column: string): Promise<NumericSummary> {
+    this.requireNumericMeasure(column);
     const conn = this.requireConn();
+    const schema = await this.getSchema();
+    const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === column)?.type ?? "");
     const col = escapeIdentifier(column);
+    await this.assertExactMeasurePrecision(conn, escapeIdentifier(this.requireActiveTable()), column, approximate);
     const table = await conn.query(
-      `SELECT COUNT(${col}) AS n, SUM(${col}) AS s, AVG(${col}) AS a, MIN(${col}) AS mn, MAX(${col}) AS mx FROM ${escapeIdentifier(this.requireActiveTable())}`,
+      `SELECT COUNT(${col}) AS n, CAST(SUM(${col}) AS VARCHAR) AS s, AVG(${col}) AS a, CAST(MIN(${col}) AS VARCHAR) AS mn, CAST(MAX(${col}) AS VARCHAR) AS mx FROM ${escapeIdentifier(this.requireActiveTable())}`,
     );
     const row = toJSONRows(table)[0] as Record<string, unknown> | undefined;
     const num = (v: unknown): number => {
-      const n = typeof v === "bigint" ? Number(v) : Number(v);
-      if (!Number.isFinite(n)) throw new Error(`Agregado no numérico en ${column}`);
-      return n;
+      if (v === null || v === undefined) throw new Error(`Agregado sin valores en ${column}`);
+      return safeAnalysisNumber(v, !approximate);
     };
     if (!row) throw new Error(`Sin filas para resumir ${column}`);
     return {
@@ -1479,7 +1745,32 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     this.activeTable = null;
     this.versions = [];
     this.activeVersionByProject.clear();
+    this.semanticRolesByVersion.clear();
   }
+}
+
+/** Codifica los nombres como celdas CSV y neutraliza posibles fórmulas. */
+export function buildCsvExportHeader(columns: readonly PipelineColumn[]): string {
+  return columns.map(({ name }) => {
+    const safe = /^[ \t\r\n]*[=+\-@]/.test(name) ? `'${name}` : name;
+    return `"${safe.replace(/"/g, '""')}"`;
+  }).join(",") + "\n";
+}
+
+/** Proyecta una versión para CSV y neutraliza textos que una hoja ejecutaría como fórmula. */
+export function buildCsvExportQuery(
+  tableName: string,
+  columns: readonly PipelineColumn[],
+): string {
+  const projection = columns.map((column) => {
+    const identifier = escapeIdentifier(column.name);
+    if (!isTextPipelineColumn(column)) return identifier;
+    const value = `CAST(${identifier} AS VARCHAR)`;
+    const firstNonWhitespace = `LEFT(LTRIM(${value}, ' ' || CHR(9) || CHR(10) || CHR(13)), 1)`;
+    const dangerous = `${firstNonWhitespace} IN ('=', '+', '-', '@')`;
+    return `CASE WHEN ${dangerous} THEN CHR(39) || ${value} ELSE ${value} END AS ${identifier}`;
+  });
+  return `SELECT ${projection.join(", ")} FROM ${escapeIdentifier(tableName)}`;
 }
 
 /** Construye SQL cerrado desde operaciones validadas; nunca recibe SQL del usuario. */
@@ -1520,7 +1811,10 @@ export function buildPipelineQuery(
         if (step.value === null) throw new Error("Ingrese el valor para reemplazar los nulos.");
         const column = columns.find((candidate) => candidate.name === step.column);
         if (!column) throw new Error(`La columna ya no existe: ${step.column}.`);
-        const replacement = typedFilterValue(step.value, column);
+        const targetType = isNumericPipelineColumn(column) ? safeSqlType(column.type) : null;
+        if (isNumericPipelineColumn(column) && !targetType) throw new Error(`Tipo numérico no compatible: ${column.type}.`);
+        const value = typedFilterValue(step.value, column);
+        const replacement = targetType ? `CAST(${value} AS ${targetType})` : value;
         const projected = columns.map((candidate) =>
           candidate.name === step.column
             ? `COALESCE(${escapeIdentifier(candidate.name)}, ${replacement}) AS ${escapeIdentifier(candidate.name)}`
@@ -1560,6 +1854,58 @@ export function buildPipelineQuery(
         columns = columns.map((candidate) =>
           candidate.name === column.name ? { ...candidate, type: "DATE" } : candidate,
         );
+        break;
+      }
+      case "calculate": {
+        const left = columns.find((column) => column.name === step.leftColumn);
+        const right = columns.find((column) => column.name === step.rightColumn);
+        if (!left || !right) throw new Error("La columna del cálculo ya no existe.");
+        const stepValidation = validatePipeline(baseColumns, {
+          id: "sql-builder",
+          name: "Pipeline",
+          steps: steps.slice(0, index + 1),
+        });
+        const resultColumn = stepValidation.columns.at(-1);
+        if (!resultColumn) throw new Error("No se pudo determinar el tipo de la columna calculada.");
+        const leftExpression = resultColumn.type === "HUGEINT" || resultColumn.type === "DOUBLE"
+          ? `CAST(${escapeIdentifier(left.name)} AS ${resultColumn.type})`
+          : escapeIdentifier(left.name);
+        const rightExpression = resultColumn.type === "HUGEINT" || resultColumn.type === "DOUBLE"
+          ? `CAST(${escapeIdentifier(right.name)} AS ${resultColumn.type})`
+          : escapeIdentifier(right.name);
+        const operator = step.operator === "add" ? "+" : step.operator === "subtract" ? "-" : "*";
+        const calculation = `${leftExpression} ${operator} ${rightExpression}`;
+        const result = resultColumn.type.startsWith("DECIMAL(")
+          ? `CAST(${calculation} AS ${resultColumn.type})`
+          : calculation;
+        const expression = `${result} AS ${escapeIdentifier(step.outputName.trim())}`;
+        query = `SELECT ${[...columns.map((column) => escapeIdentifier(column.name)), expression].join(", ")} FROM (${query}) AS ${alias}`;
+        columns = [...columns, { ...resultColumn }];
+        break;
+      }
+      case "aggregate": {
+        const stepValidation = validatePipeline(baseColumns, {
+          id: "sql-builder",
+          name: "Pipeline",
+          steps: steps.slice(0, index + 1),
+        });
+        const aggregateExpressions = step.aggregations.map((aggregation, aggregationIndex) => {
+          const outputColumn = stepValidation.columns[step.groupBy.length + aggregationIndex];
+          if (!outputColumn) throw new Error("No se pudo determinar el tipo de salida de la agregación.");
+          const expression = aggregation.operator === "count"
+            ? "COUNT(*)"
+            : `${aggregation.operator.toUpperCase()}(${escapeIdentifier(aggregation.column)})`;
+          return `${expression} AS ${escapeIdentifier(aggregation.outputName.trim())}`;
+        });
+        const projection = [
+          ...step.groupBy.map(escapeIdentifier),
+          ...aggregateExpressions,
+        ].join(", ");
+        const groupBy = step.groupBy.length > 0
+          ? ` GROUP BY ${step.groupBy.map(escapeIdentifier).join(", ")}`
+          : "";
+        query = `SELECT ${projection} FROM (${query}) AS ${alias}${groupBy}`;
+        columns = stepValidation.columns.map((column) => ({ ...column }));
         break;
       }
       case "normalizeText": {
@@ -1700,6 +2046,19 @@ function pipelineCastSqlType(
 function messageOf(cause: unknown): string {
   if (cause instanceof Error && cause.message) return cause.message;
   return "Fallo desconocido al inicializar DuckDB-Wasm";
+}
+
+/** Rechaza agregados exactos que no se pueden presentar con precisión numérica suficiente. */
+export function safeAnalysisNumber(value: unknown, exact = true): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) throw new Error("El agregado no es un número finito.");
+  if (Number.isInteger(number) && !Number.isSafeInteger(number)) throw new Error("El agregado supera la precisión numérica segura para mostrarlo.");
+  if (exact && typeof value === "string") {
+    const mantissa = value.toLowerCase().split("e")[0];
+    const significant = mantissa.replace(/[^0-9]/g, "").replace(/^0+/, "").replace(/0+$/, "");
+    if (significant.length > 15) throw new Error("El agregado supera la precisión numérica segura para mostrarlo.");
+  }
+  return number;
 }
 
 /** Convierte una tabla Arrow a filas JSON; BigInt → Number (conteos) o texto. */

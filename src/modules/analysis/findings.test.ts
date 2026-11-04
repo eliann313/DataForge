@@ -36,4 +36,8 @@ describe("evaluateFindings", () => {
       ]),
     ).toEqual([]);
   });
+
+  it("no considera constante una columna sin valores presentes", () => {
+    expect(evaluateFindings([{ column: "vacia", total: 3, nullPct: 100, distinct: 0 }]).map((item) => item.rule)).not.toContain("constante");
+  });
 });

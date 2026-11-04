@@ -9,6 +9,8 @@ import { expect, test, type Page } from "@playwright/test";
 // - duplicadas.csv: 3 filas, 1 grupo duplicado (1,x).
 // - sin-encabezado.csv: 2 filas sin encabezados (column0/column1).
 test.beforeEach(async ({ page }) => {
+  // Las importaciones deben funcionar sin descargar extensiones en ejecución.
+  await page.context().route("https://extensions.duckdb.org/**", (route) => route.abort());
   await page.goto("/");
   await page.getByRole("button", { name: /^datos$/i }).click();
   await page.getByRole("button", { name: /inicializar motor/i }).click();

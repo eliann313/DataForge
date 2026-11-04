@@ -1,16 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   columnsBeforeStep,
   IndexedDBPipelineDefinitionRepository,
   isDatePipelineColumn,
+  isNumericPipelineColumn,
   isTextPipelineColumn,
   PipelineService,
+  type PipelineAggregate,
   type PipelineDefinition,
   type PipelineDateFormat,
+  type PipelineArithmeticOperator,
   type PipelineFilterOperator,
   type PipelinePreview,
+  type PipelineVersionComparison,
+  type PeriodComparisonResult,
   type PipelineStep,
   type PipelineTargetType,
   type PipelineVersion,
@@ -45,6 +50,17 @@ const PIPELINE_DATE_FORMATS: { value: PipelineDateFormat; label: string }[] = [
   { value: "DD-MM-YYYY", label: "Día-mes-año (31-12-2025)" },
   { value: "YYYY-MM-DD HH:mm:ss", label: "Año-mes-día y hora (2025-12-31 14:30:00)" },
 ];
+const PIPELINE_ARITHMETIC_OPERATORS: { value: PipelineArithmeticOperator; label: string }[] = [
+  { value: "add", label: "Sumar (+)" },
+  { value: "subtract", label: "Restar (−)" },
+  { value: "multiply", label: "Multiplicar (×)" },
+];
+const PIPELINE_AGGREGATE_OPERATORS: { value: PipelineAggregate["operator"]; label: string }[] = [
+  { value: "count", label: "Contar filas" },
+  { value: "sum", label: "Sumar" },
+  { value: "min", label: "Mínimo" },
+  { value: "max", label: "Máximo" },
+];
 
 function needsValue(op: PipelineFilterOperator): boolean {
   return op !== "isnull" && op !== "notnull";
@@ -68,6 +84,8 @@ function stepName(step: PipelineStep): string {
     case "fillNull": return "Reemplazar nulos";
     case "convertType": return "Convertir tipo";
     case "normalizeDate": return "Normalizar fecha";
+    case "calculate": return "Calcular columna";
+    case "aggregate": return "Agrupar y agregar";
     case "normalizeText": return "Normalizar texto";
     case "rename": return "Renombrar columna";
     case "deduplicate": return "Eliminar duplicados exactos";
@@ -107,9 +125,20 @@ export default function TransformationsView({
   } | null>(null);
   const [selectedDefinition, setSelectedDefinition] = useState<{ projectId: string; id: string } | null>(null);
   const [preview, setPreview] = useState<PipelinePreview | null>(null);
+  const [comparisonLeft, setComparisonLeft] = useState("");
+  const [comparisonRight, setComparisonRight] = useState("");
+  const [comparison, setComparison] = useState<{ leftId: string; rightId: string; result: PipelineVersionComparison } | null>(null);
+  const [periodDate, setPeriodDate] = useState("");
+  const [periodMeasure, setPeriodMeasure] = useState("");
+  const [periodKey, setPeriodKey] = useState("");
+  const [leftFrom, setLeftFrom] = useState("");
+  const [leftTo, setLeftTo] = useState("");
+  const [rightFrom, setRightFrom] = useState("");
+  const [rightTo, setRightTo] = useState("");
+  const [sameUnits, setSameUnits] = useState(false);
+  const [periodResult, setPeriodResult] = useState<PeriodComparisonResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const stepSequence = useRef(0);
 
   const definition = useMemo<PipelineDefinition>(
     () => ({ id: pipelineId, name: pipelineName, steps }),
@@ -167,6 +196,14 @@ export default function TransformationsView({
   }, [baseVersionId]);
 
   const baseColumns = schemaState.versionId === baseVersionId ? schemaState.columns : [];
+  const comparisonLeftVersion = versions.find((version) => version.id === comparisonLeft);
+  const comparisonRightVersion = versions.find((version) => version.id === comparisonRight);
+  const commonColumns = (comparisonLeftVersion?.columns ?? []).filter((column) => comparisonRightVersion?.columns.some((right) => right.name === column.name && right.type === column.type));
+  const dateColumns = commonColumns.filter((column) => column.type.toUpperCase() === "DATE");
+  const leftRoles = comparisonLeftVersion ? engine.getVersionSemanticRoles(comparisonLeftVersion.id) : {};
+  const rightRoles = comparisonRightVersion ? engine.getVersionSemanticRoles(comparisonRightVersion.id) : {};
+  const measureColumns = commonColumns.filter((column) => isNumericPipelineColumn(column) && !/^(?:FLOAT|DOUBLE|REAL)/i.test(column.type) && leftRoles[column.name] === "medida" && rightRoles[column.name] === "medida");
+  const sameComparisonSchema = Boolean(comparisonLeftVersion && comparisonRightVersion && comparisonLeftVersion.columns.length === comparisonRightVersion.columns.length && comparisonLeftVersion.columns.every((column, index) => column.name === comparisonRightVersion.columns[index].name && column.type === comparisonRightVersion.columns[index].type));
 
   function currentColumns(index = steps.length) {
     return columnsBeforeStep(baseColumns, definition, index);
@@ -183,7 +220,7 @@ export default function TransformationsView({
       setMessage("No hay columnas disponibles para agregar este paso.");
       return;
     }
-    const id = `step-${++stepSequence.current}`;
+    const id = createPipelineId().replace(/^pipeline-/, "step-");
     let step: PipelineStep;
     switch (type) {
       case "filter":
@@ -217,6 +254,32 @@ export default function TransformationsView({
         step = { id, type, column: column.name, inputFormat: "YYYY-MM-DD" };
         break;
       }
+      case "calculate": {
+        const numeric = available.filter(isNumericPipelineColumn);
+        if (numeric.length < 2) {
+          setMessage("El cálculo necesita dos columnas numéricas disponibles.");
+          return;
+        }
+        const baseName = `${numeric[0].name}_calculado`.slice(0, 128);
+        let outputName = baseName;
+        let suffix = 2;
+        while (available.some((column) => column.name.toLocaleLowerCase("en-US") === outputName.toLocaleLowerCase("en-US"))) {
+          const ending = `_${suffix++}`;
+          outputName = `${baseName.slice(0, 128 - ending.length)}${ending}`;
+        }
+        step = {
+          id,
+          type,
+          leftColumn: numeric[0].name,
+          operator: "add",
+          rightColumn: numeric[1].name,
+          outputName,
+        };
+        break;
+      }
+      case "aggregate":
+        step = { id, type, groupBy: [], aggregations: [{ operator: "count", outputName: "cantidad" }] };
+        break;
       case "normalizeText": {
         const column = available.find(isTextPipelineColumn);
         if (!column) {
@@ -263,6 +326,55 @@ export default function TransformationsView({
     setMessage(null);
   }
 
+  function addAggregation(stepId: string) {
+    const index = steps.findIndex((step) => step.id === stepId);
+    const current = steps[index];
+    if (!current || current.type !== "aggregate") return;
+    const available = currentColumns(index);
+    const numeric = available.find(isNumericPipelineColumn);
+    const taken = [
+      ...available.map((column) => column.name),
+      ...current.aggregations.map((aggregation) => aggregation.outputName),
+    ];
+    const baseName = numeric ? `${numeric.name}_suma` : "cantidad";
+    let outputName = baseName.slice(0, 128);
+    let suffix = 2;
+    while (taken.some((name) => name.toLocaleLowerCase("en-US") === outputName.toLocaleLowerCase("en-US"))) {
+      const ending = `_${suffix++}`;
+      outputName = `${baseName.slice(0, 128 - ending.length)}${ending}`;
+    }
+    const aggregation: PipelineAggregate = numeric
+      ? { operator: "sum", column: numeric.name, outputName }
+      : { operator: "count", outputName };
+    updateStep(stepId, (step) => step.type === "aggregate"
+      ? { ...step, aggregations: [...step.aggregations, aggregation] }
+      : step);
+  }
+
+  function changeAggregationOperator(
+    stepId: string,
+    aggregationIndex: number,
+    operator: PipelineAggregate["operator"],
+  ) {
+    const stepIndex = steps.findIndex((step) => step.id === stepId);
+    const available = currentColumns(stepIndex).filter(isNumericPipelineColumn);
+    updateStep(stepId, (step) => {
+      if (step.type !== "aggregate") return step;
+      const current = step.aggregations[aggregationIndex];
+      if (!current) return step;
+      const next: PipelineAggregate = operator === "count"
+        ? { operator, outputName: current.outputName }
+        : {
+            operator,
+            column: current.operator === "count"
+              ? available[0]?.name ?? ""
+              : current.column,
+            outputName: current.outputName,
+          };
+      return { ...step, aggregations: step.aggregations.map((item, index) => index === aggregationIndex ? next : item) };
+    });
+  }
+
   function moveStep(index: number, direction: -1 | 1) {
     setSteps((all) => {
       const destination = index + direction;
@@ -288,16 +400,20 @@ export default function TransformationsView({
   }
 
   async function executePipeline() {
+    const projectId = engine.getCurrentProjectId();
     setBusy(true);
     setMessage(null);
     try {
       const created = await pipelineService.execute(baseVersionId, definition);
+      if (created.projectId !== engine.getCurrentProjectId()) return;
       setVersions(pipelineService.getVersions());
       setActiveVersionId(created.id);
       setPreview(null);
       setMessage(`Se creó «${created.name}». La fuente original sigue disponible.`);
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "No se pudo ejecutar el pipeline.");
+      if (projectId === engine.getCurrentProjectId()) {
+        setMessage(cause instanceof Error ? cause.message : "No se pudo ejecutar el pipeline.");
+      }
     } finally {
       setBusy(false);
     }
@@ -385,7 +501,72 @@ export default function TransformationsView({
     }
   }
 
+  function loadVersionDefinition(version: PipelineVersion) {
+    if (!version.executedDefinition || !version.parentId || !versions.some((item) => item.id === version.parentId)) return;
+    setBaseVersionId(version.parentId);
+    setPipelineId(createPipelineId());
+    setPipelineName(version.executedDefinition.name);
+    setSteps(JSON.parse(JSON.stringify(version.executedDefinition.steps)) as PipelineStep[]);
+    setSelectedDefinition(null);
+    setPreview(null);
+    setMessage("Se cargó una copia de los pasos ejecutados y su versión de origen.");
+  }
+
+  async function compareVersions() {
+    setBusy(true);
+    setMessage(null);
+    setComparison(null);
+    try {
+      const result = await pipelineService.compareVersions(comparisonLeft, comparisonRight);
+      setComparison({ leftId: comparisonLeft, rightId: comparisonRight, result });
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "No se pudieron comparar las versiones.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function comparePeriods() {
+    setBusy(true);
+    setMessage(null);
+    setPeriodResult(null);
+    try {
+      const result = await pipelineService.comparePeriods({ leftVersionId: comparisonLeft, rightVersionId: comparisonRight, dateColumn: periodDate, leftFrom, leftTo, rightFrom, rightTo, measureColumn: periodMeasure, keyColumn: periodKey || null, sameUnitsConfirmed: sameUnits });
+      setPeriodResult(result);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "No se pudieron comparar los períodos.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function downloadVersion(version: PipelineVersion, format: "csv" | "parquet") {
+    setBusy(true);
+    setMessage(null);
+    let objectUrl: string | null = null;
+    try {
+      const exported = await pipelineService.exportVersion(version.id, format);
+      const arrayBuffer = new ArrayBuffer(exported.bytes.byteLength);
+      new Uint8Array(arrayBuffer).set(exported.bytes);
+      const blob = new Blob([arrayBuffer], { type: exported.mediaType });
+      objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = exported.fileName;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      setMessage(`Se preparó «${exported.fileName}» sin modificar la versión de origen.`);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "No se pudo exportar la versión.");
+    } finally {
+      if (objectUrl) window.setTimeout(() => URL.revokeObjectURL(objectUrl!), 1_000);
+      setBusy(false);
+    }
+  }
+
   function acceptCombinationVersion(version: PipelineVersion) {
+    if (version.projectId !== engine.getCurrentProjectId()) return;
     const currentVersions = pipelineService.getVersions();
     setVersions(currentVersions);
     setBaseVersionId(version.id);
@@ -503,6 +684,8 @@ export default function TransformationsView({
           <button type="button" disabled={busy || !baseColumns.some(isTextPipelineColumn)} onClick={() => addStep("normalizeText")} className="rounded border border-gray-300 px-2 py-1 text-sm">Normalizar texto</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("convertType")} className="rounded border border-gray-300 px-2 py-1 text-sm">Convertir tipo</button>
           <button type="button" disabled={busy || !baseColumns.some((column) => isTextPipelineColumn(column) || isDatePipelineColumn(column))} onClick={() => addStep("normalizeDate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Normalizar fecha</button>
+          <button type="button" disabled={busy || currentColumns().filter(isNumericPipelineColumn).length < 2} onClick={() => addStep("calculate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Calcular columna</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("aggregate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Agrupar y agregar</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("rename")} className="rounded border border-gray-300 px-2 py-1 text-sm">Renombrar columna</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("deduplicate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Eliminar duplicados</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("sort")} className="rounded border border-gray-300 px-2 py-1 text-sm">Ordenar filas</button>
@@ -777,6 +960,151 @@ export default function TransformationsView({
                       </>
                     ) : null}
 
+                    {step.type === "calculate" ? (
+                      <>
+                        <label>
+                          Primera columna numérica {index + 1}{" "}
+                          <select
+                            aria-label={`Primera columna numérica ${index + 1}`}
+                            value={step.leftColumn}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "calculate" ? { ...current, leftColumn: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {available.filter(isNumericPipelineColumn).map((column) => <option key={column.name} value={column.name}>{column.name} · {column.type}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Operación {index + 1}{" "}
+                          <select
+                            aria-label={`Operación del cálculo ${index + 1}`}
+                            value={step.operator}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "calculate" ? { ...current, operator: event.target.value as PipelineArithmeticOperator } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {PIPELINE_ARITHMETIC_OPERATORS.map((operator) => <option key={operator.value} value={operator.value}>{operator.label}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Segunda columna numérica {index + 1}{" "}
+                          <select
+                            aria-label={`Segunda columna numérica ${index + 1}`}
+                            value={step.rightColumn}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "calculate" ? { ...current, rightColumn: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {available.filter(isNumericPipelineColumn).map((column) => <option key={column.name} value={column.name}>{column.name} · {column.type}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Nombre del resultado {index + 1}{" "}
+                          <input
+                            aria-label={`Nombre del resultado ${index + 1}`}
+                            value={step.outputName}
+                            maxLength={128}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "calculate" ? { ...current, outputName: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          />
+                        </label>
+                        <p className="basis-full text-sm text-gray-600">
+                          Solo se permiten suma, resta y multiplicación entre columnas numéricas. DECIMAL conserva precisión; los tipos flotantes producen DOUBLE y pueden redondear.
+                        </p>
+                      </>
+                    ) : null}
+
+                    {step.type === "aggregate" ? (
+                      <div className="basis-full space-y-3">
+                        <fieldset className="space-y-1">
+                          <legend className="font-medium">Agrupar por (opcional)</legend>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1">
+                            {available.map((column) => (
+                              <label key={column.name} className="flex items-center gap-1">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Agrupar por ${column.name}`}
+                                  checked={step.groupBy.includes(column.name)}
+                                  disabled={busy}
+                                  onChange={(event) => updateStep(step.id, (current) => {
+                                    if (current.type !== "aggregate") return current;
+                                    const selected = new Set(current.groupBy);
+                                    if (event.target.checked) selected.add(column.name);
+                                    else selected.delete(column.name);
+                                    return { ...current, groupBy: available.map((item) => item.name).filter((name) => selected.has(name)) };
+                                  })}
+                                />
+                                {column.name}
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                        <div className="space-y-2">
+                          {step.aggregations.map((aggregation, aggregationIndex) => (
+                            <div key={aggregationIndex} className="flex flex-wrap items-end gap-2 rounded border border-gray-200 p-2">
+                              <label>
+                                Operación de agregación {aggregationIndex + 1}{" "}
+                                <select
+                                  aria-label={`Operación de agregación ${aggregationIndex + 1}`}
+                                  value={aggregation.operator}
+                                  disabled={busy}
+                                  onChange={(event) => changeAggregationOperator(step.id, aggregationIndex, event.target.value as PipelineAggregate["operator"])}
+                                  className="rounded border border-gray-300 px-1 py-0.5"
+                                >
+                                  {PIPELINE_AGGREGATE_OPERATORS.map((operator) => <option key={operator.value} value={operator.value}>{operator.label}</option>)}
+                                </select>
+                              </label>
+                              {aggregation.operator !== "count" ? (
+                                <label>
+                                  Columna de agregación {aggregationIndex + 1}{" "}
+                                  <select
+                                    aria-label={`Columna de agregación ${aggregationIndex + 1}`}
+                                    value={aggregation.column}
+                                    disabled={busy || !available.some(isNumericPipelineColumn)}
+                                    onChange={(event) => updateStep(step.id, (current) => current.type === "aggregate"
+                                      ? { ...current, aggregations: current.aggregations.map((item, index) => index === aggregationIndex && item.operator !== "count" ? { ...item, column: event.target.value } : item) }
+                                      : current)}
+                                    className="rounded border border-gray-300 px-1 py-0.5"
+                                  >
+                                    {available.filter(isNumericPipelineColumn).map((column) => <option key={column.name} value={column.name}>{column.name} · {column.type}</option>)}
+                                  </select>
+                                </label>
+                              ) : null}
+                              <label>
+                                Nombre del resultado {aggregationIndex + 1}{" "}
+                                <input
+                                  aria-label={`Nombre de agregación ${aggregationIndex + 1}`}
+                                  value={aggregation.outputName}
+                                  maxLength={128}
+                                  disabled={busy}
+                                  onChange={(event) => updateStep(step.id, (current) => current.type === "aggregate"
+                                    ? { ...current, aggregations: current.aggregations.map((item, index) => index === aggregationIndex ? { ...item, outputName: event.target.value } : item) }
+                                    : current)}
+                                  className="rounded border border-gray-300 px-1 py-0.5"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                aria-label={`Quitar agregación ${aggregationIndex + 1}`}
+                                disabled={busy || step.aggregations.length < 2}
+                                onClick={() => updateStep(step.id, (current) => current.type === "aggregate"
+                                  ? { ...current, aggregations: current.aggregations.filter((_, index) => index !== aggregationIndex) }
+                                  : current)}
+                                className="text-red-700 underline"
+                              >Quitar</button>
+                            </div>
+                          ))}
+                        </div>
+                        <button type="button" disabled={busy} onClick={() => addAggregation(step.id)} className="rounded border border-gray-300 px-2 py-1 text-sm">
+                          Agregar agregación
+                        </button>
+                        <p className="text-sm text-gray-600">
+                          El conteo incluye todas las filas. Suma, mínimo y máximo solo admiten columnas numéricas; el resultado de la suma conserva tipo decimal o entero.
+                        </p>
+                      </div>
+                    ) : null}
+
                     {step.type === "rename" ? (
                       <>
                         <label>
@@ -885,6 +1213,11 @@ export default function TransformationsView({
               </table>
             </div>
           ) : <p>El pipeline no devuelve filas.</p>}
+          <h4 className="font-semibold">Calidad antes y después</h4>
+          <p>Filas con algún nulo: {preview.inputQuality.rowsWithNull} → {preview.outputQuality.rowsWithNull}</p>
+          <p>Grupos de filas completas duplicadas: {preview.inputQuality.duplicateGroups} → {preview.outputQuality.duplicateGroups}</p>
+          {preview.rowDifferences ? <p>Filas completas que salen: {preview.rowDifferences.removed} · que entran: {preview.rowDifferences.added}</p> : <p>La comparación de filas completas requiere el mismo esquema antes y después.</p>}
+          <p className="text-sm text-gray-600">Un grupo duplicado contiene dos o más filas idénticas. Las diferencias cuentan copias de filas completas; una fila editada puede contar como una salida y una entrada.</p>
         </section>
       ) : null}
 
@@ -892,7 +1225,7 @@ export default function TransformationsView({
         <h3 id="pipeline-versiones" className="font-semibold">Versiones disponibles en esta sesión</h3>
         <div className="overflow-x-auto">
           <table className="df-table">
-            <thead><tr><th scope="col">Versión</th><th scope="col">Filas</th><th scope="col">Columnas</th><th scope="col">Origen</th><th scope="col">Acción</th></tr></thead>
+            <thead><tr><th scope="col">Versión</th><th scope="col">Filas</th><th scope="col">Columnas</th><th scope="col">Origen</th><th scope="col">Acción</th><th scope="col">Exportar</th></tr></thead>
             <tbody>
               {versions.map((version) => (
                 <tr key={version.id}>
@@ -908,12 +1241,68 @@ export default function TransformationsView({
                         Usar versión
                       </button>
                     )}
+                    {version.executedDefinition ? <button type="button" disabled={busy || !versions.some((item) => item.id === version.parentId)} onClick={() => loadVersionDefinition(version)} className="ml-2 underline">Cargar pasos</button> : null}
+                  </td>
+                  <td className="space-x-2">
+                    <button type="button" disabled={busy} onClick={() => void downloadVersion(version, "csv")} aria-label={`Exportar ${version.name} a CSV`} className="underline">CSV</button>
+                    <button type="button" disabled={busy} onClick={() => void downloadVersion(version, "parquet")} aria-label={`Exportar ${version.name} a Parquet`} className="underline">Parquet</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <p className="text-sm text-gray-600">
+          CSV antepone un apóstrofo a encabezados y textos que podrían ejecutarse como fórmulas al abrirlos en una hoja de cálculo. Parquet conserva los valores. La versión en el motor no se altera.
+        </p>
+      </section>
+      <section className="space-y-2" aria-labelledby="comparar-versiones">
+        <h3 id="comparar-versiones" className="font-semibold">Comparar versiones o períodos</h3>
+        <p className="text-sm text-gray-600">Elija dos versiones que representen los períodos o resultados que quiere comparar. Cada indicador se calcula sobre todas las filas y columnas de cada versión.</p>
+        <label>Primera versión <select aria-label="Primera versión para comparar" disabled={busy} value={versions.some((version) => version.id === comparisonLeft) ? comparisonLeft : ""} onChange={(event) => { setComparisonLeft(event.target.value); setComparison(null); setPeriodResult(null); setPeriodDate(""); setPeriodMeasure(""); setPeriodKey(""); setSameUnits(false); }}><option value="">Seleccione una versión</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}</select></label>{" "}
+        <label>Segunda versión <select aria-label="Segunda versión para comparar" disabled={busy} value={versions.some((version) => version.id === comparisonRight) ? comparisonRight : ""} onChange={(event) => { setComparisonRight(event.target.value); setComparison(null); setPeriodResult(null); setPeriodDate(""); setPeriodMeasure(""); setPeriodKey(""); setSameUnits(false); }}><option value="">Seleccione una versión</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}</select></label>{" "}
+        <button type="button" disabled={busy || !versions.some((version) => version.id === comparisonLeft) || !versions.some((version) => version.id === comparisonRight)} onClick={() => void compareVersions()} className="underline">Comparar versiones</button>
+        {comparison && versions.some((version) => version.id === comparison.leftId) && versions.some((version) => version.id === comparison.rightId) ? (
+          <table className="df-table">
+            <caption>Comparación de versiones</caption>
+            <thead><tr><th scope="col">Indicador</th><th scope="col">{versions.find((version) => version.id === comparison.leftId)?.name}</th><th scope="col">{versions.find((version) => version.id === comparison.rightId)?.name}</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Filas</th><td>{comparison.result.left.rowCount}</td><td>{comparison.result.right.rowCount}</td></tr>
+              <tr><th scope="row">Filas con algún nulo</th><td>{comparison.result.left.quality.rowsWithNull}</td><td>{comparison.result.right.quality.rowsWithNull}</td></tr>
+              <tr><th scope="row">Grupos de filas completas duplicadas</th><td>{comparison.result.left.quality.duplicateGroups}</td><td>{comparison.result.right.quality.duplicateGroups}</td></tr>
+            </tbody>
+          </table>
+        ) : null}
+        {comparison && versions.some((version) => version.id === comparison.leftId) && versions.some((version) => version.id === comparison.rightId) ? (
+          comparison.result.rowDifferences ? <p>Copias de filas excedentes en la primera: {comparison.result.rowDifferences.removed} · en la segunda: {comparison.result.rowDifferences.added}</p> : <p>La comparación de filas completas requiere versiones con el mismo esquema.</p>
+        ) : null}
+        <p className="text-sm text-gray-600">Un grupo duplicado contiene dos o más filas idénticas dentro de una misma versión. Las diferencias cuentan copias de filas completas; una fila editada puede aparecer en ambos lados.</p>
+        {comparisonLeftVersion && comparisonRightVersion ? <div className="space-y-2">
+          <h4 className="font-semibold">Comparar períodos por fecha</h4>
+          <p className="text-sm text-gray-600">Los dos extremos de cada período están incluidos; las fechas nulas quedan fuera. Seleccione una columna DATE y una medida entera o decimal exacta compartidas.</p>
+          <label>Columna de fecha <select aria-label="Columna de fecha para períodos" disabled={busy} value={periodDate} onChange={(event) => { setPeriodDate(event.target.value); setPeriodResult(null); }}><option value="">Seleccione</option>{dateColumns.map((column) => <option key={column.name} value={column.name}>{column.name}</option>)}</select></label>{" "}
+          <label>Medida <select aria-label="Medida para períodos" disabled={busy} value={periodMeasure} onChange={(event) => { setPeriodMeasure(event.target.value); setPeriodResult(null); setSameUnits(false); }}><option value="">Seleccione</option>{measureColumns.map((column) => <option key={column.name} value={column.name}>{column.name} ({column.type})</option>)}</select></label>
+          <div className="flex flex-wrap gap-2">
+            <label>Primero desde <input type="date" aria-label="Primer período desde" disabled={busy} value={leftFrom} onChange={(event) => { setLeftFrom(event.target.value); setPeriodResult(null); }} /></label>
+            <label>hasta <input type="date" aria-label="Primer período hasta" disabled={busy} value={leftTo} onChange={(event) => { setLeftTo(event.target.value); setPeriodResult(null); }} /></label>
+            <label>Segundo desde <input type="date" aria-label="Segundo período desde" disabled={busy} value={rightFrom} onChange={(event) => { setRightFrom(event.target.value); setPeriodResult(null); }} /></label>
+            <label>hasta <input type="date" aria-label="Segundo período hasta" disabled={busy} value={rightTo} onChange={(event) => { setRightTo(event.target.value); setPeriodResult(null); }} /></label>
+          </div>
+          <label>Clave para identificar cambios (opcional) <select aria-label="Clave para comparar períodos" value={periodKey} disabled={busy || !sameComparisonSchema} onChange={(event) => { setPeriodKey(event.target.value); setPeriodResult(null); }}><option value="">Sin clave</option>{commonColumns.map((column) => <option key={column.name} value={column.name}>{column.name}</option>)}</select></label>
+          {!sameComparisonSchema ? <p className="text-sm text-gray-600">La comparación por clave requiere esquemas idénticos.</p> : null}
+          <label className="block"><input type="checkbox" disabled={busy} checked={sameUnits} onChange={(event) => { setSameUnits(event.target.checked); setPeriodResult(null); }} /> Confirmo que todos los valores comparados usan la misma unidad y moneda.</label>
+          <button type="button" disabled={busy || !periodDate || !periodMeasure || !leftFrom || !leftTo || !rightFrom || !rightTo || !sameUnits} onClick={() => void comparePeriods()} className="underline">Comparar períodos</button>
+          {periodResult ? <div role="status">
+            <table className="df-table"><caption>Resultados por período</caption><thead><tr><th scope="col">Indicador</th><th scope="col">Primero</th><th scope="col">Segundo</th></tr></thead><tbody>
+              <tr><th scope="row">Filas</th><td>{periodResult.left.rows}</td><td>{periodResult.right.rows}</td></tr>
+              <tr><th scope="row">Valores no nulos</th><td>{periodResult.left.valid}</td><td>{periodResult.right.valid}</td></tr>
+              <tr><th scope="row">Suma exacta</th><td>{periodResult.left.sum ?? "Sin valores"}</td><td>{periodResult.right.sum ?? "Sin valores"}</td></tr>
+              <tr><th scope="row">Media aproximada</th><td>{periodResult.left.mean ?? "Sin valores"}</td><td>{periodResult.right.mean ?? "Sin valores"}</td></tr>
+            </tbody></table>
+            {periodResult.keyed ? <p>Claves agregadas: {periodResult.keyed.added} · eliminadas: {periodResult.keyed.removed} · modificadas: {periodResult.keyed.changed} · sin cambios: {periodResult.keyed.unchanged}</p> : null}
+          </div> : null}
+          <p className="text-sm text-gray-600">La clave debe ser única y no nula en cada período. El cambio por clave compara todas las columnas salvo la clave y la fecha elegida. La media usa coma flotante; la suma conserva el valor entero o decimal del motor.</p>
+        </div> : null}
       </section>
     </div>
   );

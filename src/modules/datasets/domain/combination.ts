@@ -178,11 +178,11 @@ export function safeSqlType(raw: string): string | null {
   const aliases: Record<string, string> = {
     INT: "INTEGER", INT2: "SMALLINT", INT4: "INTEGER", INT8: "BIGINT",
     FLOAT4: "FLOAT", FLOAT8: "DOUBLE", REAL: "FLOAT", TEXT: "VARCHAR", STRING: "VARCHAR",
-    BOOL: "BOOLEAN", DATETIME: "TIMESTAMP", TIMESTAMP_S: "TIMESTAMP", TIMESTAMP_MS: "TIMESTAMP", TIMESTAMP_NS: "TIMESTAMP",
+    BOOL: "BOOLEAN", DATETIME: "TIMESTAMP",
   };
   if (aliases[type]) return aliases[type];
-  if (["BOOLEAN", "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "UTINYINT", "USMALLINT", "UINTEGER", "UBIGINT", "FLOAT", "DOUBLE", "VARCHAR", "DATE", "TIME", "TIMESTAMP", "TIMESTAMP WITH TIME ZONE", "BLOB", "UUID"].includes(type)) return type;
-  const decimal = /^DECIMAL\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(type);
+  if (["BOOLEAN", "TINYINT", "SMALLINT", "INTEGER", "BIGINT", "HUGEINT", "UTINYINT", "USMALLINT", "UINTEGER", "UBIGINT", "UHUGEINT", "FLOAT", "DOUBLE", "VARCHAR", "DATE", "TIME", "TIMESTAMP", "TIMESTAMP_S", "TIMESTAMP_MS", "TIMESTAMP_NS", "TIMESTAMP WITH TIME ZONE", "BLOB", "UUID"].includes(type)) return type;
+  const decimal = /^(?:DECIMAL|NUMERIC)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(type);
   if (decimal) {
     const precision = Number(decimal[1]);
     const scale = Number(decimal[2]);

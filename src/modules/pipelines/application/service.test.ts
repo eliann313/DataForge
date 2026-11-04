@@ -25,14 +25,20 @@ function port(): PipelineExecutionPort {
     getDatasetVersions: () => [source],
     getActiveDatasetVersionId: () => source.id,
     getVersionColumns: async () => source.columns,
+    compareVersions: vi.fn(async () => ({ left: { rowCount: 3, quality: { rowsWithNull: 0, duplicateGroups: 1 } }, right: { rowCount: 2, quality: { rowsWithNull: 0, duplicateGroups: 0 } }, rowDifferences: { removed: 1, added: 0 } })),
+    comparePeriods: vi.fn(async () => ({ left: { rows: 0, valid: 0, sum: null, mean: null }, right: { rows: 0, valid: 0, sum: null, mean: null }, keyed: null })),
     previewPipeline: vi.fn(async () => ({
       inputRowCount: 3,
       outputRowCount: 2,
+      inputQuality: { rowsWithNull: 0, duplicateGroups: 1 },
+      outputQuality: { rowsWithNull: 0, duplicateGroups: 0 },
+      rowDifferences: { removed: 1, added: 0 },
       columns: source.columns,
       rows: [{ valor: 1 }, { valor: 2 }],
     })),
     executePipeline: vi.fn(async () => ({ ...source, id: "version-1", parentId: source.id })),
     activateDatasetVersion: vi.fn(async () => undefined),
+    exportDatasetVersion: vi.fn(async () => ({ fileName: "datos.csv", mediaType: "text/csv", bytes: new Uint8Array() })),
   };
 }
 
@@ -60,6 +66,16 @@ describe("PipelineService", () => {
       steps: [],
     })).rejects.toThrow(/al menos un paso/);
     expect(adapter.executePipeline).not.toHaveBeenCalled();
+  });
+
+  it("delega la exportación de una versión al adaptador", async () => {
+    const adapter = port();
+    const service = new PipelineService(adapter, new MemoryPipelineDefinitionRepository());
+
+    const result = await service.exportVersion("source-1", "csv");
+
+    expect(result.fileName).toBe("datos.csv");
+    expect(adapter.exportDatasetVersion).toHaveBeenCalledWith("source-1", "csv");
   });
 
   it("guarda definiciones solo si son válidas para la versión de origen", async () => {

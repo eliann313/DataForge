@@ -2,6 +2,8 @@
 // Los roles son interpretación editable del usuario; nunca cambian datos.
 // La selección de columnas y la corrección de tipos son transformaciones (R2).
 
+import { isNumericPipelineColumn, type PipelineColumn } from "../../../modules/pipelines";
+
 export type SemanticRole =
   | "medida"
   | "dimension"
@@ -19,12 +21,16 @@ export const ROLES: SemanticRole[] = [
   "desconocido",
 ];
 
+export function isNumericMeasure(column: PipelineColumn, roles: Record<string, SemanticRole>): boolean {
+  return roles[column.name] === "medida" && isNumericPipelineColumn(column);
+}
+
 /** Sugerencia inicial por tipo físico y nombre (editable en la UI). */
 export function suggestRole(type: string, name: string): SemanticRole {
   const t = type.toUpperCase();
   const n = name.toLowerCase();
   if (n === "id" || /(^|_)id($|_)/.test(n)) {
-    if (/INT|BIGINT|SMALLINT|TINYINT|HUGEINT|UUID/.test(t)) return "identificador";
+    return "identificador";
   }
   if (/DECIMAL|NUMERIC|DOUBLE|FLOAT|REAL/.test(t)) return "medida";
   if (/INT|BIGINT|SMALLINT|TINYINT|HUGEINT/.test(t)) {

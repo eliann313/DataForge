@@ -15,6 +15,10 @@ export interface PipelineFilter {
 }
 
 export type PipelineTargetType = "INTEGER" | "BIGINT" | "DECIMAL" | "BOOLEAN" | "VARCHAR";
+export type PipelineArithmeticOperator = "add" | "subtract" | "multiply";
+export type PipelineAggregate =
+  | { operator: "count"; outputName: string }
+  | { operator: "sum" | "min" | "max"; column: string; outputName: string };
 export type PipelineDateFormat =
   | "YYYY-MM-DD"
   | "DD/MM/YYYY"
@@ -36,6 +40,15 @@ export type PipelineStep =
       scale: number;
     }
   | { id: string; type: "normalizeDate"; column: string; inputFormat: PipelineDateFormat }
+  | {
+      id: string;
+      type: "calculate";
+      leftColumn: string;
+      operator: PipelineArithmeticOperator;
+      rightColumn: string;
+      outputName: string;
+    }
+  | { id: string; type: "aggregate"; groupBy: string[]; aggregations: PipelineAggregate[] }
   | {
       id: string;
       type: "normalizeText";
@@ -76,6 +89,13 @@ export function isPipelineDefinition(value: unknown): value is PipelineDefinitio
           typeof candidate.precision === "number" && typeof candidate.scale === "number";
       case "normalizeDate":
         return typeof candidate.column === "string" && PIPELINE_DATE_FORMATS.has(candidate.inputFormat as PipelineDateFormat);
+      case "calculate":
+        return typeof candidate.leftColumn === "string" &&
+          PIPELINE_ARITHMETIC_OPERATORS.has(candidate.operator as PipelineArithmeticOperator) &&
+          typeof candidate.rightColumn === "string" && typeof candidate.outputName === "string";
+      case "aggregate":
+        return Array.isArray(candidate.groupBy) && candidate.groupBy.every((column) => typeof column === "string") &&
+          Array.isArray(candidate.aggregations) && candidate.aggregations.every(isPipelineAggregate);
       case "normalizeText":
         return typeof candidate.column === "string" && typeof candidate.trimWhitespace === "boolean" &&
           (candidate.letterCase === "preserve" || candidate.letterCase === "lower" || candidate.letterCase === "upper") &&
@@ -94,6 +114,13 @@ export function isPipelineDefinition(value: unknown): value is PipelineDefinitio
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPipelineAggregate(value: unknown): value is PipelineAggregate {
+  if (!isRecord(value) || typeof value.outputName !== "string") return false;
+  if (value.operator === "count") return true;
+  return (value.operator === "sum" || value.operator === "min" || value.operator === "max") &&
+    typeof value.column === "string";
 }
 
 export interface PipelineColumn {
@@ -127,6 +154,35 @@ export function isNumericPipelineValue(value: string): boolean {
   return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim());
 }
 
+/** Comprueba rango y escala sin convertir enteros o decimales a coma flotante. */
+function fitsNumericReplacement(value: string, rawType: string): boolean {
+  const type = rawType.trim().toUpperCase();
+  if (/^(FLOAT|FLOAT4|FLOAT8|REAL|DOUBLE)$/.test(type)) {
+    const number = Number(value);
+    return Number.isFinite(number) && (!/^(FLOAT|FLOAT4|REAL)$/.test(type) || Number.isFinite(Math.fround(number)));
+  }
+  const match = /^([+-]?)(\d*)(?:\.(\d+))?$/.exec(value.trim());
+  if (!match || (!match[2] && !match[3])) return false;
+  const whole = match[2] || "0";
+  const fraction = match[3] || "";
+  const decimal = /^(?:DECIMAL|NUMERIC)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(type);
+  if (decimal) {
+    const precision = Number(decimal[1]);
+    const scale = Number(decimal[2]);
+    const integerDigits = whole.replace(/^0+/, "").length;
+    return precision >= 1 && precision <= 38 && scale <= precision && integerDigits <= precision - scale && !/[1-9]/.test(fraction.slice(scale));
+  }
+  if (/[1-9]/.test(fraction)) return false;
+  const bits: Record<string, number> = { TINYINT: 8, UTINYINT: 8, SMALLINT: 16, INT2: 16, USMALLINT: 16, INTEGER: 32, INT: 32, INT4: 32, UINTEGER: 32, BIGINT: 64, INT8: 64, UBIGINT: 64, HUGEINT: 128, UHUGEINT: 128 };
+  const width = bits[type];
+  if (!width) return false;
+  const integer = BigInt(`${match[1]}${whole}`);
+  const unsigned = type.startsWith("U");
+  const one = BigInt(1);
+  const max = (one << BigInt(unsigned ? width : width - 1)) - one;
+  return integer >= (unsigned ? BigInt(0) : -max - one) && integer <= max;
+}
+
 /** Referencia lógica a la fuente o a una versión derivada durante la sesión. */
 export interface PipelineVersion {
   id: string;
@@ -142,6 +198,8 @@ export interface PipelineVersion {
   parentIds: string[];
   operationType: "source" | "pipeline" | "append" | "join";
   pipelineId: string | null;
+  /** Copia de los pasos usados para crear la versión durante esta sesión. */
+  executedDefinition?: PipelineDefinition;
   rowCount: number;
   columns: PipelineColumn[];
   stepCount: number;
@@ -151,8 +209,49 @@ export interface PipelineVersion {
 export interface PipelinePreview {
   inputRowCount: number;
   outputRowCount: number;
+  inputQuality: PipelineQuality;
+  outputQuality: PipelineQuality;
+  rowDifferences: PipelineRowDifferences | null;
   columns: PipelineColumn[];
   rows: Record<string, unknown>[];
+}
+
+/** Filas con algún nulo y grupos de filas completas repetidas. */
+export interface PipelineQuality {
+  rowsWithNull: number;
+  duplicateGroups: number;
+}
+
+/** Diferencia de multiconjuntos de filas completas, disponible con esquemas iguales. */
+export interface PipelineRowDifferences {
+  removed: number;
+  added: number;
+}
+
+export interface PipelineVersionComparison {
+  left: { rowCount: number; quality: PipelineQuality };
+  right: { rowCount: number; quality: PipelineQuality };
+  rowDifferences: PipelineRowDifferences | null;
+}
+
+/** Dos períodos inclusivos sobre columnas DATE y una medida exacta compatible. */
+export interface PeriodComparisonRequest {
+  leftVersionId: string;
+  rightVersionId: string;
+  dateColumn: string;
+  leftFrom: string;
+  leftTo: string;
+  rightFrom: string;
+  rightTo: string;
+  measureColumn: string;
+  sameUnitsConfirmed: boolean;
+  keyColumn: string | null;
+}
+
+export interface PeriodComparisonResult {
+  left: { rows: number; valid: number; sum: string | null; mean: string | null };
+  right: { rows: number; valid: number; sum: string | null; mean: string | null };
+  keyed: { added: number; removed: number; changed: number; unchanged: number } | null;
 }
 
 export interface PipelineValidation {
@@ -172,6 +271,9 @@ const FILTER_OPERATORS_REQUIRING_VALUE = new Set<PipelineFilterOperator>([
 ]);
 const PIPELINE_TARGET_TYPES = new Set<PipelineTargetType>([
   "INTEGER", "BIGINT", "DECIMAL", "BOOLEAN", "VARCHAR",
+]);
+const PIPELINE_ARITHMETIC_OPERATORS = new Set<PipelineArithmeticOperator>([
+  "add", "subtract", "multiply",
 ]);
 const PIPELINE_DATE_FORMATS = new Set<PipelineDateFormat>([
   "YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY", "DD-MM-YYYY", "YYYY-MM-DD HH:mm:ss",
@@ -270,6 +372,9 @@ export function validatePipeline(
         if (isNumericPipelineColumn(column) && !isNumericPipelineValue(step.value)) {
           return fail(`Ingrese un valor numérico válido para ${column.name}.`, step.id);
         }
+        if (isNumericPipelineColumn(column) && !fitsNumericReplacement(step.value, column.type)) {
+          return fail(`El valor de reemplazo no cabe en ${column.type} sin pérdida.`, step.id);
+        }
         break;
       }
       case "convertType": {
@@ -309,6 +414,97 @@ export function validatePipeline(
         columns = columns.map((candidate) =>
           candidate.name === column.name ? { ...candidate, type: "DATE" } : candidate,
         );
+        break;
+      }
+      case "calculate": {
+        const left = findColumn(columns, step.leftColumn);
+        const right = findColumn(columns, step.rightColumn);
+        if (!left || !right) {
+          const missing = !left ? step.leftColumn : step.rightColumn;
+          return fail(`El cálculo referencia una columna que ya no existe: ${missing}.`, step.id);
+        }
+        if (!isNumericPipelineColumn(left) || !isNumericPipelineColumn(right)) {
+          return fail("Los cálculos requieren dos columnas numéricas.", step.id);
+        }
+        if (!PIPELINE_ARITHMETIC_OPERATORS.has(step.operator)) {
+          return fail("La operación del cálculo no es válida.", step.id);
+        }
+        const outputName = step.outputName.trim();
+        if (!outputName || outputName.includes("\0")) {
+          return fail("Ingrese un nombre válido para la columna calculada.", step.id);
+        }
+        if (outputName.length > 128) {
+          return fail("El nombre de columna no puede superar los 128 caracteres.", step.id);
+        }
+        if (columns.some((column) => normalizeName(column.name) === normalizeName(outputName))) {
+          return fail(`Ya existe una columna llamada «${outputName}».`, step.id);
+        }
+        const resultType = arithmeticResultType(left, right, step.operator);
+        if (!resultType) {
+          return fail("El resultado supera la precisión decimal admitida o mezcla DECIMAL con coma flotante.", step.id);
+        }
+        columns = [...columns, {
+          name: outputName,
+          type: resultType,
+          nullable: left.nullable || right.nullable,
+        }];
+        break;
+      }
+      case "aggregate": {
+        if (step.groupBy.some((name, index) => step.groupBy.slice(0, index).some((other) => normalizeName(other) === normalizeName(name)))) {
+          return fail("La agrupación contiene columnas repetidas.", step.id);
+        }
+        const missingGroupColumn = step.groupBy.find((name) => !hasColumn(columns, name));
+        if (missingGroupColumn) {
+          return fail(`La agrupación referencia una columna que ya no existe: ${missingGroupColumn}.`, step.id);
+        }
+        if (step.aggregations.length === 0) {
+          return fail("Agregue al menos una operación de agregación.", step.id);
+        }
+
+        const outputNames = new Set(step.groupBy.map(normalizeName));
+        const aggregateColumns: PipelineColumn[] = [];
+        for (const aggregation of step.aggregations) {
+          const outputName = aggregation.outputName.trim();
+          if (!outputName || outputName.includes("\0")) {
+            return fail("Ingrese un nombre válido para cada resultado de agregación.", step.id);
+          }
+          if (outputName.length > 128) {
+            return fail("El nombre de columna no puede superar los 128 caracteres.", step.id);
+          }
+          const normalizedOutput = normalizeName(outputName);
+          if (outputNames.has(normalizedOutput)) {
+            return fail(`Ya existe una columna llamada «${outputName}».`, step.id);
+          }
+          outputNames.add(normalizedOutput);
+
+          if (aggregation.operator === "count") {
+            aggregateColumns.push({ name: outputName, type: "BIGINT", nullable: false });
+            continue;
+          }
+          const source = findColumn(columns, aggregation.column);
+          if (!source) {
+            return fail(`La agregación referencia una columna que ya no existe: ${aggregation.column}.`, step.id);
+          }
+          if (!isNumericPipelineColumn(source)) {
+            return fail("La suma, el mínimo y el máximo requieren una columna numérica.", step.id);
+          }
+          const resultType = aggregation.operator === "sum"
+            ? sumResultType(source)
+            : source.type.trim().toUpperCase();
+          if (!resultType) {
+            return fail("No se puede sumar esta columna sin exceder la precisión numérica admitida.", step.id);
+          }
+          aggregateColumns.push({
+            name: outputName,
+            type: resultType,
+            nullable: true,
+          });
+        }
+        columns = [
+          ...step.groupBy.map((name) => ({ ...findColumn(columns, name)! })),
+          ...aggregateColumns,
+        ];
         break;
       }
       case "normalizeText": {
@@ -407,4 +603,65 @@ function isNumericComparison(operator: PipelineFilterOperator): boolean {
 
 function normalizeName(value: string): string {
   return value.toLocaleLowerCase("en-US");
+}
+
+/** Devuelve un tipo de salida exacto cuando las entradas lo permiten. */
+function arithmeticResultType(
+  left: PipelineColumn,
+  right: PipelineColumn,
+  operator: PipelineArithmeticOperator,
+): string | null {
+  const leftType = left.type.trim().toUpperCase();
+  const rightType = right.type.trim().toUpperCase();
+  const leftFloat = /^(?:FLOAT|FLOAT4|FLOAT8|REAL|DOUBLE)(?:\s*\(|$)/.test(leftType);
+  const rightFloat = /^(?:FLOAT|FLOAT4|FLOAT8|REAL|DOUBLE)(?:\s*\(|$)/.test(rightType);
+  const leftDecimal = decimalParts(leftType);
+  const rightDecimal = decimalParts(rightType);
+  if ((leftFloat || rightFloat) && (leftDecimal || rightDecimal)) return null;
+  if (leftFloat || rightFloat) return "DOUBLE";
+
+  const leftParts = leftDecimal ?? integerParts(leftType);
+  const rightParts = rightDecimal ?? integerParts(rightType);
+  if (!leftParts || !rightParts) return null;
+  if (!leftDecimal && !rightDecimal) return "HUGEINT";
+
+  const scale = operator === "multiply"
+    ? leftParts.scale + rightParts.scale
+    : Math.max(leftParts.scale, rightParts.scale);
+  const integerDigits = operator === "multiply"
+    ? leftParts.precision - leftParts.scale + rightParts.precision - rightParts.scale + 1
+    : Math.max(leftParts.precision - leftParts.scale, rightParts.precision - rightParts.scale) + 1;
+  const precision = integerDigits + scale;
+  return precision <= 38 ? `DECIMAL(${precision},${scale})` : null;
+}
+
+function sumResultType(column: PipelineColumn): string | null {
+  const type = column.type.trim().toUpperCase();
+  if (/^(?:FLOAT|FLOAT4|FLOAT8|REAL|DOUBLE)(?:\s*\(|$)/.test(type)) return "DOUBLE";
+  const decimal = decimalParts(type);
+  if (decimal) return `DECIMAL(38,${decimal.scale})`;
+  return integerParts(type) ? "HUGEINT" : null;
+}
+
+function decimalParts(type: string): { precision: number; scale: number } | null {
+  const match = /^(?:DECIMAL|NUMERIC)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(type);
+  if (!match) return null;
+  const precision = Number(match[1]);
+  const scale = Number(match[2]);
+  return Number.isInteger(precision) && Number.isInteger(scale) &&
+    precision >= 1 && precision <= 38 && scale >= 0 && scale <= precision
+    ? { precision, scale }
+    : null;
+}
+
+function integerParts(type: string): { precision: number; scale: 0 } | null {
+  const digits: Record<string, number> = {
+    UTINYINT: 3, TINYINT: 3, INT1: 3,
+    USMALLINT: 5, SMALLINT: 5, INT2: 5,
+    UINTEGER: 10, INTEGER: 10, INT: 10, INT4: 10,
+    UBIGINT: 20, BIGINT: 19, INT8: 19,
+    HUGEINT: 38,
+  };
+  const precision = digits[type];
+  return precision ? { precision, scale: 0 } : null;
 }

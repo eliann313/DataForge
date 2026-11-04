@@ -3,8 +3,9 @@ import {
   type PipelineDefinition,
   type PipelinePreview,
   type PipelineVersion,
+  type PeriodComparisonRequest,
 } from "../domain/definition";
-import type { PipelineDefinitionRepository, PipelineExecutionPort } from "./ports";
+import type { DatasetExport, DatasetExportFormat, PipelineDefinitionRepository, PipelineExecutionPort } from "./ports";
 
 export class PipelineService {
   constructor(
@@ -43,6 +44,18 @@ export class PipelineService {
 
   activate(versionId: string): Promise<void> {
     return this.execution.activateDatasetVersion(versionId);
+  }
+
+  compareVersions(leftId: string, rightId: string) {
+    return this.execution.compareVersions(leftId, rightId);
+  }
+
+  comparePeriods(request: PeriodComparisonRequest) {
+    return this.execution.comparePeriods(request);
+  }
+
+  exportVersion(versionId: string, format: DatasetExportFormat): Promise<DatasetExport> {
+    return this.execution.exportDatasetVersion(versionId, format);
   }
 
   listDefinitions(projectId: string): Promise<PipelineDefinition[]> {

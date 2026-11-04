@@ -1,7 +1,7 @@
 # DataForge — Plan de primeras entregas
 
 > **Estado:** E1–E6 cerradas; R1 completo. Seguimiento actual: R2 / fase 4.
-> **Fecha:** 2026-10-11 (plan); **avance:** 2026-10-12 en `codex/r2-phase4-pipelines` (PR #16 hacia `develop`).
+> **Fecha:** 2026-10-11 (plan); **avance:** 2026-11-04. Las funciones de múltiples fuentes y combinaciones ya están integradas en `main`; una pila nueva cubre expresiones, agregaciones y exportación procesada.
 > **Base verificada:** documentación, ADR-0001 y ADR-0003 aceptados, ADR-0002 con
 > tabular medido (global propuesto hasta 0B/0C), 0A.1–0A.6, E3.1–E3.3, E4
 > (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
@@ -116,34 +116,57 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 
 ## R2 / fase 4 — avance actual
 
-### Cortes locales implementados (2026-10-12)
+Los roles semánticos editados en Datos se conservan por versión mientras vive la sesión. Los resúmenes, descriptivos, histogramas, agregados numéricos y correlaciones aceptan únicamente columnas numéricas con rol de medida; un identificador puede reclasificarse explícitamente en Datos. Frecuencias y conteos siguen disponibles para identificadores. Los roles se reinician al cerrar o recargar el motor.
+
+La auditoría del corte R2 agrega validaciones para archivos XLSX con directorios ZIP ambiguos y protege el aislamiento si se cambia de proyecto durante una operación. Finanzas redondea importes con dígitos decimales; APPEND conserva unidades de timestamp en nanosegundos y el reemplazo de nulos valida el rango y la escala del tipo físico. Los gráficos exigen una medida para sumar o promediar y advierten cuando hay más de 500 grupos. Las columnas totalmente nulas no se describen como constantes.
+
+Los descriptivos y gráficos numéricos son aproximados cuando usan coma flotante. Para columnas exactas de precisión superior a la que puede mostrarse con seguridad, se rechaza el agregado con un mensaje en lugar de presentar cifras redondeadas como exactas; la importación y la tabla siguen disponibles. Esta comprobación conservadora recorre la columna completa y puede rechazar algunos valores representables.
+
+### Cortes locales implementados (2026-11-04)
 
 - Pasos tipados para filtrar filas, seleccionar y renombrar columnas, quitar filas con nulos en columnas elegidas, reemplazar nulos, quitar duplicados exactamente iguales y ordenar.
 - Los filtros respetan el tipo físico: una igualdad sobre texto conserva valores como `00123`; las comparaciones mayor/menor solo se permiten en columnas numéricas y validan el literal.
 - Vista previa con cantidad de filas antes/después y muestra acotada.
 - Ejecutar crea una vista DuckDB derivada, sin sobrescribir la fuente; se puede activar de nuevo la versión fuente o una derivada.
+- Cada versión de pipeline conserva durante la sesión una copia de la definición realmente ejecutada y permite cargarla sobre su versión de origen para revisarla, editarla o repetirla; esta copia no persiste al cerrar el motor.
 - Conversión explícita a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`. La vista previa y la ejecución rechazan valores incompatibles, desbordes o conversiones que pierdan precisión; los nulos se conservan.
 - Normalización de texto de fecha a `DATE` mediante formatos explícitos (`YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, `DD-MM-YYYY` y `YYYY-MM-DD HH:mm:ss`); las fechas inválidas se rechazan antes de crear una versión.
 - La definición puede guardarse por proyecto en IndexedDB y se valida contra el esquema activo al cargarla. Varias fuentes y versiones de cada proyecto viven solo en el Worker durante la sesión. APPEND conserva duplicados con `UNION ALL`, valida tipos/mapeos; JOIN verifica tipos de clave, cardinalidad y fanout y exige confirmación antes de aceptar multiplicación de filas. Las combinaciones guardan ambos padres y todas las fuentes de linaje. Quitar una fuente elimina sus vistas dependientes. Los archivos y resultados se pierden al cerrar/recargar; OPFS y exportación portable siguen diferidos a fase 5.
 - Las pruebas E2E cubren aislamiento de proyectos, duplicados en APPEND, rechazo por cardinalidad incorrecta, confirmación de fanout y limpieza de versiones al quitar una fuente.
 - Los identificadores SQL se escapan, los valores de filtro se codifican y no se acepta SQL libre. Un error de validación no crea ni activa una versión.
+- Las columnas calculadas admiten suma, resta y multiplicación entre tipos numéricos; el esquema de salida deriva tipo y nulabilidad, y rechaza colisiones o resultados DECIMAL fuera de precisión.
+- Las agregaciones producen una versión agrupada nueva. Incluyen conteo de filas, suma, mínimo y máximo numéricos; el conteo no omite nulos y el esquema resultante se valida antes de ejecutar.
+- La vista previa compara filas, filas con algún nulo y grupos de filas completas duplicadas antes y después. Con esquemas idénticos también cuenta copias de filas completas que salen y entran (`EXCEPT ALL`); una fila editada puede contar en ambos lados. Es posible comparar estos mismos indicadores entre dos versiones elegidas, por ejemplo de distintos períodos. Los conteos usan el dataset completo y pueden ser costosos en vistas grandes.
+- La comparación por períodos usa rangos inclusivos `DATE`, suma exacta y media aproximada de una medida compatible, y opcionalmente clasifica altas, bajas y cambios por clave única y no nula. Los esquemas, roles, precisión y unidad declarada se validan como describe ADR-0008.
+- Cualquier versión de la sesión se puede descargar como CSV o Parquet. CSV antepone un apóstrofo a encabezados y textos que parecen fórmulas para proteger al abrirlos en hojas de cálculo; Parquet conserva los valores.
 
 ### Siguiente trabajo dentro de las fases existentes
 
-1. Revisar CI y la PR #16 con el SHA actual; el incremento aún no está integrado ni publicado.
-2. Una vez aceptado el cierre de fase 4, avanzar a fase 5: informe reproducible, exportación y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
+1. Revisar la pila de expresiones, agregaciones y exportaciones.
+2. Después de esta pila, completar el Report Builder, snapshots y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
 3. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
+
+La exportación CSV usa `COPY` de DuckDB y neutraliza encabezados y valores de texto que podrían interpretarse como fórmulas; no cambia la fuente ni la versión. Parquet se genera desde resultados Arrow con `parquet-wasm`, cargado al solicitar ese formato desde un asset local que el build copia de `node_modules` a `public/vendor`. El escritor Parquet de DuckDB-Wasm en la versión fijada falla en ejecución (`function signature mismatch`), por eso se usa el escritor Arrow local.
 
 ### Verificación del corte local de fase 4
 
-Evidencia del incremento actual: `npm run typecheck`, `npm run lint` y `npm test`
-pasaron; Vitest: 67/67. `npm run e2e -- --workers=1 e2e/pipelines.spec.ts`
-pasó 32/32 en Chromium y Firefox contra Next.js local. Tras ampliar la prueba de
-APPEND para quitar una fuente y comprobar que desaparecen sus vistas derivadas,
-ese recorrido pasó 2/2 en Chromium/Firefox. `npm run build` generó el export
-estático y `npm run smoke:static` pasó 47/47 en Chromium. El smoke detectó y se
-ajustó una expectativa E2E desactualizada sobre el texto real del contexto de
-proyecto. Estos cambios siguen fuera de la demo pública R1.
+Evidencia de esta pila: `npm run typecheck`, `npm run lint` y `npm test` pasaron;
+Vitest: 76/76. La suite de pipelines pasó 19/19 en Chromium contra Next.js local
+y 19/19 contra el export estático. `npm run build` generó el sitio y el smoke
+estático completo pasó 50/50 en Chromium. Las extensiones JSON y Parquet del
+motor se sirven localmente para que las importaciones funcionen sin descargar
+código externo al ejecutar la aplicación. Estos cambios siguen fuera de la demo
+pública R1.
+
+La revisión posterior de esta pila verificó 99/99 pruebas unitarias, tipado,
+lint y build; el smoke del sitio estático pasó 57/57 en Chromium. Incluye casos
+de XLSX ambiguo, aislamiento por proyecto, roles semánticos, precisión numérica,
+comparación de versiones y APPEND de timestamps con nanosegundos. La fase 4
+permanece en revisión hasta aceptar e integrar la pila.
+
+El incremento de comparación por períodos pasó 100/100 pruebas unitarias y el
+smoke estático 59/59 en Chromium. El ADR-0008 registra reglas, límites y una
+medición reproducible de 100.000 filas; esa medición no establece capacidad.
 
 ## Evidencia histórica del backlog 0A (E1–E2)
 

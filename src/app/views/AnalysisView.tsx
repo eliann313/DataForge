@@ -1,14 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { evaluateFindings, type Finding } from "@/modules/analysis";
+import { isNumericMeasure, type SemanticRole } from "@/platform/engines/duckdb/semantics";
 import {
   engine,
   type ColumnInfo,
   type Correlation,
   type FrequencyTable,
-  type GroupedRow,
   type Histogram,
   type NumericDescription,
 } from "@/platform/engines/duckdb/manager";
@@ -33,6 +33,8 @@ function fmtCell(v: unknown): string {
 // agregados, correlación justificada y hallazgos por reglas transparentes.
 export default function AnalysisView() {
   const [columns, setColumns] = useState<ColumnInfo[]>([]);
+  const [roles, setRoles] = useState<Record<string, SemanticRole>>({});
+  const revision = useRef(0);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -54,77 +56,86 @@ export default function AnalysisView() {
 
   const [findings, setFindings] = useState<Finding[] | null>(null);
 
-  async function fetchSchema(): Promise<ColumnInfo[]> {
-    return engine.getSchema();
-  }
+  const measureColumns = columns.filter((column) => isNumericMeasure(column, roles));
 
-  async function applySchema(schema: ColumnInfo[]) {
+  const applySchema = useCallback((schema: ColumnInfo[]) => {
+    const nextRoles = engine.getSemanticRoles();
+    const measures = schema.filter((column) => isNumericMeasure(column, nextRoles));
     setColumns(schema);
+    setRoles(nextRoles);
+    setDesc(null);
+    setCorr(null);
+    setChart(null);
+    setFindings(null);
+    setFreq(null);
+    setYCol((c) => measures.some((item) => item.name === c) ? c : "");
+    setCorrA((c) => measures.some((item) => item.name === c) ? c : "");
+    setCorrB((c) => measures.some((item) => item.name === c) ? c : "");
+    setDescCol((c) => measures.some((item) => item.name === c) ? c : measures[0]?.name ?? "");
     if (schema.length > 0) {
-      setDescCol((c) => c || schema[0].name);
-      setFreqCol((c) => c || schema[0].name);
-      setXCol((c) => c || schema[0].name);
+      setFreqCol((c) => schema.some((item) => item.name === c) ? c : schema[0].name);
+      setXCol((c) => schema.some((item) => item.name === c) ? c : schema[0].name);
     }
-  }
+  }, []);
 
-  async function load() {
+  const load = useCallback(async () => {
+    const request = ++revision.current;
+    const versionId = engine.getActiveDatasetVersionId();
     setBusy(true);
     setMessage(null);
     try {
-      await applySchema(await fetchSchema());
+      const schema = await engine.getSchema();
+      if (request === revision.current && versionId === engine.getActiveDatasetVersionId()) applySchema(schema);
     } catch {
       // Se conserva el esquema anterior (si había): el error se muestra
       // junto a los últimos datos, nunca reemplazándolos.
-      setMessage("Sin dataset: importe un archivo en Datos primero.");
+      if (request === revision.current) {
+        setColumns([]);
+        setMessage("Sin dataset: importe un archivo en Datos primero.");
+      }
     } finally {
-      setBusy(false);
+      if (request === revision.current) setBusy(false);
     }
-  }
+  }, [applySchema]);
 
   useEffect(() => {
     // Carga inicial en continuación asíncrona (patrón de fetch permitido).
-    let cancelled = false;
-    (async () => {
-      setBusy(true);
-      try {
-        const schema = await fetchSchema();
-        if (!cancelled) await applySchema(schema);
-      } catch {
-        if (!cancelled) {
-          setMessage("Sin dataset: importe un archivo en Datos primero.");
-        }
-      } finally {
-        if (!cancelled) setBusy(false);
-      }
-    })();
+    const currentRevision = revision;
+    void Promise.resolve().then(load);
+    const unsubscribe = engine.onChange(() => { void load(); });
     return () => {
-      cancelled = true;
+      currentRevision.current++;
+      unsubscribe();
     };
-  }, []);
+  }, [load]);
 
   async function run<T>(task: () => Promise<T>, apply: (v: T) => void) {
+    const request = revision.current;
     setBusy(true);
     setMessage(null);
     try {
-      apply(await task());
+      const result = await task();
+      if (request === revision.current) apply(result);
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "Error de análisis");
+      if (request === revision.current) setMessage(cause instanceof Error ? cause.message : "Error de análisis");
     } finally {
-      setBusy(false);
+      if (request === revision.current) setBusy(false);
     }
   }
 
   async function computeFindings() {
+    const request = revision.current;
     setBusy(true);
     setMessage(null);
     try {
       const list = [];
       for (const c of columns) {
+        if (request !== revision.current) return;
         const profile = await engine.profileColumn(c.name);
         let mean: number | null = null;
         let median: number | null = null;
         let stddev: number | null = null;
-        if (/INT|DOUBLE|FLOAT|DECIMAL|NUMERIC|REAL/i.test(c.type)) {
+        if (isNumericMeasure(c, roles)) {
           try {
             const d = await engine.describeNumeric(c.name);
             mean = d.mean;
@@ -154,21 +165,24 @@ export default function AnalysisView() {
           topShare,
         });
       }
-      setFindings(evaluateFindings(list));
+      if (request === revision.current) setFindings(evaluateFindings(list));
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "Error de análisis");
+      if (request === revision.current) setMessage(cause instanceof Error ? cause.message : "Error de análisis");
     } finally {
-      setBusy(false);
+      if (request === revision.current) setBusy(false);
     }
   }
 
   async function renderChart() {
+    const request = revision.current;
     setBusy(true);
     setMessage(null);
+    setChart(null);
     try {
       if (chartKind === "hist") {
         if (!yCol) throw new Error("Elija la columna numérica del histograma.");
         const h: Histogram = await engine.histogram(yCol, bins);
+        if (request !== revision.current) return;
         setChart({
           title: `Histograma de ${yCol} (${h.bins} bines)`,
           kind: "bar",
@@ -179,22 +193,24 @@ export default function AnalysisView() {
         });
       } else {
         if (!xCol) throw new Error("Elija la columna del eje X.");
-        const rows: GroupedRow[] = await engine.groupedStat(
+        if (agg !== "count" && !yCol) throw new Error("Elija la columna numérica para la agregación.");
+        const grouped = await engine.groupedStat(
           xCol,
           agg === "count" ? null : yCol || null,
           agg,
         );
+        if (request !== revision.current) return;
         const aggLabel = agg === "count" ? "conteo" : agg === "sum" ? `suma de ${yCol}` : `media de ${yCol}`;
         setChart({
-          title: `${chartKind === "bar" ? "Barras" : "Líneas"}: ${aggLabel} por ${xCol} (${rows.length} grupos)`,
+          title: `${chartKind === "bar" ? "Barras" : "Líneas"}: ${aggLabel} por ${xCol} (${grouped.rows.length} grupos${grouped.truncated ? "; se muestran los primeros 500, hay más" : ""})`,
           kind: chartKind,
-          points: rows.map((r) => ({ label: fmtCell(r.x), value: r.y })),
+          points: grouped.rows.map((r) => ({ label: fmtCell(r.x), value: r.y })),
         });
       }
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "Error de análisis");
+      if (request === revision.current) setMessage(cause instanceof Error ? cause.message : "Error de análisis");
     } finally {
-      setBusy(false);
+      if (request === revision.current) setBusy(false);
     }
   }
 
@@ -220,7 +236,7 @@ export default function AnalysisView() {
     <div className="space-y-6">
       <p className="text-sm text-gray-600">
         Cálculos sobre el dataset activo ({columns.length} columnas). Varianza y
-        desvío muestrales (n−1); cuantiles continuos; nulos excluidos.{" "}
+        desvío muestrales (n−1); cuantiles continuos; nulos excluidos. Las medias, cuantiles, varianzas y correlaciones usan coma flotante y son aproximadas.{" "}
         <button type="button" disabled={busy} onClick={() => void load()} className="underline">
           Actualizar dataset
         </button>
@@ -229,11 +245,13 @@ export default function AnalysisView() {
 
       <section aria-labelledby="desc">
         <h2 id="desc" className="mb-1 text-lg font-bold">Estadística descriptiva</h2>
+        {measureColumns.length === 0 ? <p>No hay medidas numéricas. Puede cambiar los roles en Datos.</p> : null}
         <p className="text-sm">
           <label htmlFor="desc-col">Columna numérica: </label>
           <select id="desc-col" value={descCol} disabled={busy} onChange={(e) => setDescCol(e.target.value)}
             className="rounded border border-gray-300 px-1 py-0.5">
-            {columns.map((c) => <option key={c.name} value={c.name}>{c.name} ({c.type})</option>)}
+            <option value="">—</option>
+            {measureColumns.map((c) => <option key={c.name} value={c.name}>{c.name} ({c.type})</option>)}
           </select>{" "}
           <button type="button" disabled={busy || !descCol}
             onClick={() => void run(() => engine.describeNumeric(descCol), setDesc)}
@@ -304,7 +322,7 @@ export default function AnalysisView() {
                 <select id="hist-col" value={yCol} disabled={busy} onChange={(e) => setYCol(e.target.value)}
                   className="rounded border border-gray-300 px-1 py-0.5">
                   <option value="">—</option>
-                  {columns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                  {measureColumns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
                 </select>
               </label>
               <label>Bines:{" "}
@@ -336,7 +354,7 @@ export default function AnalysisView() {
                   <select id="chart-y" value={yCol} disabled={busy} onChange={(e) => setYCol(e.target.value)}
                     className="rounded border border-gray-300 px-1 py-0.5">
                     <option value="">—</option>
-                    {columns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    {measureColumns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
                   </select>
                 </label>
               ) : null}
@@ -361,13 +379,13 @@ export default function AnalysisView() {
           <select id="corr-a" value={corrA} disabled={busy} onChange={(e) => setCorrA(e.target.value)}
             className="rounded border border-gray-300 px-1 py-0.5">
             <option value="">—</option>
-            {columns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+            {measureColumns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
           </select>{" "}
           <label htmlFor="corr-b">Columna B: </label>
           <select id="corr-b" value={corrB} disabled={busy} onChange={(e) => setCorrB(e.target.value)}
             className="rounded border border-gray-300 px-1 py-0.5">
             <option value="">—</option>
-            {columns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+            {measureColumns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
           </select>{" "}
           <button type="button" disabled={busy || !corrA || !corrB}
             onClick={() => void run(() => engine.correlation(corrA, corrB), setCorr)}

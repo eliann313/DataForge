@@ -11,6 +11,7 @@ Cada ADR documenta una decisión técnica con su contexto, alternativas y criter
 | [0005](./0005-definiciones-de-pipeline-locales.md) | Definiciones de pipeline guardadas por proyecto en IndexedDB | Aceptado — R2/fase 4 |
 | [0006](./0006-multiples-datasets-en-sesion.md) | Varias fuentes por proyecto dentro de la sesión DuckDB | Aceptado — R2/fase 4 |
 | [0007](./0007-combinaciones-append-y-join.md) | Semántica y validación de APPEND/JOIN con linaje múltiple | Aceptado — R2/fase 4 |
+| [0008](./0008-comparacion-de-periodos.md) | Rangos de fechas, medidas y cambios por clave entre períodos | Propuesto — R2/fase 4 |
 
 ## Estados
 

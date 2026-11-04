@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildOrderBy, buildPipelineQuery, buildWhere } from "./manager";
+import { buildCsvExportHeader, buildCsvExportQuery, buildOrderBy, buildPipelineQuery, buildWhere, safeAnalysisNumber } from "./manager";
+
+describe("precisión de agregados", () => {
+  it("rechaza enteros y decimales exactos que perderían dígitos", () => {
+    expect(() => safeAnalysisNumber("9007199254740993")).toThrow(/precisión/);
+    expect(() => safeAnalysisNumber("0.1234567890123456")).toThrow(/precisión/);
+    expect(safeAnalysisNumber("2021.25")).toBe(2021.25);
+    expect(safeAnalysisNumber("0.30000000000000004", false)).toBe(0.30000000000000004);
+  });
+});
 
 describe("buildWhere", () => {
   it("vacío no filtra", () => {
@@ -93,5 +102,66 @@ describe("buildPipelineQuery", () => {
     ], [
       { id: "select-1", type: "select", columns: [] },
     ])).toThrow(/al menos una columna/);
+  });
+
+  it("construye expresiones aritméticas cerradas y conserva el esquema tras renombrar", () => {
+    const query = buildPipelineQuery("ventas", [
+      { name: "neto", type: "DECIMAL(10,2)", nullable: false },
+      { name: "impuesto", type: "DECIMAL(5,2)", nullable: true },
+    ], [
+      { id: "calc", type: "calculate", leftColumn: "neto", operator: "multiply", rightColumn: "impuesto", outputName: 'total"bruto' },
+      { id: "rename", type: "rename", column: 'total"bruto', newName: "total" },
+    ]);
+
+    expect(query).toContain('CAST("neto" * "impuesto" AS DECIMAL(16,4)) AS "total""bruto"');
+    expect(query).toContain('"total""bruto" AS "total"');
+  });
+
+  it("genera agregaciones tipadas agrupadas y totales globales", () => {
+    const grouped = buildPipelineQuery("ventas", [
+      { name: "categoria", type: "VARCHAR", nullable: false },
+      { name: "importe", type: "DECIMAL(10,2)", nullable: true },
+    ], [{
+      id: "aggregate",
+      type: "aggregate",
+      groupBy: ["categoria"],
+      aggregations: [
+        { operator: "count", outputName: "filas" },
+        { operator: "sum", column: "importe", outputName: "total" },
+      ],
+    }]);
+    expect(grouped).toContain('SELECT "categoria", COUNT(*) AS "filas", SUM("importe") AS "total"');
+    expect(grouped).toContain('GROUP BY "categoria"');
+
+    const total = buildPipelineQuery("ventas", [
+      { name: "importe", type: "INTEGER", nullable: true },
+    ], [{
+      id: "aggregate",
+      type: "aggregate",
+      groupBy: [],
+      aggregations: [{ operator: "count", outputName: "filas" }],
+    }]);
+    expect(total).toContain('SELECT COUNT(*) AS "filas"');
+    expect(total).not.toContain(" GROUP BY ");
+  });
+});
+
+describe("buildCsvExportQuery", () => {
+  it("neutraliza encabezados peligrosos y escapa comillas, comas y saltos de línea", () => {
+    const names = ["=1+1", " \t@cmd", 'nombre,"x"', "línea\nnueva", "normal"];
+    const columns = names.map((name) => ({ name, type: "VARCHAR", nullable: false }));
+    expect(buildCsvExportHeader(columns)).toBe(`"'=1+1","' \t@cmd","nombre,""x""","línea\nnueva","normal"\n`);
+  });
+  it("neutraliza celdas de texto que pueden ejecutarse como fórmulas", () => {
+    const query = buildCsvExportQuery("version_1", [
+      { name: "grupo", type: "VARCHAR", nullable: false },
+      { name: "importe", type: "DECIMAL(12,2)", nullable: false },
+      { name: 'nota"hostil', type: "TEXT", nullable: true },
+    ]);
+
+    expect(query).toContain('CASE WHEN LEFT(LTRIM(CAST("grupo" AS VARCHAR)');
+    expect(query).toContain("THEN CHR(39) || CAST(\"grupo\" AS VARCHAR)");
+    expect(query).toContain('"importe"');
+    expect(query).toContain('AS "nota""hostil"');
   });
 });

@@ -102,5 +102,10 @@ describe("combinaciones de datasets", () => {
     expect(safeSqlType("DECIMAL(38, 4)")).toBe("DECIMAL(38,4)");
     expect(safeSqlType("DECIMAL(39, 0)")).toBeNull();
     expect(safeSqlType("INTEGER); DROP TABLE data; --")).toBeNull();
+    expect(safeSqlType("TIMESTAMP_NS")).toBe("TIMESTAMP_NS");
+    const mapping = append({ columns: [{ outputName: "fecha", leftColumn: "fecha", rightColumn: "fecha" }] });
+    const ns = [{ name: "fecha", type: "TIMESTAMP_NS", nullable: false }];
+    expect(validateAppendDefinition(ns, ns, mapping).columns[0].type).toBe("TIMESTAMP_NS");
+    expect(validateAppendDefinition(ns, [{ ...ns[0], type: "TIMESTAMP" }], mapping).valid).toBe(false);
   });
 });

@@ -8,17 +8,24 @@ export {
   MAX_PIPELINE_STEPS,
   validatePipeline,
   type PipelineColumn,
+  type PipelineArithmeticOperator,
+  type PipelineAggregate,
   type PipelineDefinition,
   type PipelineDateFormat,
   type PipelineFilter,
   type PipelineFilterOperator,
   type PipelinePreview,
+  type PipelineQuality,
+  type PipelineRowDifferences,
+  type PipelineVersionComparison,
+  type PeriodComparisonRequest,
+  type PeriodComparisonResult,
   type PipelineStep,
   type PipelineTargetType,
   type PipelineValidation,
   type PipelineVersion,
 } from "./domain/definition";
 export { PipelineService } from "./application/service";
-export type { PipelineDefinitionRepository, PipelineExecutionPort } from "./application/ports";
+export type { DatasetExport, DatasetExportFormat, PipelineDefinitionRepository, PipelineExecutionPort } from "./application/ports";
 export { MemoryPipelineDefinitionRepository } from "./infrastructure/memory";
 export { IndexedDBPipelineDefinitionRepository } from "./infrastructure/indexeddb";

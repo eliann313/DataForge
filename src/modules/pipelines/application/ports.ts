@@ -4,13 +4,26 @@ import type {
   PipelinePreview,
   PipelineStep,
   PipelineVersion,
+  PipelineVersionComparison,
+  PeriodComparisonRequest,
+  PeriodComparisonResult,
 } from "../domain/definition";
+
+export type DatasetExportFormat = "csv" | "parquet";
+
+export interface DatasetExport {
+  fileName: string;
+  mediaType: string;
+  bytes: Uint8Array;
+}
 
 /** Puerto que ejecuta pasos declarativos y administra versiones locales. */
 export interface PipelineExecutionPort {
   getDatasetVersions(): PipelineVersion[];
   getActiveDatasetVersionId(): string | null;
   getVersionColumns(versionId: string): Promise<PipelineColumn[]>;
+  compareVersions(leftId: string, rightId: string): Promise<PipelineVersionComparison>;
+  comparePeriods(request: PeriodComparisonRequest): Promise<PeriodComparisonResult>;
   previewPipeline(
     baseVersionId: string,
     steps: PipelineStep[],
@@ -21,6 +34,7 @@ export interface PipelineExecutionPort {
     definition: PipelineDefinition,
   ): Promise<PipelineVersion>;
   activateDatasetVersion(versionId: string): Promise<void>;
+  exportDatasetVersion(versionId: string, format: DatasetExportFormat): Promise<DatasetExport>;
 }
 
 /** Guarda definiciones declarativas por proyecto; no conserva archivos ni resultados. */

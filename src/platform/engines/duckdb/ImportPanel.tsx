@@ -14,7 +14,8 @@ import {
   type NumericSummary,
 } from "./manager";
 import ProfileView from "./ProfileView";
-import { suggestRole, ROLES, type SemanticRole } from "./semantics";
+import { tryNumericSummary } from "./numeric-summary";
+import { isNumericMeasure, ROLES, type SemanticRole } from "./semantics";
 import { XLSXBridge, type SheetInfo } from "./xlsx-bridge";
 
 export interface ExampleRequest {
@@ -34,6 +35,7 @@ interface State {
   filtered: number;
   numericColumn: string;
   numeric: NumericSummary | null;
+  numericError: string | null;
   message: string | null;
 }
 
@@ -46,15 +48,17 @@ const initial: State = {
   filtered: 0,
   numericColumn: "",
   numeric: null,
+  numericError: null,
   message: null,
 };
 
-function firstNumeric(columns: ColumnInfo[]): string {
-  const fractional = columns.find((c) =>
+function firstNumeric(columns: ColumnInfo[], roles: Record<string, SemanticRole>): string {
+  const measures = columns.filter((column) => isNumericMeasure(column, roles));
+  const fractional = measures.find((c) =>
     /DECIMAL|NUMERIC|DOUBLE|FLOAT|REAL/i.test(c.type),
   );
   if (fractional) return fractional.name;
-  const found = columns.find((c) =>
+  const found = measures.find((c) =>
     /INT|UBIGINT|BIGINT|SMALLINT|TINYINT|HUGEINT/i.test(c.type),
   );
   return found ? found.name : "";
@@ -65,12 +69,6 @@ function formatCell(value: unknown): string {
   if (typeof value === "object") return JSON.stringify(value);
   if (typeof value === "number") return String(value);
   return String(value);
-}
-
-function defaultRoles(columns: ColumnInfo[]): Record<string, SemanticRole> {
-  const roles: Record<string, SemanticRole> = {};
-  for (const c of columns) roles[c.name] = suggestRole(c.type, c.name);
-  return roles;
 }
 
 // Explorador de datos (E3–E4): importar, esquema con roles editables,
@@ -140,15 +138,18 @@ export default function ImportPanel({
   }, [example, projectId]);
 
   async function showResult(summary: ImportSummary) {
+    if (engine.getCurrentProjectId() !== summary.projectId || engine.getActiveDatasetVersionId() !== summary.versionId) return;
     summaryVersionRef.current = summary.versionId;
-    const numericColumn = firstNumeric(summary.columns);
-    const [page, numeric] = await Promise.all([
+    const currentRoles = engine.getSemanticRoles();
+    const numericColumn = firstNumeric(summary.columns, currentRoles);
+    const [page, numericResult] = await Promise.all([
       engine.getPage(1, DEFAULT_PAGE_SIZE),
-      numericColumn ? engine.summarizeNumeric(numericColumn) : Promise.resolve(null),
+      tryNumericSummary(numericColumn, (column) => engine.summarizeNumeric(column)),
     ]);
+    if (engine.getCurrentProjectId() !== summary.projectId || engine.getActiveDatasetVersionId() !== summary.versionId) return;
     setFilters([]);
     setSort(null);
-    setRoles(defaultRoles(summary.columns));
+    setRoles(currentRoles);
     setSt({
       phase: "result",
       summary,
@@ -157,22 +158,25 @@ export default function ImportPanel({
       total: page.total,
       filtered: page.filtered,
       numericColumn,
-      numeric,
+      ...numericResult,
       message: null,
     });
   }
 
   useEffect(() => {
     const loadActiveSummary = async (summary: ImportSummary) => {
+      if (engine.getCurrentProjectId() !== summary.projectId || engine.getActiveDatasetVersionId() !== summary.versionId) return;
       summaryVersionRef.current = summary.versionId;
-      const numericColumn = firstNumeric(summary.columns);
-      const [page, numeric] = await Promise.all([
+      const currentRoles = engine.getSemanticRoles();
+      const numericColumn = firstNumeric(summary.columns, currentRoles);
+      const [page, numericResult] = await Promise.all([
         engine.getPage(1, DEFAULT_PAGE_SIZE),
-        numericColumn ? engine.summarizeNumeric(numericColumn) : Promise.resolve(null),
+        tryNumericSummary(numericColumn, (column) => engine.summarizeNumeric(column)),
       ]);
+      if (engine.getCurrentProjectId() !== summary.projectId || engine.getActiveDatasetVersionId() !== summary.versionId) return;
       setFilters([]);
       setSort(null);
-      setRoles(defaultRoles(summary.columns));
+      setRoles(currentRoles);
       setSt({
         phase: "result",
         summary,
@@ -181,7 +185,7 @@ export default function ImportPanel({
         total: page.total,
         filtered: page.filtered,
         numericColumn,
-        numeric,
+        ...numericResult,
         message: null,
       });
     };
@@ -195,9 +199,10 @@ export default function ImportPanel({
       const current = engine.getActiveDatasetSummary();
       if (current && current.versionId !== summaryVersionRef.current) {
         void loadActiveSummary(current).catch((cause: unknown) => {
+          if (engine.getCurrentProjectId() !== current.projectId || engine.getActiveDatasetVersionId() !== current.versionId) return;
           setSt((previous) => ({ ...previous, phase: "error", message: cause instanceof Error ? cause.message : "No se pudo activar el dataset." }));
         });
-      } else if (!current && summaryVersionRef.current !== null) {
+      } else if (!current) {
         summaryVersionRef.current = null;
         setSt(initial);
         setFilters([]);
@@ -209,6 +214,7 @@ export default function ImportPanel({
     const active = engine.getActiveDatasetSummary();
     if (active) {
       void loadActiveSummary(active).catch((cause: unknown) => {
+        if (engine.getCurrentProjectId() !== active.projectId || engine.getActiveDatasetVersionId() !== active.versionId) return;
         setSt((previous) => ({ ...previous, phase: "error", message: cause instanceof Error ? cause.message : "No se pudo recuperar el dataset activo." }));
       });
     }
@@ -250,7 +256,7 @@ export default function ImportPanel({
         throw new Error("Tipo no soportado: solo .csv, .xlsx, .json tabular y .parquet.");
       }
     } catch (cause) {
-      fail(cause);
+      if (engine.getCurrentProjectId() === projectId) fail(cause);
     } finally {
       setBusy(false);
     }
@@ -267,7 +273,7 @@ export default function ImportPanel({
         await engine.importCSVText(`${file.name}#${extracted.sheet}`, extracted.csv, { projectId }),
       );
     } catch (cause) {
-      fail(cause);
+      if (engine.getCurrentProjectId() === projectId) fail(cause);
     } finally {
       setBusy(false);
     }
@@ -294,13 +300,16 @@ export default function ImportPanel({
 
   async function changeNumeric(column: string) {
     if (!column) {
-      setSt((s) => ({ ...s, numericColumn: "", numeric: null }));
+      setSt((s) => ({ ...s, numericColumn: "", numeric: null, numericError: null }));
       return;
     }
+    const versionId = engine.getActiveDatasetVersionId();
     setBusy(true);
     try {
-      const numeric = await engine.summarizeNumeric(column);
-      setSt((s) => ({ ...s, numericColumn: column, numeric }));
+      const result = await tryNumericSummary(column, (name) => engine.summarizeNumeric(name));
+      if (versionId === engine.getActiveDatasetVersionId() && engine.getSemanticRoles()[column] === "medida") {
+        setSt((s) => ({ ...s, numericColumn: column, ...result }));
+      }
     } catch (cause) {
       fail(cause);
     } finally {
@@ -519,9 +528,14 @@ export default function ImportPanel({
                       aria-label={`Rol semántico de ${c.name}`}
                       value={roles[c.name] ?? "desconocido"}
                       disabled={busy}
-                      onChange={(e) =>
-                        setRoles((r) => ({ ...r, [c.name]: e.target.value as (typeof ROLES)[number] }))
-                      }
+                      onChange={(e) => {
+                        engine.setSemanticRole(c.name, e.target.value as SemanticRole);
+                        const next = engine.getSemanticRoles();
+                        setRoles(next);
+                        if (st.numericColumn === c.name && !isNumericMeasure(c, next)) {
+                          setSt((previous) => ({ ...previous, numericColumn: "", numeric: null, numericError: null }));
+                        }
+                      }}
                       className="rounded border border-gray-300 px-1 py-0.5 text-sm"
                     >
                       {ROLES.map((r) => (
@@ -595,6 +609,7 @@ export default function ImportPanel({
           <ProfileView key={`p-${st.summary.fileName}`} columns={st.summary.columns} />
 
           <h3>Agregación</h3>
+          {st.numericError ? <p role="alert">No se pudo calcular el resumen: {st.numericError}</p> : null}
           <p>
             <label htmlFor="num-col">Columna numérica: </label>
             <select
@@ -604,7 +619,7 @@ export default function ImportPanel({
               onChange={(e) => void changeNumeric(e.target.value)}
             >
               <option value="">—</option>
-              {st.summary.columns.map((c) => (
+              {st.summary.columns.filter((c) => isNumericMeasure(c, roles)).map((c) => (
                 <option key={c.name} value={c.name}>
                   {c.name} ({c.type})
                 </option>

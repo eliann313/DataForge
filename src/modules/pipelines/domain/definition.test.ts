@@ -68,8 +68,14 @@ describe("validatePipeline", () => {
       { id: "fill-text", type: "fillNull", column: "grupo", value: "00123" },
     ])).valid).toBe(true);
     expect(validatePipeline(columns, definition([
-      { id: "fill-number", type: "fillNull", column: "valor", value: "0.5" },
+      { id: "fill-number", type: "fillNull", column: "valor", value: "5" },
     ])).valid).toBe(true);
+    expect(validatePipeline(columns, definition([{ id: "fill", type: "fillNull", column: "valor", value: "0.5" }])).error).toMatch(/sin pérdida/);
+    expect(validatePipeline(columns, definition([{ id: "fill", type: "fillNull", column: "valor", value: "2147483648" }])).error).toMatch(/sin pérdida/);
+    const decimals = [{ name: "v", type: "DECIMAL(4,2)", nullable: true }];
+    expect(validatePipeline(decimals, definition([{ id: "fill", type: "fillNull", column: "v", value: "12.34" }])).valid).toBe(true);
+    expect(validatePipeline(decimals, definition([{ id: "fill", type: "fillNull", column: "v", value: "12.345" }])).valid).toBe(false);
+    expect(validatePipeline(decimals, definition([{ id: "fill", type: "fillNull", column: "v", value: "100" }])).valid).toBe(false);
     expect(validatePipeline(columns, definition([
       { id: "fill-number", type: "fillNull", column: "valor", value: "cero" },
     ])).error).toMatch(/valor numérico válido/);
@@ -124,6 +130,97 @@ describe("validatePipeline", () => {
     ]));
     expect(timestamp.valid).toBe(true);
     expect(timestamp.columns.find((column) => column.name === "fecha_hora")?.type).toBe("DATE");
+  });
+
+  it("agrega columnas calculadas con tipos y nulabilidad derivados", () => {
+    const result = validatePipeline(columns, definition([
+      { id: "calc", type: "calculate", leftColumn: "valor", operator: "add", rightColumn: "valor", outputName: "total" },
+    ]));
+
+    expect(result.valid).toBe(true);
+    expect(result.columns.at(-1)).toEqual({ name: "total", type: "HUGEINT", nullable: true });
+
+    const decimal = validatePipeline([
+      { name: "neto", type: "DECIMAL(10,2)", nullable: false },
+      { name: "impuesto", type: "DECIMAL(5,2)", nullable: true },
+    ], definition([
+      { id: "calc", type: "calculate", leftColumn: "neto", operator: "multiply", rightColumn: "impuesto", outputName: "total" },
+    ]));
+    expect(decimal.columns.at(-1)).toEqual({ name: "total", type: "DECIMAL(16,4)", nullable: true });
+
+    const floating = validatePipeline([
+      { name: "a", type: "DOUBLE", nullable: false },
+      { name: "b", type: "INTEGER", nullable: false },
+    ], definition([
+      { id: "calc", type: "calculate", leftColumn: "a", operator: "subtract", rightColumn: "b", outputName: "difference" },
+    ]));
+    expect(floating.columns.at(-1)).toEqual({ name: "difference", type: "DOUBLE", nullable: false });
+  });
+
+  it("rechaza cálculos con columnas incompatibles, nombres repetidos o precisión insuficiente", () => {
+    expect(validatePipeline(columns, definition([
+      { id: "calc", type: "calculate", leftColumn: "grupo", operator: "add", rightColumn: "valor", outputName: "total" },
+    ])).error).toMatch(/dos columnas numéricas/);
+    expect(validatePipeline(columns, definition([
+      { id: "calc", type: "calculate", leftColumn: "valor", operator: "add", rightColumn: "valor", outputName: "GRUPO" },
+    ])).error).toMatch(/Ya existe/);
+    expect(validatePipeline([
+      { name: "a", type: "DECIMAL(38,0)", nullable: false },
+      { name: "b", type: "DECIMAL(38,0)", nullable: false },
+    ], definition([
+      { id: "calc", type: "calculate", leftColumn: "a", operator: "multiply", rightColumn: "b", outputName: "producto" },
+    ])).error).toMatch(/precisión decimal/);
+    expect(isPipelineDefinition(definition([
+      { id: "calc", type: "calculate", leftColumn: "valor", operator: "divide", rightColumn: "valor", outputName: "total" } as unknown as PipelineDefinition["steps"][number],
+    ]))).toBe(false);
+  });
+
+  it("valida agregaciones agrupadas y produce un esquema nuevo", () => {
+    const result = validatePipeline([
+      { name: "categoria", type: "VARCHAR", nullable: true },
+      { name: "importe", type: "DECIMAL(10,2)", nullable: true },
+      { name: "unidades", type: "INTEGER", nullable: false },
+    ], definition([
+      {
+        id: "aggregate",
+        type: "aggregate",
+        groupBy: ["categoria"],
+        aggregations: [
+          { operator: "count", outputName: "filas" },
+          { operator: "sum", column: "importe", outputName: "total" },
+          { operator: "min", column: "unidades", outputName: "min_unidades" },
+          { operator: "max", column: "unidades", outputName: "max_unidades" },
+        ],
+      },
+    ]));
+
+    expect(result.valid).toBe(true);
+    expect(result.columns).toEqual([
+      { name: "categoria", type: "VARCHAR", nullable: true },
+      { name: "filas", type: "BIGINT", nullable: false },
+      { name: "total", type: "DECIMAL(38,2)", nullable: true },
+      { name: "min_unidades", type: "INTEGER", nullable: true },
+      { name: "max_unidades", type: "INTEGER", nullable: true },
+    ]);
+  });
+
+  it("rechaza agregaciones ambiguas, repetidas y no numéricas", () => {
+    const source: PipelineColumn[] = [
+      { name: "grupo", type: "VARCHAR", nullable: false },
+      { name: "valor", type: "INTEGER", nullable: true },
+    ];
+    expect(validatePipeline(source, definition([
+      { id: "aggregate", type: "aggregate", groupBy: ["grupo", "GRUPO"], aggregations: [{ operator: "count", outputName: "filas" }] },
+    ])).error).toMatch(/columnas repetidas/);
+    expect(validatePipeline(source, definition([
+      { id: "aggregate", type: "aggregate", groupBy: ["grupo"], aggregations: [{ operator: "count", outputName: "grupo" }] },
+    ])).error).toMatch(/Ya existe/);
+    expect(validatePipeline(source, definition([
+      { id: "aggregate", type: "aggregate", groupBy: [], aggregations: [{ operator: "sum", column: "grupo", outputName: "total" }] },
+    ])).error).toMatch(/columna numérica/);
+    expect(validatePipeline(source, definition([
+      { id: "aggregate", type: "aggregate", groupBy: [], aggregations: [] },
+    ])).error).toMatch(/al menos una operación/);
   });
 
   it("rechaza formatos inválidos y columnas numéricas al normalizar fechas", () => {
