@@ -1,18 +1,9 @@
 # DataForge — Plan de primeras entregas
 
-> **Estado:** E1–E6 cerradas; R1 completo. Seguimiento actual: R2 / fase 4.
-> **Fecha:** 2026-10-11 (plan); **avance:** 2026-11-04. Las funciones de múltiples fuentes y combinaciones ya están integradas en `main`; una pila nueva cubre expresiones, agregaciones y exportación procesada.
-> **Base verificada:** documentación, ADR-0001 y ADR-0003 aceptados, ADR-0002 con
-> tabular medido (global propuesto hasta 0B/0C), 0A.1–0A.6, E3.1–E3.3, E4
-> (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
-> correlación, hallazgos) y E6 (Finanzas Lite exacta); R2 agrega pipelines locales
-> tipados, definiciones por proyecto en IndexedDB, varias fuentes aisladas por
-> proyecto durante la sesión, APPEND/UNION ALL y JOIN con cardinalidad/fanout
-> validados. Este incremento pasó tipado, lint, Vitest 67/67 y Playwright de
-> pipelines 32/32 en Chromium/Firefox; el flujo APPEND con limpieza de linaje
-> también pasó 2/2 en ambos navegadores. Build estático correcto y smoke
-> estático 47/47 en Chromium.
-> **Fase activa:** R2 (fases 4–5) tras el cierre de R1 el 2026-10-12.
+> **Estado:** E1–E6 y R2/fase 4 cerradas; fase activa R2/fase 5.
+> **Fecha:** 2026-10-11 (plan); **cierre de fase 4:** 2026-11-04 sobre `main` en `300fe47`.
+> **Base verificada:** pipelines tipados, definiciones por proyecto, versiones y fuentes de sesión, APPEND/JOIN validados, cálculos, agregaciones, comparación de períodos y exportación CSV/Parquet. Los archivos y resultados no sobreviven al cierre o recarga del motor.
+> **Fase activa:** R2/fase 5: snapshots, Report Builder y respaldo portable.
 > 0B/0C siguen como investigación pendiente y no bloquean.
 > Este plan divide las fases existentes en entregas; no agrega fases ni cambia
 > los criterios del MVP.
@@ -23,7 +14,7 @@ El objetivo original de llegar a **R1** mediante seis entregas demostrables ya s
 
 La primera entrega resolvió un recorrido completo con un CSV real. La segunda cerró la viabilidad de 0A antes de invertir en la interfaz definitiva. El MVP terminó con Finanzas Lite; la siguiente fase ya no es parte del MVP.
 
-El orden ejecutado fue **E1 → E2 → E3 → E4 → E5 → E6**. Las condiciones detalladas debajo conservan el alcance y la evidencia de esas entregas; ya no son backlog pendiente. La fase activa actual es 4 dentro de R2.
+El orden ejecutado fue **E1 → E2 → E3 → E4 → E5 → E6**. Las condiciones detalladas debajo conservan el alcance y la evidencia de esas entregas; ya no son backlog pendiente. R2/fase 4 está cerrada y la fase activa es 5.
 
 ## Entregas y condiciones de cierre
 
@@ -38,7 +29,7 @@ El orden ejecutado fue **E1 → E2 → E3 → E4 → E5 → E6**. Las condicione
 
 E1 es un incremento técnico revisable, **no cierra 0A ni equivale a R1**. E2 cierra únicamente 0A; 0B/0C siguen como investigación pendiente y no bloquean el producto.
 
-El cierre de E1–E6 se verificó en la demo pública R1. El avance de fase 4 que sigue está en el checkout local y todavía no forma parte de esa demo.
+El cierre de E1–E6 se verificó en la demo pública R1. La evidencia del cierre de fase 4 que sigue se obtuvo sobre `main` y el build estático local; no se verificó el despliegue público para este cierre.
 
 ### E1 — CSV real de punta a punta
 
@@ -114,7 +105,7 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 
 **Cierre de R1:** una persona nueva importa CSV/XLSX, revisa calidad y genera estadística y gráfico; otra registra movimientos sin archivo, recarga y recupera totales exactos ARS/USD. Ambas recorren la demo sin cuenta. README, límites, mediciones y capturas describen la implementación real.
 
-## R2 / fase 4 — avance actual
+## R2 / fase 4 — cierre y límites
 
 Los roles semánticos editados en Datos se conservan por versión mientras vive la sesión. Los resúmenes, descriptivos, histogramas, agregados numéricos y correlaciones aceptan únicamente columnas numéricas con rol de medida; un identificador puede reclasificarse explícitamente en Datos. Frecuencias y conteos siguen disponibles para identificadores. Los roles se reinician al cerrar o recargar el motor.
 
@@ -142,27 +133,31 @@ Los descriptivos y gráficos numéricos son aproximados cuando usan coma flotant
 
 ### Siguiente trabajo dentro de las fases existentes
 
-1. Revisar la pila de expresiones, agregaciones y exportaciones.
-2. Después de esta pila, completar el Report Builder, snapshots y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
+1. Definir e implementar snapshots de análisis con versión, parámetros y resultados.
+2. Construir el Report Builder y la exportación de informes; definir respaldo portable y persistencia de archivos con evidencia y actualizar ADR-0003.
 3. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
 
 La exportación CSV usa `COPY` de DuckDB y neutraliza encabezados y valores de texto que podrían interpretarse como fórmulas; no cambia la fuente ni la versión. Parquet se genera desde resultados Arrow con `parquet-wasm`, cargado al solicitar ese formato desde un asset local que el build copia de `node_modules` a `public/vendor`. El escritor Parquet de DuckDB-Wasm en la versión fijada falla en ejecución (`function signature mismatch`), por eso se usa el escritor Arrow local.
 
-### Verificación del corte local de fase 4
+### Verificación del cierre de fase 4
+
+Sobre el commit integrado `300fe47`, `npm run typecheck`, `npm run lint`, `npm test` (100/100) y `npm run build` pasaron. El smoke del build estático pasó 60/60 en Chromium, incluido un recorrido importar → transformar → comparar períodos → exportar. Los checks de GitHub del commit integrado informaron build, E2E, smoke y análisis satisfactorios. No se midió memoria máxima ni se estableció capacidad garantizada; ADR-0008 conserva la medición disponible de 100.000 filas.
+
+La fase 4 se cierra con límites explícitos: una sola clave de comparación, fechas `DATE`, esquemas idénticos para cambios por clave y confirmación manual de unidad/moneda. Las comparaciones recorren los datos completos. La persistencia de archivos/resultados y el respaldo portable corresponden a fase 5.
+
+#### Evidencia histórica de los incrementos
 
 Evidencia de esta pila: `npm run typecheck`, `npm run lint` y `npm test` pasaron;
 Vitest: 76/76. La suite de pipelines pasó 19/19 en Chromium contra Next.js local
 y 19/19 contra el export estático. `npm run build` generó el sitio y el smoke
 estático completo pasó 50/50 en Chromium. Las extensiones JSON y Parquet del
 motor se sirven localmente para que las importaciones funcionen sin descargar
-código externo al ejecutar la aplicación. Estos cambios siguen fuera de la demo
-pública R1.
+código externo al ejecutar la aplicación. Esa evidencia corresponde al corte anterior a la integración.
 
 La revisión posterior de esta pila verificó 99/99 pruebas unitarias, tipado,
 lint y build; el smoke del sitio estático pasó 57/57 en Chromium. Incluye casos
 de XLSX ambiguo, aislamiento por proyecto, roles semánticos, precisión numérica,
-comparación de versiones y APPEND de timestamps con nanosegundos. La fase 4
-permanece en revisión hasta aceptar e integrar la pila.
+comparación de versiones y APPEND de timestamps con nanosegundos. Esa evidencia corresponde al corte anterior a la integración.
 
 El incremento de comparación por períodos pasó 100/100 pruebas unitarias y el
 smoke estático 59/59 en Chromium. El ADR-0008 registra reglas, límites y una
@@ -214,4 +209,4 @@ Los textos legales siguen siendo borradores no publicables. Preparar avisos sobr
 
 Fuentes revisadas: [README](../README.md), [AGENTS](../AGENTS.md), [MVP](MVP.md), [roadmap](roadmap.md), [roadmap técnico](roadmap-tecnico.md), [arquitectura](architecture.md), [ADR](adr/README.md), [diseño](design/README.md), los tres PNG originales, [IA](ai-assistant.md), [autenticación](authentication.md), [integraciones](integrations.md) y borradores de [términos](legal/terms-of-use.md), [privacidad](legal/privacy-policy.md) y [avisos](legal/ai-financial-disclaimer.md).
 
-Al cerrar un corte, actualizar su estado en este documento y la fase correspondiente en el roadmap, adjuntar evidencia reproducible y revisar el siguiente alcance. R1 está cerrado; la fase activa sigue siendo **4 (R2)** hasta completar los criterios de la fase y después avanzar a fase 5.
+Al cerrar un corte, actualizar su estado en este documento y la fase correspondiente en el roadmap, adjuntar evidencia reproducible y revisar el siguiente alcance. R1 y R2/fase 4 están cerrados; la fase activa es **5 (R2)**.

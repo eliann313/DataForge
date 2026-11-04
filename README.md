@@ -4,11 +4,11 @@
 
 DataForge busca que cualquier persona pueda **importar, explorar, limpiar, combinar, analizar, visualizar y exportar datos** sin configurar un entorno científico ni subir sus archivos a un backend de procesamiento. Un usuario puede analizar una planilla; otro puede construir pipelines reproducibles, trabajar con varios datasets y aplicar análisis estadístico avanzado.
 
-> **Estado: R1 cerrado el 2026-10-12** (E1–E6 verificadas en la demo pública con E2E 31/31). **R2/fase 4 sigue en curso:** `main` ya incluye pipelines tipados, varias fuentes por proyecto durante la sesión, APPEND con mapeo y JOIN con cardinalidad/fanout validados. La pila en revisión amplía los pipelines con columnas calculadas, agregaciones y exportación CSV/Parquet. Los bytes de origen y las versiones siguen en memoria; solo se guardan las definiciones en IndexedDB. Ver [avance y próximos cortes](docs/primeras-entregas.md). Demo pública R1: `https://data-forge-analysis.vercel.app/` (sigue al último merge a `main`). Los umbrales de capacidad son hipótesis hasta completar las mediciones del [ADR-0002](docs/adr/0002-motores-analiticos-y-criterios-de-corte.md).
+> **Estado:** R1 (E1–E6) y R2/fase 4 están cerrados. `main` incluye pipelines tipados, versiones de sesión, APPEND/JOIN validados, agregaciones y comparación de períodos; la exportación CSV/Parquet inicia fase 5. Los archivos y versiones siguen en memoria y las definiciones se guardan en IndexedDB. La fase 5 continúa con snapshots, informes y respaldo portable. Ver [alcance, límites y evidencia](docs/primeras-entregas.md). La demo pública `https://data-forge-analysis.vercel.app/` sigue los despliegues de `main`; la verificación de esta entrega se realizó sobre el build estático local. Los umbrales de capacidad siguen sin acreditarse como garantía.
 
 **Documentación:** [MVP y prioridades](docs/MVP.md) · [Roadmap completo](docs/roadmap.md) · [Roadmap técnico maestro](docs/roadmap-tecnico.md) · [Arquitectura de software](docs/architecture.md) · [Decisiones (ADR)](docs/adr/README.md) · [Reglas para agentes](AGENTS.md)
 
-**Ejecución:** [Plan de primeras entregas](docs/primeras-entregas.md), con E1–E6 cerradas y avance actual de R2/fase 4.
+**Ejecución:** [Plan de primeras entregas](docs/primeras-entregas.md), con E1–E6 y R2/fase 4 cerradas; fase 5 activa.
 
 ## ¿Para quién es?
 
@@ -236,13 +236,13 @@ Las reglas de trabajo con agentes de IA están en [AGENTS.md](AGENTS.md).
 - [x] Fase 0A (E1+E2, cerrada 2026-10-12): esqueleto Next.js estático, DuckDB-Wasm en Worker con inicio diferido, CSV/XLSX con esquema, conteo y agregados; E2E en Chromium/Firefox, benchmarks 0A.5 y smoke 9/9 en producción Vercel. ADR-0001 aceptado.
 - [x] Fase 1 (E3, cerrada 2026-10-12): proyectos/carpetas locales con IndexedDB versionado, shell con sidebar e inspector, ejemplos ficticios, cuota observable y ADR-0003 (OPFS y respaldo portable diferidos a fase 5).
 - [x] Fase 2 (E4, cerrada 2026-10-12): CSV/JSON/Parquet/XLSX, filtros y orden sobre DuckDB, roles semánticos editables, profiling con definiciones visibles.
-- [x] Fase 3 (E5, cerrada 2026-10-12): descriptivos exactos (varianza muestral, cuantiles continuos), ECharts con alternativa tabular, correlación justificada y hallazgos por reglas.
+- [x] Fase 3 (E5, cerrada 2026-10-12): descriptivos con definiciones visibles (varianza muestral, cuantiles continuos), ECharts con alternativa tabular, correlación justificada y hallazgos por reglas. Los cálculos de coma flotante son aproximados.
 - [x] Finanzas Lite (E6/3B, cerrada 2026-10-12): CRUD manual ARS/USD en centavos exactos, resumen mensual por moneda sin conversión, gráficos y persistencia local.
 - [x] Cierre de R1 (2026-10-12): recorridos importar→estadística→gráfico y finanzas→recarga verificados con E2E 31/31 en la demo pública; E2E total 62/62, Vitest 41/41.
 - [ ] Fases 0B y 0C: spikes de Pyodide bajo demanda y de Rust/Wasm (no bloquean R1).
 - [x] R2 / fase 4 — implementación base en `main`: pipeline con filtros tipados, selección/renombre, descarte y reemplazo de nulos, normalización de texto/fechas, conversiones explícitas a tipos comunes, deduplicación exacta, orden y combinaciones APPEND/JOIN validadas.
-- [ ] Pila de ampliación R2 en revisión: columnas calculadas tipadas, agregaciones por grupos, exportación CSV/Parquet y comparación de períodos con medidas y clave validada. La fuente permanece intacta.
-- [ ] R2 restante: aceptar e integrar la pila de fase 4; desarrollar informes, snapshots y respaldo portable en fase 5.
+- [x] R2 / fase 4: columnas calculadas, agregaciones, comparación de versiones y períodos y combinaciones validadas. CSV/Parquet procesado inicia fase 5; la fuente permanece intacta.
+- [ ] R2 / fase 5: snapshots, informes y respaldo portable.
 
 ## Documentación y referencias
 

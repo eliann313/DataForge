@@ -1,6 +1,6 @@
 # ADR-0006 — Varias fuentes por proyecto dentro de la sesión
 
-- **Estado:** Aceptado localmente (2026-10-12, PR #16; pendiente de revisión e integración).
+- **Estado:** Aceptado e integrado en `main` (PR #16/#17).
 - **Relacionados:** [ADR-0003](./0003-persistencia-opfs-diferido.md), [ADR-0004](./0004-versiones-derivadas-de-pipelines.md), [ADR-0005](./0005-definiciones-de-pipeline-locales.md), [roadmap](../roadmap.md).
 
 ## Contexto

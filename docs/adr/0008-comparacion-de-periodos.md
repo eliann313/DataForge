@@ -1,6 +1,6 @@
 # ADR-0008 — Comparación de períodos y cambios por clave
 
-- **Estado:** Propuesto, implementación en revisión (R2/fase 4).
+- **Estado:** Aceptado e integrado en `main` (PR #36, R2/fase 4).
 - **Relacionados:** [ADR-0005](./0005-definiciones-de-pipeline-locales.md), [ADR-0007](./0007-combinaciones-append-y-join.md) y [roadmap](../roadmap.md).
 
 ## Contexto y decisión
@@ -19,7 +19,7 @@ Aceptar timestamps implicaría definir zona horaria y límites de día; por ahor
 
 ## Verificación y revisión
 
-Las pruebas de navegador usan períodos con fechas de borde, decimales y altas, bajas y cambios; también comprueban rechazo de claves nulas, repetidas y rangos inválidos. La fase 4 sigue en revisión hasta integrar y aceptar la pila. Medir el costo con el equipo, navegador, tamaño y número de filas reales antes de establecer cualquier límite de rendimiento.
+Las pruebas de navegador usan períodos con fechas de borde, decimales y altas, bajas y cambios; también comprueban rechazo de claves nulas, repetidas y rangos inválidos. La implementación quedó integrada en `main` y el cierre de fase 4 se verificó en el build estático. Medir el costo con el equipo, navegador, tamaño y número de filas reales antes de establecer cualquier límite de rendimiento.
 
 Medición local del 2026-11-04: Linux x64 6.18.57, Intel Xeon Platinum 8370C, 5 CPU lógicas visibles (cuota de 4 CPU), límite de memoria del contenedor 32 GiB, Node 24.19.0, Chromium headless 156.0.8078.4 y DuckDB-Wasm 1.33.1-dev57.0 / motor v1.5.4. Sobre el build estático se importó un CSV generado de 100.000 filas y 2.077.805 bytes, con tres columnas y 50.000 claves en cada período; la comparación incluyó validación de claves, métricas y 50.000 cambios. Tras una ejecución de calentamiento, los cinco tiempos desde la acción del navegador hasta el resultado fueron 224, 116, 130, 242 y 116 ms (mediana 130 ms; rango 116–242 ms). No incluyen inicialización ni importación; sí incluyen la interacción automatizada y las consultas. No se midió memoria máxima. Es una observación de un caso, no un límite de capacidad ni una garantía para otras máquinas o joins.
 

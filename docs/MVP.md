@@ -1,6 +1,6 @@
 # DataForge — MVP y roadmap operativo
 
-> **Estado:** R1 cerrado el 2026-10-12 (fases 0A–3B, entregas E1–E6). R2/fase 4 está en curso en la PR #16: pipelines, varias fuentes por proyecto en memoria y combinaciones APPEND/JOIN validadas. Los archivos y las versiones no persisten al recargar; el [plan de entregas](./primeras-entregas.md) registra evidencia y pendientes. Este documento conserva el alcance del MVP; el [roadmap](./roadmap.md) registra la visión y el estado actual.
+> **Estado:** R1 cerrado el 2026-10-12 (fases 0A–3B, entregas E1–E6); R2/fase 4 también está cerrada. La fase 5 continúa con snapshots, informes y respaldo portable. Los archivos y las versiones no persisten al recargar; el [plan de entregas](./primeras-entregas.md) registra evidencia y pendientes. Este documento conserva el alcance del MVP; el [roadmap](./roadmap.md) registra la visión y el estado actual.
 
 **Principio:** no se reduce la visión, se reduce lo que se intenta construir al mismo tiempo. Cada etapa debe cerrarse con resultados observables antes de decidir la siguiente.
 
@@ -26,7 +26,7 @@ Todo funciona localmente: los datos no salen del navegador.
 | **2** | Importación completa y Data Explorer | Cerrada (E4) |
 | **3** | Estadística descriptiva y gráficos básicos | Cerrada (E5) |
 | **3B** | **Finanzas Lite** | Cerrada; cierra R1 (E6) |
-| 4 – 5 | Pipelines, múltiples datasets, informes | R2 activo; fase 4 en curso |
+| 4 – 5 | Pipelines, múltiples datasets, informes | Fase 4 cerrada; fase 5 activa |
 | 6 – 7B | Finanzas completas, ventas y encuestas | Media |
 | 8 – 10 | Python científico, series temporales, Rust/DTW, optimización | Posterior |
 | IA | IA local, asistente y text-to-SQL controlado | Posterior |
@@ -68,7 +68,7 @@ Siguen siendo parte de la visión y no se descartan; simplemente no condicionan 
 
 ## 5. Reglas de ejecución
 
-1. **Respetar la fase activa.** 0A está cerrada; avanzar con R2/fase 4 según criterios y evidencia. No sumar dependencias o trabajo de fases posteriores sin necesidad demostrable.
+1. **Respetar la fase activa.** 0A, R1 y R2/fase 4 están cerradas; avanzar con R2/fase 5 según criterios y evidencia. No sumar dependencias o trabajo de fases posteriores sin necesidad demostrable.
 2. Las mediciones siguen el protocolo del [ADR-0002](./adr/0002-motores-analiticos-y-criterios-de-corte.md): equipo, navegador, versiones, tamaños reales y varias ejecuciones.
 3. Cada etapa se cierra con la *Definition of Done* del [roadmap](./roadmap.md#7-calidad-por-fase--definition-of-done).
 4. Los límites de capacidad del README son hipótesis hasta que existan benchmarks.
