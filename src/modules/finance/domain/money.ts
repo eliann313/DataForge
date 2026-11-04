@@ -33,7 +33,7 @@ export function parseAmount(raw: string): number {
   } else {
     // Sin coma: el punto seguido de exactamente 3 dígitos es separador de
     // miles ("2.500" → 2500); en otro caso es decimal ("150.50", "2.5").
-    if (!/^-?\d+(\.\d+)?$/.test(cleaned)) {
+    if (!/^-?\d+(\.\d+)?$/.test(cleaned) && !/^-?\d{1,3}(\.\d{3})+$/.test(cleaned)) {
       throw new FinanceError("validation", `Importe inválido: «${raw}».`);
     }
     normalized = /^-?\d{1,3}(\.\d{3})+$/.test(cleaned)

@@ -10,6 +10,7 @@ describe("parseAmount", () => {
     expect(parseAmount("150.50")).toBe(15050);
     expect(parseAmount("1.234,56")).toBe(123456);
     expect(parseAmount(" 2.500 ")).toBe(250000);
+    expect(parseAmount("1.234.567")).toBe(123456700);
   });
 
   it("suma centavos sin error binario (0,10 + 0,20 = 0,30)", () => {
