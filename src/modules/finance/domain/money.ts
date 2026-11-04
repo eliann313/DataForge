@@ -40,13 +40,21 @@ export function parseAmount(raw: string): number {
       ? cleaned.replace(/\./g, "")
       : cleaned;
   }
-  const value = Number(normalized);
-  if (!Number.isFinite(value)) {
-    throw new FinanceError("validation", `Importe inválido: «${raw}».`);
+  if (normalized.startsWith("-")) {
+    throw new FinanceError("validation", "El importe debe ser mayor que cero.");
   }
-  // Mitad hacia arriba, explícito (Math.round: .5 hacia +∞).
-  const minor = Math.round(value * 100);
-  if (!Number.isSafeInteger(minor) || minor <= 0) {
+  const [whole, fraction = ""] = normalized.split(".");
+  const wholeDigits = whole.replace(/^0+/, "") || "0";
+  // El límite admite hasta nueve dígitos enteros. Limitar antes de convertir
+  // también evita perder precisión al procesar entradas muy largas.
+  if (wholeDigits.length > 9) {
+    throw new FinanceError("validation", "El importe supera el máximo admitido.");
+  }
+  const cents = Number(fraction.slice(0, 2).padEnd(2, "0"));
+  // El tercer decimal decide el redondeo mitad hacia arriba. Toda la
+  // aritmética desde aquí usa enteros exactos, sin multiplicar un decimal binario.
+  const minor = Number(wholeDigits) * 100 + cents + (fraction.length >= 3 && fraction[2] >= "5" ? 1 : 0);
+  if (minor <= 0) {
     throw new FinanceError("validation", "El importe debe ser mayor que cero.");
   }
   if (minor > MAX_MINOR) {

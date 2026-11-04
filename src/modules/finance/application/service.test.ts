@@ -25,6 +25,21 @@ describe("parseAmount", () => {
     expect(() => parseAmount("1,2,3")).toThrow();
   });
 
+  it("redondea decimales exactos sin errores de coma flotante", () => {
+    expect(parseAmount("0,145")).toBe(15);
+    expect(parseAmount("10,075")).toBe(1008);
+    expect(parseAmount("0,1449999999999999")).toBe(14);
+    expect(parseAmount("0,005")).toBe(1);
+    expect(() => parseAmount("0,0049999999999999")).toThrow(/mayor que cero/);
+    expect(parseAmount("0000010,075")).toBe(1008);
+  });
+
+  it("aplica el límite después del redondeo", () => {
+    expect(parseAmount("999.999.999,994")).toBe(99_999_999_999);
+    expect(() => parseAmount("999.999.999,995")).toThrow(/máximo/);
+    expect(() => parseAmount("1.000.000.000,00")).toThrow(/máximo/);
+  });
+
   it("formatea es-AR por moneda", () => {
     expect(formatMoney(15050, "ARS")).toMatch(/150/);
     expect(formatMoney(15050, "ARS")).toMatch(/50/);
@@ -41,6 +56,13 @@ function service() {
 }
 
 describe("FinanceService", () => {
+  it("persiste y resume el importe redondeado en centavos exactos", async () => {
+    const svc = service();
+    const tx = await svc.create({ date: "2024-03-01", description: "A", kind: "gasto", amount: "0,145", currency: "ARS", category: "c" });
+    expect(tx.amountMinor).toBe(15);
+    expect((await svc.monthlySummary(2024, 3))[0].expense).toBe(15);
+  });
+
   it("resume el mes por moneda sin mezclar", async () => {
     const svc = service();
     await svc.create({ date: "2024-03-03", description: "Sueldo", kind: "ingreso", amount: "1000", currency: "ARS", category: "trabajo" });
