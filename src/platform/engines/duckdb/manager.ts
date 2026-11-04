@@ -36,6 +36,9 @@ import {
   type DatasetExportFormat,
   type PipelineExecutionPort,
   type PipelinePreview,
+  type PipelineQuality,
+  type PipelineRowDifferences,
+  type PipelineVersionComparison,
   type PipelineStep,
   type PipelineTargetType,
   type PipelineVersion,
@@ -1009,6 +1012,42 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     }
   }
 
+  private async readPipelineQuality(conn: AsyncDuckDBConnection, source: string, columns: readonly PipelineColumn[]): Promise<PipelineQuality> {
+    const hasNull = columns.map((column) => `${escapeIdentifier(column.name)} IS NULL`).join(" OR ") || "FALSE";
+    const result = await conn.query(`WITH df_quality AS (${source}) SELECT (SELECT COUNT(*) FROM df_quality WHERE ${hasNull}) AS null_rows, (SELECT COUNT(*) FROM (SELECT * FROM df_quality GROUP BY ALL HAVING COUNT(*) > 1)) AS duplicate_groups`);
+    const row = toJSONRows(result)[0] as Record<string, unknown> | undefined;
+    const rowsWithNull = Number(row?.null_rows);
+    const duplicateGroups = Number(row?.duplicate_groups);
+    if (!Number.isSafeInteger(rowsWithNull) || rowsWithNull < 0 || !Number.isSafeInteger(duplicateGroups) || duplicateGroups < 0) {
+      throw new Error("No se pudo calcular la calidad de la vista previa.");
+    }
+    return { rowsWithNull, duplicateGroups };
+  }
+
+  private async readRowDifferences(conn: AsyncDuckDBConnection, left: string, leftColumns: readonly PipelineColumn[], right: string, rightColumns: readonly PipelineColumn[]): Promise<PipelineRowDifferences | null> {
+    if (leftColumns.length !== rightColumns.length || leftColumns.some((column, index) => column.name !== rightColumns[index].name || column.type !== rightColumns[index].type)) return null;
+    const result = await conn.query(`WITH df_left AS (${left}), df_right AS (${right}) SELECT (SELECT COUNT(*) FROM (SELECT * FROM df_left EXCEPT ALL SELECT * FROM df_right)) AS removed, (SELECT COUNT(*) FROM (SELECT * FROM df_right EXCEPT ALL SELECT * FROM df_left)) AS added`);
+    const row = toJSONRows(result)[0] as Record<string, unknown> | undefined;
+    const removed = Number(row?.removed);
+    const added = Number(row?.added);
+    if (!Number.isSafeInteger(removed) || removed < 0 || !Number.isSafeInteger(added) || added < 0) throw new Error("No se pudieron comparar las filas completas.");
+    return { removed, added };
+  }
+
+  async compareVersions(leftId: string, rightId: string): Promise<PipelineVersionComparison> {
+    const conn = this.requireConn();
+    const left = this.requireVersion(leftId);
+    const right = this.requireVersion(rightId);
+    const leftQuery = `SELECT * FROM ${escapeIdentifier(left.tableName)}`;
+    const rightQuery = `SELECT * FROM ${escapeIdentifier(right.tableName)}`;
+    const [leftQuality, rightQuality, rowDifferences] = await Promise.all([
+      this.readPipelineQuality(conn, leftQuery, left.columns),
+      this.readPipelineQuality(conn, rightQuery, right.columns),
+      this.readRowDifferences(conn, leftQuery, left.columns, rightQuery, right.columns),
+    ]);
+    return { left: { rowCount: left.rowCount, quality: leftQuality }, right: { rowCount: right.rowCount, quality: rightQuality }, rowDifferences };
+  }
+
   async previewPipeline(
     baseVersionId: string,
     steps: PipelineStep[],
@@ -1025,9 +1064,12 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     await assertPipelineConversions(conn, base, { id: "preview", name: "Vista previa", steps });
     const query = buildPipelineQuery(base.tableName, base.columns, steps);
     const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
-    const [countTable, previewTable] = await Promise.all([
+    const [countTable, previewTable, inputQuality, outputQuality, rowDifferences] = await Promise.all([
       conn.query(`SELECT COUNT(*) AS n FROM (${query}) AS ${escapeIdentifier("df_preview_count")}`),
       conn.query(`SELECT * FROM (${query}) AS ${escapeIdentifier("df_preview_rows")} LIMIT ${safeLimit}`),
+      this.readPipelineQuality(conn, `SELECT * FROM ${escapeIdentifier(base.tableName)}`, base.columns),
+      this.readPipelineQuality(conn, query, validation.columns),
+      this.readRowDifferences(conn, `SELECT * FROM ${escapeIdentifier(base.tableName)}`, base.columns, query, validation.columns),
     ]);
     const countRow = toJSONRows(countTable)[0] as Record<string, unknown> | undefined;
     const outputRowCount = countRow ? Number(countRow.n) : NaN;
@@ -1037,6 +1079,9 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     return {
       inputRowCount: base.rowCount,
       outputRowCount,
+      inputQuality,
+      outputQuality,
+      rowDifferences,
       columns: validation.columns,
       rows: toJSONRows(previewTable),
     };

@@ -4,6 +4,7 @@ import type {
   PipelinePreview,
   PipelineStep,
   PipelineVersion,
+  PipelineVersionComparison,
 } from "../domain/definition";
 
 export type DatasetExportFormat = "csv" | "parquet";
@@ -19,6 +20,7 @@ export interface PipelineExecutionPort {
   getDatasetVersions(): PipelineVersion[];
   getActiveDatasetVersionId(): string | null;
   getVersionColumns(versionId: string): Promise<PipelineColumn[]>;
+  compareVersions(leftId: string, rightId: string): Promise<PipelineVersionComparison>;
   previewPipeline(
     baseVersionId: string,
     steps: PipelineStep[],

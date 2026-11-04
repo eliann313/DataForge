@@ -183,6 +183,8 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Criterios de aceptación de fase 4:** fuentes originales inmutables, pipelines repetibles, errores de validación sin versiones parciales y relaciones comprobadas antes de combinar. `main` ya implementa y verifica la inmutabilidad, las versiones derivadas y las combinaciones validadas. Esta pila cubre expresiones y agregaciones que faltaban en las operaciones declarativas; la exportación de CSV/Parquet inicia fase 5. La fase 4 permanece activa mientras se revisan y aceptan las expresiones y agregaciones.
 
+**Comparación en revisión:** la vista previa presenta conteos de filas, filas con algún nulo y grupos de filas completas duplicadas antes y después. Con esquemas idénticos también cuenta copias de filas completas que salen y entran; si cambia el esquema no identifica filas individuales. Se pueden comparar esos indicadores entre dos versiones elegidas, incluidas fuentes de períodos distintos. Los cálculos recorren los datos completos y pueden ser costosos. La fase sigue abierta hasta revisar la evidencia y los hallazgos de la auditoría.
+
 **Alcance**
 - Renombrar columnas, transformar tipos, normalizar fechas/texto, filtrar, ordenar, deduplicar, tratar nulos, crear expresiones y agregaciones.
 - Pipeline declarativo con pasos ordenados, preview, manejo de errores, repetir/editar/deshacer mediante versiones.

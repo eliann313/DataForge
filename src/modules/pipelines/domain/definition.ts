@@ -178,8 +178,29 @@ export interface PipelineVersion {
 export interface PipelinePreview {
   inputRowCount: number;
   outputRowCount: number;
+  inputQuality: PipelineQuality;
+  outputQuality: PipelineQuality;
+  rowDifferences: PipelineRowDifferences | null;
   columns: PipelineColumn[];
   rows: Record<string, unknown>[];
+}
+
+/** Filas con algún nulo y grupos de filas completas repetidas. */
+export interface PipelineQuality {
+  rowsWithNull: number;
+  duplicateGroups: number;
+}
+
+/** Diferencia de multiconjuntos de filas completas, disponible con esquemas iguales. */
+export interface PipelineRowDifferences {
+  removed: number;
+  added: number;
+}
+
+export interface PipelineVersionComparison {
+  left: { rowCount: number; quality: PipelineQuality };
+  right: { rowCount: number; quality: PipelineQuality };
+  rowDifferences: PipelineRowDifferences | null;
 }
 
 export interface PipelineValidation {

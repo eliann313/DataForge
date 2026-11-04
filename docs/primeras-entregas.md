@@ -129,6 +129,7 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 - Los identificadores SQL se escapan, los valores de filtro se codifican y no se acepta SQL libre. Un error de validación no crea ni activa una versión.
 - Las columnas calculadas admiten suma, resta y multiplicación entre tipos numéricos; el esquema de salida deriva tipo y nulabilidad, y rechaza colisiones o resultados DECIMAL fuera de precisión.
 - Las agregaciones producen una versión agrupada nueva. Incluyen conteo de filas, suma, mínimo y máximo numéricos; el conteo no omite nulos y el esquema resultante se valida antes de ejecutar.
+- La vista previa compara filas, filas con algún nulo y grupos de filas completas duplicadas antes y después. Con esquemas idénticos también cuenta copias de filas completas que salen y entran (`EXCEPT ALL`); una fila editada puede contar en ambos lados. Es posible comparar estos mismos indicadores entre dos versiones elegidas, por ejemplo de distintos períodos. Los conteos usan el dataset completo y pueden ser costosos en vistas grandes.
 - Cualquier versión de la sesión se puede descargar como CSV o Parquet. CSV antepone un apóstrofo a encabezados y textos que parecen fórmulas para proteger al abrirlos en hojas de cálculo; Parquet conserva los valores.
 
 ### Siguiente trabajo dentro de las fases existentes

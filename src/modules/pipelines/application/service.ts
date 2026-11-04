@@ -45,6 +45,10 @@ export class PipelineService {
     return this.execution.activateDatasetVersion(versionId);
   }
 
+  compareVersions(leftId: string, rightId: string) {
+    return this.execution.compareVersions(leftId, rightId);
+  }
+
   exportVersion(versionId: string, format: DatasetExportFormat): Promise<DatasetExport> {
     return this.execution.exportDatasetVersion(versionId, format);
   }

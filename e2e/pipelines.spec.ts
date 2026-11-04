@@ -37,6 +37,17 @@ test("guarda una definición en el proyecto y la recupera al recargar", async ({
   await expect(page.locator("main").getByRole("status")).toContainText(/validada contra el esquema actual/i);
   await page.getByRole("button", { name: /vista previa/i }).click();
   await expect(page.locator('section[aria-labelledby="pipeline-vista-previa"]').getByText(/2 de 3 filas/)).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
+  const versions = page.locator('section[aria-labelledby="pipeline-versiones"]');
+  await expect(versions.getByText(/Preparación · versión 1 \(activa\)/)).toBeVisible();
+  await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
+  await expect(versions.getByText(/Preparación · versión 2 \(activa\)/)).toBeVisible();
+  await page.getByRole("button", { name: "Quitar paso" }).click();
+  await page.getByRole("button", { name: "Agregar filtro" }).click();
+  await page.getByRole("button", { name: /^vista previa$/i }).click();
+  await expect(page.locator('section[aria-labelledby="pipeline-vista-previa"]').getByText(/3 de 3 filas/)).toBeVisible();
+  await versions.locator("tbody tr").first().getByRole("button", { name: /usar versión/i }).click();
+  await expect(versions.getByText("duplicadas.csv (activa)")).toBeVisible();
 });
 
 test("crea una versión derivada sin alterar la fuente y permite activarla otra vez", async ({ page }) => {
@@ -53,10 +64,21 @@ test("crea una versión derivada sin alterar la fuente y permite activarla otra 
   await page.getByRole("button", { name: /vista previa/i }).click();
   const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
   await expect(preview.getByText(/2 de 3 filas/)).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByText("Grupos de filas completas duplicadas: 1 → 0")).toBeVisible();
+  await expect(preview.getByText("Filas con algún nulo: 0 → 0")).toBeVisible();
+  await expect(preview.getByText("Filas completas que salen: 1 · que entran: 0")).toBeVisible();
 
   await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
   const versions = page.locator('section[aria-labelledby="pipeline-versiones"]');
   await expect(versions.getByText(/Preparación · versión 1 \(activa\)/)).toBeVisible({ timeout: 30_000 });
+  await page.getByLabel("Primera versión para comparar").selectOption({ label: "duplicadas.csv" });
+  await page.getByLabel("Segunda versión para comparar").selectOption({ label: "Preparación · versión 1" });
+  await page.getByRole("button", { name: "Comparar versiones", exact: true }).click();
+  const comparison = page.getByRole("table", { name: "Comparación de versiones" });
+  await expect(comparison.getByRole("row", { name: /^Filas / }).locator("td").nth(0)).toHaveText("3");
+  await expect(comparison.getByRole("row", { name: /^Filas / }).locator("td").nth(1)).toHaveText("2");
+  await expect(comparison.getByRole("row", { name: /Grupos de filas completas duplicadas/ }).locator("td").nth(1)).toHaveText("0");
+  await expect(page.getByText("Filas completas presentes solo en la primera: 1 · solo en la segunda: 0")).toBeVisible();
 
   await page.getByRole("button", { name: /^análisis$/i }).click();
   const analysis = page.locator("main");
@@ -104,6 +126,7 @@ test("calcula una columna numérica y muestra el resultado antes de crear la ver
 
   const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
   await expect(preview.getByRole("columnheader", { name: "id_calculado" })).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByText("La comparación de filas completas requiere el mismo esquema antes y después.")).toBeVisible();
   await expect(preview.getByRole("row").nth(1)).toContainText(/151\.5/);
   await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
   await expect(page.locator('section[aria-labelledby="pipeline-versiones"]').getByText(/Preparación · versión 1 \(activa\)/)).toBeVisible({ timeout: 30_000 });
@@ -417,6 +440,7 @@ test("reemplaza nulos con un valor validado según el tipo numérico", async ({ 
   const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
   await expect(preview.getByText(/2 de 2 filas/)).toBeVisible({ timeout: 30_000 });
   await expect(preview.getByRole("row").nth(2).getByRole("cell")).toHaveText(["2", "0"]);
+  await expect(preview.getByText("Filas con algún nulo: 1 → 0")).toBeVisible();
 });
 
 test("normaliza espacios, mayúsculas y texto vacío en una versión derivada", async ({ page }) => {

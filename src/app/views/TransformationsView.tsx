@@ -14,6 +14,7 @@ import {
   type PipelineArithmeticOperator,
   type PipelineFilterOperator,
   type PipelinePreview,
+  type PipelineVersionComparison,
   type PipelineStep,
   type PipelineTargetType,
   type PipelineVersion,
@@ -123,6 +124,9 @@ export default function TransformationsView({
   } | null>(null);
   const [selectedDefinition, setSelectedDefinition] = useState<{ projectId: string; id: string } | null>(null);
   const [preview, setPreview] = useState<PipelinePreview | null>(null);
+  const [comparisonLeft, setComparisonLeft] = useState("");
+  const [comparisonRight, setComparisonRight] = useState("");
+  const [comparison, setComparison] = useState<{ leftId: string; rightId: string; result: PipelineVersionComparison } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const stepSequence = useRef(0);
@@ -471,6 +475,20 @@ export default function TransformationsView({
       setMessage(`Dataset activo: «${version.name}».`);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "No se pudo activar la versión.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function compareVersions() {
+    setBusy(true);
+    setMessage(null);
+    setComparison(null);
+    try {
+      const result = await pipelineService.compareVersions(comparisonLeft, comparisonRight);
+      setComparison({ leftId: comparisonLeft, rightId: comparisonRight, result });
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "No se pudieron comparar las versiones.");
     } finally {
       setBusy(false);
     }
@@ -1148,6 +1166,11 @@ export default function TransformationsView({
               </table>
             </div>
           ) : <p>El pipeline no devuelve filas.</p>}
+          <h4 className="font-semibold">Calidad antes y después</h4>
+          <p>Filas con algún nulo: {preview.inputQuality.rowsWithNull} → {preview.outputQuality.rowsWithNull}</p>
+          <p>Grupos de filas completas duplicadas: {preview.inputQuality.duplicateGroups} → {preview.outputQuality.duplicateGroups}</p>
+          {preview.rowDifferences ? <p>Filas completas que salen: {preview.rowDifferences.removed} · que entran: {preview.rowDifferences.added}</p> : <p>La comparación de filas completas requiere el mismo esquema antes y después.</p>}
+          <p className="text-sm text-gray-600">Un grupo duplicado contiene dos o más filas idénticas. Las diferencias cuentan copias de filas completas; una fila editada puede contar como una salida y una entrada.</p>
         </section>
       ) : null}
 
@@ -1184,6 +1207,28 @@ export default function TransformationsView({
         <p className="text-sm text-gray-600">
           CSV antepone un apóstrofo a encabezados y textos que podrían ejecutarse como fórmulas al abrirlos en una hoja de cálculo. Parquet conserva los valores. La versión en el motor no se altera.
         </p>
+      </section>
+      <section className="space-y-2" aria-labelledby="comparar-versiones">
+        <h3 id="comparar-versiones" className="font-semibold">Comparar versiones o períodos</h3>
+        <p className="text-sm text-gray-600">Elija dos versiones que representen los períodos o resultados que quiere comparar. Cada indicador se calcula sobre todas las filas y columnas de cada versión.</p>
+        <label>Primera versión <select aria-label="Primera versión para comparar" value={versions.some((version) => version.id === comparisonLeft) ? comparisonLeft : ""} onChange={(event) => { setComparisonLeft(event.target.value); setComparison(null); }}><option value="">Seleccione una versión</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}</select></label>{" "}
+        <label>Segunda versión <select aria-label="Segunda versión para comparar" value={versions.some((version) => version.id === comparisonRight) ? comparisonRight : ""} onChange={(event) => { setComparisonRight(event.target.value); setComparison(null); }}><option value="">Seleccione una versión</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}</select></label>{" "}
+        <button type="button" disabled={busy || !versions.some((version) => version.id === comparisonLeft) || !versions.some((version) => version.id === comparisonRight)} onClick={() => void compareVersions()} className="underline">Comparar versiones</button>
+        {comparison && versions.some((version) => version.id === comparison.leftId) && versions.some((version) => version.id === comparison.rightId) ? (
+          <table className="df-table">
+            <caption>Comparación de versiones</caption>
+            <thead><tr><th scope="col">Indicador</th><th scope="col">{versions.find((version) => version.id === comparison.leftId)?.name}</th><th scope="col">{versions.find((version) => version.id === comparison.rightId)?.name}</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">Filas</th><td>{comparison.result.left.rowCount}</td><td>{comparison.result.right.rowCount}</td></tr>
+              <tr><th scope="row">Filas con algún nulo</th><td>{comparison.result.left.quality.rowsWithNull}</td><td>{comparison.result.right.quality.rowsWithNull}</td></tr>
+              <tr><th scope="row">Grupos de filas completas duplicadas</th><td>{comparison.result.left.quality.duplicateGroups}</td><td>{comparison.result.right.quality.duplicateGroups}</td></tr>
+            </tbody>
+          </table>
+        ) : null}
+        {comparison && versions.some((version) => version.id === comparison.leftId) && versions.some((version) => version.id === comparison.rightId) ? (
+          comparison.result.rowDifferences ? <p>Filas completas presentes solo en la primera: {comparison.result.rowDifferences.removed} · solo en la segunda: {comparison.result.rowDifferences.added}</p> : <p>La comparación de filas completas requiere versiones con el mismo esquema.</p>
+        ) : null}
+        <p className="text-sm text-gray-600">Un grupo duplicado contiene dos o más filas idénticas dentro de una misma versión. Las diferencias cuentan copias de filas completas; una fila editada puede aparecer en ambos lados.</p>
       </section>
     </div>
   );
