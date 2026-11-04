@@ -7,16 +7,19 @@
 ## Decisión
 
 - Guardar en IndexedDB por proyecto la definición del informe: título, orden de secciones, texto editorial y referencias `snapshotId`.
+- Validar datos persistidos/corruptos: como máximo 100 secciones, 20 snapshots referenciados, 100.000 caracteres por sección editorial, 200 por título y 1 MiB por definición guardada.
 - Obtener snapshots mediante el puerto público de análisis, con búsqueda acotada por `projectId` y `snapshotId`. El módulo reports no vuelve a calcular ni copia resultados como fuente de verdad.
 - Incluir en el HTML exportado los parámetros, la fuente, el esquema y los resultados que existían en el snapshot. Escapar todo valor dinámico como texto HTML.
 - Si la referencia ya no existe en el proyecto, conservarla y representar una nota explícita de snapshot no disponible.
 - El HTML descargado ofrece una opción del navegador para imprimir o guardar como PDF; no se invoca impresión automáticamente.
+- Limitar el HTML generado a 5 MiB; mostrar errores de serialización/descarga y liberar la URL Blob después de iniciar la descarga.
 
 ## Consecuencias y límites
 
 - Los informes son reproducibles respecto de los resultados congelados del snapshot, no respecto del archivo de origen. No conservan datos fuente, artefactos de gráfico como imagen ni una copia del proyecto.
 - CSV/Parquet procesado se exporta desde Transformaciones; el HTML no duplica ni incorpora archivos tabulares.
 - La importación/exportación portable del proyecto y adjuntos gráficos quedan pendientes. La decisión se revisará al cerrar fase 5.
+- Este corte no importa definiciones de informes; la validación protege los datos cargados desde el almacenamiento local.
 - IndexedDB está sujeto a las cuotas y políticas del navegador.
 
 ## Verificación

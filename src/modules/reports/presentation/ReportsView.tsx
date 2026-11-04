@@ -139,13 +139,21 @@ export default function ReportsView({
 
   function exportHtml() {
     if (!draft) return;
-    const html = renderReportHtml(draft, selectedSnapshots);
-    const blobUrl = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
-    const link = document.createElement("a");
-    link.href = blobUrl;
-    link.download = `${draft.title.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-|-$/g, "") || "informe"}.html`;
-    link.click();
-    URL.revokeObjectURL(blobUrl);
+    let blobUrl: string | null = null;
+    try {
+      const html = renderReportHtml(draft, selectedSnapshots);
+      blobUrl = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `${draft.title.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-|-$/g, "") || "informe"}.html`;
+      link.click();
+      const createdUrl = blobUrl;
+      window.setTimeout(() => URL.revokeObjectURL(createdUrl), 1000);
+      setMessage("HTML exportado. Puede abrirlo e imprimirlo o guardarlo como PDF desde el navegador.");
+    } catch (cause) {
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      setMessage(cause instanceof Error ? cause.message : "No se pudo exportar el informe HTML.");
+    }
   }
 
   function createNew() {

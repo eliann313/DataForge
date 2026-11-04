@@ -23,6 +23,16 @@ describe("reports", () => {
     expect(() => createReport("p1", " ")).toThrow("título");
   });
 
+  it("rejects imported or corrupted definitions that exceed size and section limits", () => {
+    const report = createReport("p1", "Informe");
+    expect(isReport({ ...report, sections: Array.from({ length: 101 }, (_, index) => ({
+      id: String(index), kind: "observations", title: "Notas", content: "",
+    })) })).toBe(false);
+    expect(isReport({ ...report, sections: [{
+      id: "large", kind: "observations", title: "Notas", content: "x".repeat(100_001),
+    }] })).toBe(false);
+  });
+
   it("escapes snapshot and editorial text in standalone HTML and reports missing references", () => {
     const report = createReport("p1", "<script>título</script>", "2026-11-04T12:00:00.000Z");
     report.sections = [
@@ -38,5 +48,19 @@ describe("reports", () => {
     expect(html).toContain("no está disponible en este proyecto");
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("<iframe");
+  });
+
+  it("limits HTML export size instead of creating an oversized local file", () => {
+    const report = createReport("p1", "Grande");
+    const largeSnapshot = (id: string): ReportSnapshotView => ({
+      ...snapshot,
+      id,
+      source: { ...snapshot.source, datasetName: "dataset" },
+      parameters: {},
+      results: { description: "x".repeat(1_800_000) },
+    });
+    const snapshots = new Map(["a", "b", "c"].map((id) => [id, largeSnapshot(id)]));
+    report.sections = [...snapshots.keys()].map((id) => ({ id, kind: "snapshot", title: id, snapshotId: id }));
+    expect(() => renderReportHtml(report, snapshots)).toThrow("límite de 5 MiB");
   });
 });

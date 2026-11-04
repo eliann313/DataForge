@@ -26,23 +26,38 @@ export interface Report {
 const SECTION_KINDS = new Set<ReportSectionKind>([
   "snapshot", "observations", "conclusions", "methodology", "limitations",
 ]);
+export const MAX_REPORT_SECTIONS = 100;
+export const MAX_REPORT_SNAPSHOT_SECTIONS = 20;
+export const MAX_REPORT_TEXT_LENGTH = 100_000;
+export const MAX_REPORT_STORAGE_BYTES = 1 * 1024 * 1024;
+export const MAX_REPORT_HTML_BYTES = 5 * 1024 * 1024;
 
 export function isReport(value: unknown): value is Report {
   if (!value || typeof value !== "object") return false;
   const report = value as Partial<Report>;
   return typeof report.id === "string" && report.id.length > 0
     && typeof report.projectId === "string" && report.projectId.length > 0
-    && typeof report.title === "string" && report.title.length > 0
+    && typeof report.title === "string" && report.title.trim().length > 0 && report.title.length <= 200
     && typeof report.createdAt === "string" && Number.isFinite(Date.parse(report.createdAt))
     && typeof report.updatedAt === "string" && Number.isFinite(Date.parse(report.updatedAt))
-    && Array.isArray(report.sections)
+    && Array.isArray(report.sections) && report.sections.length <= MAX_REPORT_SECTIONS
+    && report.sections.filter((section) => section?.kind === "snapshot").length <= MAX_REPORT_SNAPSHOT_SECTIONS
     && report.sections.every((section) => Boolean(section)
       && typeof section.id === "string" && section.id.length > 0
-      && typeof section.title === "string"
+      && typeof section.title === "string" && section.title.length <= 200
       && SECTION_KINDS.has(section.kind)
       && (section.kind === "snapshot"
-        ? typeof section.snapshotId === "string" && section.snapshotId.length > 0
-        : typeof section.content === "string"));
+        ? typeof section.snapshotId === "string" && section.snapshotId.length > 0 && section.snapshotId.length <= 256
+        : typeof section.content === "string" && section.content.length <= MAX_REPORT_TEXT_LENGTH))
+    && isWithinStorageLimit(value);
+}
+
+function isWithinStorageLimit(value: unknown): boolean {
+  try {
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength <= MAX_REPORT_STORAGE_BYTES;
+  } catch {
+    return false;
+  }
 }
 
 export function createReport(projectId: string, title: string, now = new Date().toISOString()): Report {
@@ -93,5 +108,9 @@ export function renderReportHtml(report: Report, snapshots: ReadonlyMap<string, 
     const source = snapshot.source;
     return `<section><h2>${escapeHtml(section.title)}</h2><p><strong>Snapshot:</strong> ${escapeHtml(snapshot.title)} · ${escapeHtml(snapshot.createdAt)}</p><p><strong>Dataset:</strong> ${escapeHtml(source.datasetName)} · ${source.rowCount} filas · versión ${escapeHtml(source.versionId)}</p><h3>Columnas</h3><pre>${escapeHtml(pretty(source.columns))}</pre><h3>Parámetros</h3><pre>${escapeHtml(pretty(snapshot.parameters))}</pre><h3>Resultados guardados</h3><pre>${escapeHtml(pretty(snapshot.results))}</pre></section>`;
   }).join("\n");
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(report.title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;color:#172033}h1{border-bottom:1px solid #ddd;padding-bottom:.5rem}section{margin:2rem 0;break-inside:avoid}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f8;padding:1rem;border-radius:.5rem}button{padding:.5rem 1rem}@media print{button{display:none}body{margin:0}}</style></head><body><button type="button" onclick="window.print()">Imprimir / Guardar como PDF</button><h1>${escapeHtml(report.title)}</h1><p>Informe local · actualizado ${escapeHtml(report.updatedAt)}</p>${sections}</body></html>`;
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(report.title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;color:#172033}h1{border-bottom:1px solid #ddd;padding-bottom:.5rem}section{margin:2rem 0;break-inside:avoid}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f8;padding:1rem;border-radius:.5rem}button{padding:.5rem 1rem}@media print{button{display:none}body{margin:0}}</style></head><body><button type="button" onclick="window.print()">Imprimir / Guardar como PDF</button><h1>${escapeHtml(report.title)}</h1><p>Informe local · actualizado ${escapeHtml(report.updatedAt)}</p>${sections}</body></html>`;
+  if (new TextEncoder().encode(html).byteLength > MAX_REPORT_HTML_BYTES) {
+    throw new Error("El informe supera el límite de 5 MiB para exportar a HTML. Quite algunos snapshots o secciones.");
+  }
+  return html;
 }
