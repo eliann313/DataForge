@@ -578,6 +578,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     opts?: { delimiter?: "auto" | "," | ";"; header?: boolean; projectId?: string | null },
   ): Promise<ImportSummary> {
     this.requireConn();
+    const projectId = this.resolveProjectId(opts?.projectId);
     const check = checkCSVFile(file.name, file.size);
     if (!check.ok || !file.name.toLowerCase().endsWith(".csv")) {
       throw {
@@ -600,7 +601,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       bytes,
       REGISTER_NAME,
       `SELECT * FROM read_csv(${escapeStringLiteral(REGISTER_NAME)}, ${options})`,
-      this.resolveProjectId(opts?.projectId),
+      projectId,
     );
   }
 
@@ -640,6 +641,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
    */
   async importJSON(file: File, opts?: { projectId?: string | null }): Promise<ImportSummary> {
     this.requireConn();
+    const projectId = this.resolveProjectId(opts?.projectId);
     const check = checkInputFile(file.name, file.size);
     if (!check.ok || !file.name.toLowerCase().endsWith(".json")) {
       throw {
@@ -664,13 +666,14 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       bytes,
       "df_upload.json",
       `SELECT * FROM read_json(${escapeStringLiteral("df_upload.json")}, format = 'array')`,
-      this.resolveProjectId(opts?.projectId),
+      projectId,
     );
   }
 
   /** Importa Parquet vía lectura nativa de DuckDB. */
   async importParquet(file: File, opts?: { projectId?: string | null }): Promise<ImportSummary> {
     this.requireConn();
+    const projectId = this.resolveProjectId(opts?.projectId);
     const check = checkInputFile(file.name, file.size);
     if (!check.ok || !file.name.toLowerCase().endsWith(".parquet")) {
       throw {
@@ -687,7 +690,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       bytes,
       "df_upload.parquet",
       `SELECT * FROM read_parquet(${escapeStringLiteral("df_upload.parquet")})`,
-      this.resolveProjectId(opts?.projectId),
+      projectId,
     );
   }
 
@@ -793,8 +796,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         fileBytes: size,
         importDurationMs: durationMs,
       });
-      this.currentProjectId = projectId;
-      this.activeTable = tableName;
+      if (this.currentProjectId === projectId) this.activeTable = tableName;
       this.activeVersionByProject.set(projectId, sourceId);
       this.emit();
       return {
@@ -1135,7 +1137,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         isView: true,
       };
       this.versions.push(version);
-      this.activeTable = tableName;
+      if (this.currentProjectId === base.projectId) this.activeTable = tableName;
       this.activeVersionByProject.set(base.projectId, version.id);
       this.emit();
       return toPublicPipelineVersion(version);
@@ -1226,7 +1228,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     right: StoredPipelineVersion,
     query: string,
   ): Promise<PipelineVersion> {
-    if (left.projectId !== right.projectId || left.projectId !== this.currentProjectId) {
+    if (left.projectId !== right.projectId) {
       throw new Error("No se pueden combinar versiones de proyectos distintos.");
     }
     const sourceIds = [...new Set([...left.sourceIds, ...right.sourceIds])];
@@ -1262,7 +1264,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         isView: true,
       };
       this.versions.push(version);
-      this.activeTable = tableName;
+      if (this.currentProjectId === version.projectId) this.activeTable = tableName;
       this.activeVersionByProject.set(version.projectId, version.id);
       this.emit();
       return toPublicPipelineVersion(version);

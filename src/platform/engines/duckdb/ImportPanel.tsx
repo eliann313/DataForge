@@ -140,12 +140,14 @@ export default function ImportPanel({
   }, [example, projectId]);
 
   async function showResult(summary: ImportSummary) {
+    if (engine.getCurrentProjectId() !== summary.projectId || engine.getActiveDatasetVersionId() !== summary.versionId) return;
     summaryVersionRef.current = summary.versionId;
     const numericColumn = firstNumeric(summary.columns);
     const [page, numeric] = await Promise.all([
       engine.getPage(1, DEFAULT_PAGE_SIZE),
       numericColumn ? engine.summarizeNumeric(numericColumn) : Promise.resolve(null),
     ]);
+    if (engine.getCurrentProjectId() !== summary.projectId || engine.getActiveDatasetVersionId() !== summary.versionId) return;
     setFilters([]);
     setSort(null);
     setRoles(defaultRoles(summary.columns));
@@ -164,12 +166,14 @@ export default function ImportPanel({
 
   useEffect(() => {
     const loadActiveSummary = async (summary: ImportSummary) => {
+      if (engine.getCurrentProjectId() !== summary.projectId || engine.getActiveDatasetVersionId() !== summary.versionId) return;
       summaryVersionRef.current = summary.versionId;
       const numericColumn = firstNumeric(summary.columns);
       const [page, numeric] = await Promise.all([
         engine.getPage(1, DEFAULT_PAGE_SIZE),
         numericColumn ? engine.summarizeNumeric(numericColumn) : Promise.resolve(null),
       ]);
+      if (engine.getCurrentProjectId() !== summary.projectId || engine.getActiveDatasetVersionId() !== summary.versionId) return;
       setFilters([]);
       setSort(null);
       setRoles(defaultRoles(summary.columns));
@@ -195,9 +199,10 @@ export default function ImportPanel({
       const current = engine.getActiveDatasetSummary();
       if (current && current.versionId !== summaryVersionRef.current) {
         void loadActiveSummary(current).catch((cause: unknown) => {
+          if (engine.getCurrentProjectId() !== current.projectId || engine.getActiveDatasetVersionId() !== current.versionId) return;
           setSt((previous) => ({ ...previous, phase: "error", message: cause instanceof Error ? cause.message : "No se pudo activar el dataset." }));
         });
-      } else if (!current && summaryVersionRef.current !== null) {
+      } else if (!current) {
         summaryVersionRef.current = null;
         setSt(initial);
         setFilters([]);
@@ -209,6 +214,7 @@ export default function ImportPanel({
     const active = engine.getActiveDatasetSummary();
     if (active) {
       void loadActiveSummary(active).catch((cause: unknown) => {
+        if (engine.getCurrentProjectId() !== active.projectId || engine.getActiveDatasetVersionId() !== active.versionId) return;
         setSt((previous) => ({ ...previous, phase: "error", message: cause instanceof Error ? cause.message : "No se pudo recuperar el dataset activo." }));
       });
     }
@@ -250,7 +256,7 @@ export default function ImportPanel({
         throw new Error("Tipo no soportado: solo .csv, .xlsx, .json tabular y .parquet.");
       }
     } catch (cause) {
-      fail(cause);
+      if (engine.getCurrentProjectId() === projectId) fail(cause);
     } finally {
       setBusy(false);
     }
@@ -267,7 +273,7 @@ export default function ImportPanel({
         await engine.importCSVText(`${file.name}#${extracted.sheet}`, extracted.csv, { projectId }),
       );
     } catch (cause) {
-      fail(cause);
+      if (engine.getCurrentProjectId() === projectId) fail(cause);
     } finally {
       setBusy(false);
     }

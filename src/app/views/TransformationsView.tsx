@@ -383,16 +383,20 @@ export default function TransformationsView({
   }
 
   async function executePipeline() {
+    const projectId = engine.getCurrentProjectId();
     setBusy(true);
     setMessage(null);
     try {
       const created = await pipelineService.execute(baseVersionId, definition);
+      if (created.projectId !== engine.getCurrentProjectId()) return;
       setVersions(pipelineService.getVersions());
       setActiveVersionId(created.id);
       setPreview(null);
       setMessage(`Se creó «${created.name}». La fuente original sigue disponible.`);
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "No se pudo ejecutar el pipeline.");
+      if (projectId === engine.getCurrentProjectId()) {
+        setMessage(cause instanceof Error ? cause.message : "No se pudo ejecutar el pipeline.");
+      }
     } finally {
       setBusy(false);
     }
@@ -520,6 +524,7 @@ export default function TransformationsView({
   }
 
   function acceptCombinationVersion(version: PipelineVersion) {
+    if (version.projectId !== engine.getCurrentProjectId()) return;
     const currentVersions = pipelineService.getVersions();
     setVersions(currentVersions);
     setBaseVersionId(version.id);
