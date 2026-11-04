@@ -20,10 +20,13 @@ describe("IndexedDBReportRepository", () => {
     const report = createReport("project-a", "Ventas");
     report.sections = [{ id: "s1", kind: "snapshot", title: "Análisis", snapshotId: "snapshot-1" }];
     await repo.save(report);
+    const sameIdOtherProject = { ...report, projectId: "project-b", title: "Otro informe" };
+    await repo.save(sameIdOtherProject);
     expect(await repo.list("project-a")).toEqual([report]);
-    expect(await repo.list("project-b")).toEqual([]);
+    expect(await repo.list("project-b")).toEqual([sameIdOtherProject]);
     await repo.delete("project-a", report.id);
     expect(await repo.list("project-a")).toEqual([]);
+    expect(await repo.list("project-b")).toEqual([sameIdOtherProject]);
   });
 
   it("rejects malformed records instead of returning a partial list", async () => {
