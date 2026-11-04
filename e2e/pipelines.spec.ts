@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { makeData, makeVector, Table as ArrowTable, tableToIPC, TimestampNanosecond } from "apache-arrow";
+import { DateDay, Decimal, Int32, makeData, makeVector, Table as ArrowTable, tableToIPC, TimestampNanosecond } from "apache-arrow";
 import { Table as ParquetTable, writeParquet } from "parquet-wasm/node";
 
 test("guarda una definición en el proyecto y la recupera al recargar", async ({ page }) => {
@@ -315,6 +315,79 @@ test("APPEND conserva la precisión de timestamps en nanosegundos", async ({ pag
   const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
   await expect(preview.getByRole("cell", { name: "2020-01-01 00:00:00.123456789" })).toBeVisible({ timeout: 30_000 });
   await expect(preview.getByRole("cell", { name: "2020-01-01 00:00:00.987654321" })).toBeVisible();
+});
+
+test("compara períodos inclusivos, medidas exactas y cambios por clave", async ({ page }) => {
+  const dates = ["2024-01-01", "2024-01-31", "2024-02-01", "2024-02-29"].map((date) => Date.parse(`${date}T00:00:00Z`) / 86_400_000);
+  const words = new Uint32Array(16);
+  [10025, 10025, 11025, 2500].forEach((value, index) => { words[index * 4] = value; });
+  const table = new ArrowTable({
+    fecha: makeVector(makeData({ type: new DateDay(), data: new Int32Array(dates) })),
+    id: makeVector(makeData({ type: new Int32(), data: new Int32Array([1, 2, 1, 3]) })),
+    importe: makeVector(makeData({ type: new Decimal(2, 10, 128), data: words })),
+  });
+  const bytes = writeParquet(ParquetTable.fromIPCStream(tableToIPC(table, "stream")));
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({ name: "periodos.parquet", mimeType: "application/octet-stream", buffer: Buffer.from(bytes) });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("periodos.parquet: 4 filas, 3 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByLabel("Primera versión para comparar").selectOption({ label: "periodos.parquet" });
+  await page.getByLabel("Segunda versión para comparar").selectOption({ label: "periodos.parquet" });
+  await page.getByLabel("Columna de fecha para períodos").selectOption("fecha");
+  await page.getByLabel("Medida para períodos").selectOption("importe");
+  await page.getByLabel("Primer período desde").fill("2024-01-01");
+  await page.getByLabel("Primer período hasta").fill("2024-01-31");
+  await page.getByLabel("Segundo período desde").fill("2024-02-01");
+  await page.getByLabel("Segundo período hasta").fill("2024-02-29");
+  await page.getByLabel("Clave para comparar períodos").selectOption("id");
+  await page.getByLabel(/Confirmo que todos los valores/).check();
+  await page.getByRole("button", { name: "Comparar períodos", exact: true }).click();
+  const results = page.getByRole("table", { name: "Resultados por período" });
+  await expect(results.getByRole("row", { name: /Suma exacta/ }).locator("td").nth(0)).toHaveText("200.50", { timeout: 30_000 });
+  await expect(results.getByRole("row", { name: /Suma exacta/ }).locator("td").nth(1)).toHaveText("135.25");
+  await expect(results.getByRole("row", { name: /Media aproximada/ }).locator("td").nth(1)).toHaveText("67.625");
+  await expect(page.getByText("Claves agregadas: 1 · eliminadas: 1 · modificadas: 1 · sin cambios: 0")).toBeVisible();
+  await page.getByLabel("Clave para comparar períodos").selectOption("importe");
+  await page.getByRole("button", { name: "Comparar períodos", exact: true }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText("La clave debe ser única y no nula", { timeout: 30_000 });
+  await expect(page.getByRole("table", { name: "Resultados por período" })).toHaveCount(0);
+  await page.getByLabel("Primer período desde").fill("2024-02-01");
+  await page.getByRole("button", { name: "Comparar períodos", exact: true }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText("Ingrese períodos válidos", { timeout: 30_000 });
+  await page.getByLabel("Primer período desde").fill("2023-01-01");
+  await page.getByLabel("Primer período hasta").fill("2023-01-31");
+  await page.getByLabel("Clave para comparar períodos").selectOption("id");
+  await page.getByRole("button", { name: "Comparar períodos", exact: true }).click();
+  await expect(results.getByRole("row", { name: /Suma exacta/ }).locator("td").nth(0)).toHaveText("Sin valores", { timeout: 30_000 });
+  await expect(page.getByText("Claves agregadas: 2 · eliminadas: 0 · modificadas: 0 · sin cambios: 0")).toBeVisible();
+});
+
+test("rechaza claves nulas al comparar períodos", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({ name: "sin-clave.csv", mimeType: "text/csv", buffer: Buffer.from("id,fecha,importe\n,2024-01-01,10\n1,2024-02-01,20\n") });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("sin-clave.csv: 2 filas, 3 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByLabel("Primera versión para comparar").selectOption({ label: "sin-clave.csv" });
+  await page.getByLabel("Segunda versión para comparar").selectOption({ label: "sin-clave.csv" });
+  await page.getByLabel("Columna de fecha para períodos").selectOption("fecha");
+  await page.getByLabel("Medida para períodos").selectOption("importe");
+  await page.getByLabel("Primer período desde").fill("2024-01-01");
+  await page.getByLabel("Primer período hasta").fill("2024-01-31");
+  await page.getByLabel("Segundo período desde").fill("2024-02-01");
+  await page.getByLabel("Segundo período hasta").fill("2024-02-29");
+  await page.getByLabel("Clave para comparar períodos").selectOption("id");
+  await page.getByLabel(/Confirmo que todos los valores/).check();
+  await page.getByRole("button", { name: "Comparar períodos", exact: true }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText("La clave debe ser única y no nula", { timeout: 30_000 });
+  await expect(page.getByRole("table", { name: "Resultados por período" })).toHaveCount(0);
 });
 
 test("JOIN exige cardinalidad, muestra fanout y bloquea su creación hasta confirmarlo", async ({ page }) => {

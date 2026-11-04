@@ -137,6 +137,7 @@ Los descriptivos y gráficos numéricos son aproximados cuando usan coma flotant
 - Las columnas calculadas admiten suma, resta y multiplicación entre tipos numéricos; el esquema de salida deriva tipo y nulabilidad, y rechaza colisiones o resultados DECIMAL fuera de precisión.
 - Las agregaciones producen una versión agrupada nueva. Incluyen conteo de filas, suma, mínimo y máximo numéricos; el conteo no omite nulos y el esquema resultante se valida antes de ejecutar.
 - La vista previa compara filas, filas con algún nulo y grupos de filas completas duplicadas antes y después. Con esquemas idénticos también cuenta copias de filas completas que salen y entran (`EXCEPT ALL`); una fila editada puede contar en ambos lados. Es posible comparar estos mismos indicadores entre dos versiones elegidas, por ejemplo de distintos períodos. Los conteos usan el dataset completo y pueden ser costosos en vistas grandes.
+- La comparación por períodos usa rangos inclusivos `DATE`, suma exacta y media aproximada de una medida compatible, y opcionalmente clasifica altas, bajas y cambios por clave única y no nula. Los esquemas, roles, precisión y unidad declarada se validan como describe ADR-0008.
 - Cualquier versión de la sesión se puede descargar como CSV o Parquet. CSV antepone un apóstrofo a encabezados y textos que parecen fórmulas para proteger al abrirlos en hojas de cálculo; Parquet conserva los valores.
 
 ### Siguiente trabajo dentro de las fases existentes
@@ -162,6 +163,10 @@ lint y build; el smoke del sitio estático pasó 57/57 en Chromium. Incluye caso
 de XLSX ambiguo, aislamiento por proyecto, roles semánticos, precisión numérica,
 comparación de versiones y APPEND de timestamps con nanosegundos. La fase 4
 permanece en revisión hasta aceptar e integrar la pila.
+
+El incremento de comparación por períodos pasó 100/100 pruebas unitarias y el
+smoke estático 59/59 en Chromium. El ADR-0008 registra reglas, límites y una
+medición reproducible de 100.000 filas; esa medición no establece capacidad.
 
 ## Evidencia histórica del backlog 0A (E1–E2)
 

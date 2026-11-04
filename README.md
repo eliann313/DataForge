@@ -241,8 +241,8 @@ Las reglas de trabajo con agentes de IA están en [AGENTS.md](AGENTS.md).
 - [x] Cierre de R1 (2026-10-12): recorridos importar→estadística→gráfico y finanzas→recarga verificados con E2E 31/31 en la demo pública; E2E total 62/62, Vitest 41/41.
 - [ ] Fases 0B y 0C: spikes de Pyodide bajo demanda y de Rust/Wasm (no bloquean R1).
 - [x] R2 / fase 4 — implementación base en `main`: pipeline con filtros tipados, selección/renombre, descarte y reemplazo de nulos, normalización de texto/fechas, conversiones explícitas a tipos comunes, deduplicación exacta, orden y combinaciones APPEND/JOIN validadas.
-- [ ] Pila de ampliación R2 en revisión: columnas calculadas tipadas (suma/resta/multiplicación), agregaciones por grupos y exportación de versiones a CSV/Parquet. La fuente permanece intacta.
-- [ ] R2 restante (fases 4–5): más transformaciones, múltiples datasets, uniones validadas, persistencia portable e informes.
+- [ ] Pila de ampliación R2 en revisión: columnas calculadas tipadas, agregaciones por grupos, exportación CSV/Parquet y comparación de períodos con medidas y clave validada. La fuente permanece intacta.
+- [ ] R2 restante: aceptar e integrar la pila de fase 4; desarrollar informes, snapshots y respaldo portable en fase 5.
 
 ## Documentación y referencias
 

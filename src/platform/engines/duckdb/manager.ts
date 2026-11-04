@@ -40,6 +40,8 @@ import {
   type PipelineQuality,
   type PipelineRowDifferences,
   type PipelineVersionComparison,
+  type PeriodComparisonRequest,
+  type PeriodComparisonResult,
   type PipelineStep,
   type PipelineTargetType,
   type PipelineVersion,
@@ -962,6 +964,12 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   getSemanticRoles(): Record<string, SemanticRole> {
     const version = this.versions.find((item) => item.tableName === this.activeTable && item.projectId === this.currentProjectId);
     if (!version) return {};
+    return this.getVersionSemanticRoles(version.id);
+  }
+
+  getVersionSemanticRoles(versionId: string): Record<string, SemanticRole> {
+    const version = this.versions.find((item) => item.id === versionId && item.projectId === this.currentProjectId);
+    if (!version) return {};
     const overrides = this.semanticRolesByVersion.get(version.id) ?? {};
     return Object.fromEntries(version.columns.map((column) => [column.name, Object.hasOwn(overrides, column.name) ? overrides[column.name] : suggestRole(column.type, column.name)]));
   }
@@ -1080,6 +1088,74 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       this.readRowDifferences(conn, leftQuery, left.columns, rightQuery, right.columns),
     ]);
     return { left: { rowCount: left.rowCount, quality: leftQuality }, right: { rowCount: right.rowCount, quality: rightQuality }, rowDifferences };
+  }
+
+  async comparePeriods(request: PeriodComparisonRequest): Promise<PeriodComparisonResult> {
+    const conn = this.requireConn();
+    const left = this.requireVersion(request.leftVersionId);
+    const right = this.requireVersion(request.rightVersionId);
+    if (request.sameUnitsConfirmed !== true) throw new Error("Confirme que los valores de ambos períodos usan la misma unidad y moneda.");
+    const validDate = (value: string) => {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || value.startsWith("0000")) return false;
+      const parsed = new Date(`${value}T00:00:00Z`);
+      return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    };
+    if (![request.leftFrom, request.leftTo, request.rightFrom, request.rightTo].every(validDate) || request.leftFrom > request.leftTo || request.rightFrom > request.rightTo) {
+      throw new Error("Ingrese períodos válidos con fecha inicial anterior o igual a la final.");
+    }
+    const column = (version: StoredPipelineVersion, name: string) => version.columns.find((item) => item.name === name);
+    const leftDate = column(left, request.dateColumn);
+    const rightDate = column(right, request.dateColumn);
+    if (leftDate?.type.toUpperCase() !== "DATE" || rightDate?.type.toUpperCase() !== "DATE") throw new Error("Elija una columna DATE existente en ambas versiones.");
+    const leftMeasure = column(left, request.measureColumn);
+    const rightMeasure = column(right, request.measureColumn);
+    const leftType = leftMeasure && safeSqlType(leftMeasure.type);
+    const rightType = rightMeasure && safeSqlType(rightMeasure.type);
+    if (!leftType || leftType !== rightType || !/^(?:TINYINT|SMALLINT|INTEGER|BIGINT|HUGEINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|UHUGEINT|DECIMAL\()/.test(leftType)) {
+      throw new Error("La medida debe tener el mismo tipo entero o decimal exacto en ambas versiones.");
+    }
+    if (this.getVersionSemanticRoles(left.id)[request.measureColumn] !== "medida" || this.getVersionSemanticRoles(right.id)[request.measureColumn] !== "medida") throw new Error("La columna debe tener rol de medida en ambas versiones.");
+    const date = escapeIdentifier(request.dateColumn);
+    const source = (version: StoredPipelineVersion, from: string, to: string) => `SELECT * FROM ${escapeIdentifier(version.tableName)} WHERE ${date} >= CAST(${escapeStringLiteral(from)} AS DATE) AND ${date} <= CAST(${escapeStringLiteral(to)} AS DATE)`;
+    const leftQuery = source(left, request.leftFrom, request.leftTo);
+    const rightQuery = source(right, request.rightFrom, request.rightTo);
+    const measure = escapeIdentifier(request.measureColumn);
+    const counts = (value: unknown) => {
+      const number = Number(value);
+      if (!Number.isSafeInteger(number) || number < 0) throw new Error("El conteo de la comparación no es válido.");
+      return number;
+    };
+    const metrics = async (query: string) => {
+      await this.assertExactMeasurePrecision(conn, `(${query}) AS df_precision`, request.measureColumn, false);
+      const table = await conn.query(`SELECT COUNT(*) AS rows, COUNT(${measure}) AS valid, CAST(SUM(${measure}) AS VARCHAR) AS sum_value, CAST(AVG(${measure}) AS VARCHAR) AS mean_value FROM (${query}) AS df_period`);
+      const row = toJSONRows(table)[0] as Record<string, unknown> | undefined;
+      if (!row) throw new Error("No se pudo calcular la comparación.");
+      const mean = row.mean_value === null ? null : String(row.mean_value);
+      if (mean !== null && !Number.isFinite(Number(mean))) throw new Error("La media excede el rango numérico disponible.");
+      return { rows: counts(row.rows), valid: counts(row.valid), sum: row.sum_value === null ? null : String(row.sum_value), mean };
+    };
+    let keyed: PeriodComparisonResult["keyed"] = null;
+    if (request.keyColumn) {
+      const leftKey = column(left, request.keyColumn);
+      const rightKey = column(right, request.keyColumn);
+      const keyType = leftKey && safeSqlType(leftKey.type);
+      if (!keyType || keyType !== (rightKey && safeSqlType(rightKey.type)) || /^(FLOAT|DOUBLE)/.test(keyType)) throw new Error("La clave debe existir en ambos períodos con el mismo tipo compatible.");
+      if (left.columns.length !== right.columns.length || left.columns.some((item, index) => item.name !== right.columns[index].name || item.type !== right.columns[index].type)) throw new Error("Comparar cambios por clave requiere esquemas idénticos.");
+      const key = escapeIdentifier(request.keyColumn);
+      const validateKey = async (query: string) => {
+        const result = await conn.query(`WITH df_period AS (${query}) SELECT (SELECT COUNT(*) FROM df_period WHERE ${key} IS NULL) AS missing, (SELECT COUNT(*) FROM (SELECT ${key} FROM df_period WHERE ${key} IS NOT NULL GROUP BY ${key} HAVING COUNT(*) > 1)) AS repeated`);
+        const row = toJSONRows(result)[0] as Record<string, unknown> | undefined;
+        if (!row || counts(row.missing) || counts(row.repeated)) throw new Error("La clave debe ser única y no nula dentro de cada período.");
+      };
+      await Promise.all([validateKey(leftQuery), validateKey(rightQuery)]);
+      const changed = left.columns.filter((item) => item.name !== request.keyColumn && item.name !== request.dateColumn).map((item) => `l.${escapeIdentifier(item.name)} IS DISTINCT FROM r.${escapeIdentifier(item.name)}`).join(" OR ") || "FALSE";
+      const result = await conn.query(`WITH df_left AS (${leftQuery}), df_right AS (${rightQuery}) SELECT COUNT(*) FILTER (WHERE l.${key} IS NULL) AS added, COUNT(*) FILTER (WHERE r.${key} IS NULL) AS removed, COUNT(*) FILTER (WHERE l.${key} IS NOT NULL AND r.${key} IS NOT NULL AND (${changed})) AS changed, COUNT(*) FILTER (WHERE l.${key} IS NOT NULL AND r.${key} IS NOT NULL AND NOT (${changed})) AS unchanged FROM df_left l FULL OUTER JOIN df_right r ON l.${key} = r.${key}`);
+      const row = toJSONRows(result)[0] as Record<string, unknown> | undefined;
+      if (!row) throw new Error("No se pudieron comparar las claves.");
+      keyed = { added: counts(row.added), removed: counts(row.removed), changed: counts(row.changed), unchanged: counts(row.unchanged) };
+    }
+    const [leftMetrics, rightMetrics] = await Promise.all([metrics(leftQuery), metrics(rightQuery)]);
+    return { left: leftMetrics, right: rightMetrics, keyed };
   }
 
   async previewPipeline(

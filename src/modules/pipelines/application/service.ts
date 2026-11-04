@@ -3,6 +3,7 @@ import {
   type PipelineDefinition,
   type PipelinePreview,
   type PipelineVersion,
+  type PeriodComparisonRequest,
 } from "../domain/definition";
 import type { DatasetExport, DatasetExportFormat, PipelineDefinitionRepository, PipelineExecutionPort } from "./ports";
 
@@ -47,6 +48,10 @@ export class PipelineService {
 
   compareVersions(leftId: string, rightId: string) {
     return this.execution.compareVersions(leftId, rightId);
+  }
+
+  comparePeriods(request: PeriodComparisonRequest) {
+    return this.execution.comparePeriods(request);
   }
 
   exportVersion(versionId: string, format: DatasetExportFormat): Promise<DatasetExport> {

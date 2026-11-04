@@ -234,6 +234,26 @@ export interface PipelineVersionComparison {
   rowDifferences: PipelineRowDifferences | null;
 }
 
+/** Dos períodos inclusivos sobre columnas DATE y una medida exacta compatible. */
+export interface PeriodComparisonRequest {
+  leftVersionId: string;
+  rightVersionId: string;
+  dateColumn: string;
+  leftFrom: string;
+  leftTo: string;
+  rightFrom: string;
+  rightTo: string;
+  measureColumn: string;
+  sameUnitsConfirmed: boolean;
+  keyColumn: string | null;
+}
+
+export interface PeriodComparisonResult {
+  left: { rows: number; valid: number; sum: string | null; mean: string | null };
+  right: { rows: number; valid: number; sum: string | null; mean: string | null };
+  keyed: { added: number; removed: number; changed: number; unchanged: number } | null;
+}
+
 export interface PipelineValidation {
   valid: boolean;
   columns: PipelineColumn[];

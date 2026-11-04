@@ -26,6 +26,7 @@ function port(): PipelineExecutionPort {
     getActiveDatasetVersionId: () => source.id,
     getVersionColumns: async () => source.columns,
     compareVersions: vi.fn(async () => ({ left: { rowCount: 3, quality: { rowsWithNull: 0, duplicateGroups: 1 } }, right: { rowCount: 2, quality: { rowsWithNull: 0, duplicateGroups: 0 } }, rowDifferences: { removed: 1, added: 0 } })),
+    comparePeriods: vi.fn(async () => ({ left: { rows: 0, valid: 0, sum: null, mean: null }, right: { rows: 0, valid: 0, sum: null, mean: null }, keyed: null })),
     previewPipeline: vi.fn(async () => ({
       inputRowCount: 3,
       outputRowCount: 2,

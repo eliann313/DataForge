@@ -15,6 +15,7 @@ import {
   type PipelineFilterOperator,
   type PipelinePreview,
   type PipelineVersionComparison,
+  type PeriodComparisonResult,
   type PipelineStep,
   type PipelineTargetType,
   type PipelineVersion,
@@ -127,6 +128,15 @@ export default function TransformationsView({
   const [comparisonLeft, setComparisonLeft] = useState("");
   const [comparisonRight, setComparisonRight] = useState("");
   const [comparison, setComparison] = useState<{ leftId: string; rightId: string; result: PipelineVersionComparison } | null>(null);
+  const [periodDate, setPeriodDate] = useState("");
+  const [periodMeasure, setPeriodMeasure] = useState("");
+  const [periodKey, setPeriodKey] = useState("");
+  const [leftFrom, setLeftFrom] = useState("");
+  const [leftTo, setLeftTo] = useState("");
+  const [rightFrom, setRightFrom] = useState("");
+  const [rightTo, setRightTo] = useState("");
+  const [sameUnits, setSameUnits] = useState(false);
+  const [periodResult, setPeriodResult] = useState<PeriodComparisonResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -186,6 +196,14 @@ export default function TransformationsView({
   }, [baseVersionId]);
 
   const baseColumns = schemaState.versionId === baseVersionId ? schemaState.columns : [];
+  const comparisonLeftVersion = versions.find((version) => version.id === comparisonLeft);
+  const comparisonRightVersion = versions.find((version) => version.id === comparisonRight);
+  const commonColumns = (comparisonLeftVersion?.columns ?? []).filter((column) => comparisonRightVersion?.columns.some((right) => right.name === column.name && right.type === column.type));
+  const dateColumns = commonColumns.filter((column) => column.type.toUpperCase() === "DATE");
+  const leftRoles = comparisonLeftVersion ? engine.getVersionSemanticRoles(comparisonLeftVersion.id) : {};
+  const rightRoles = comparisonRightVersion ? engine.getVersionSemanticRoles(comparisonRightVersion.id) : {};
+  const measureColumns = commonColumns.filter((column) => isNumericPipelineColumn(column) && !/^(?:FLOAT|DOUBLE|REAL)/i.test(column.type) && leftRoles[column.name] === "medida" && rightRoles[column.name] === "medida");
+  const sameComparisonSchema = Boolean(comparisonLeftVersion && comparisonRightVersion && comparisonLeftVersion.columns.length === comparisonRightVersion.columns.length && comparisonLeftVersion.columns.every((column, index) => column.name === comparisonRightVersion.columns[index].name && column.type === comparisonRightVersion.columns[index].type));
 
   function currentColumns(index = steps.length) {
     return columnsBeforeStep(baseColumns, definition, index);
@@ -503,6 +521,20 @@ export default function TransformationsView({
       setComparison({ leftId: comparisonLeft, rightId: comparisonRight, result });
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "No se pudieron comparar las versiones.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function comparePeriods() {
+    setBusy(true);
+    setMessage(null);
+    setPeriodResult(null);
+    try {
+      const result = await pipelineService.comparePeriods({ leftVersionId: comparisonLeft, rightVersionId: comparisonRight, dateColumn: periodDate, leftFrom, leftTo, rightFrom, rightTo, measureColumn: periodMeasure, keyColumn: periodKey || null, sameUnitsConfirmed: sameUnits });
+      setPeriodResult(result);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "No se pudieron comparar los períodos.");
     } finally {
       setBusy(false);
     }
@@ -1227,8 +1259,8 @@ export default function TransformationsView({
       <section className="space-y-2" aria-labelledby="comparar-versiones">
         <h3 id="comparar-versiones" className="font-semibold">Comparar versiones o períodos</h3>
         <p className="text-sm text-gray-600">Elija dos versiones que representen los períodos o resultados que quiere comparar. Cada indicador se calcula sobre todas las filas y columnas de cada versión.</p>
-        <label>Primera versión <select aria-label="Primera versión para comparar" value={versions.some((version) => version.id === comparisonLeft) ? comparisonLeft : ""} onChange={(event) => { setComparisonLeft(event.target.value); setComparison(null); }}><option value="">Seleccione una versión</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}</select></label>{" "}
-        <label>Segunda versión <select aria-label="Segunda versión para comparar" value={versions.some((version) => version.id === comparisonRight) ? comparisonRight : ""} onChange={(event) => { setComparisonRight(event.target.value); setComparison(null); }}><option value="">Seleccione una versión</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}</select></label>{" "}
+        <label>Primera versión <select aria-label="Primera versión para comparar" disabled={busy} value={versions.some((version) => version.id === comparisonLeft) ? comparisonLeft : ""} onChange={(event) => { setComparisonLeft(event.target.value); setComparison(null); setPeriodResult(null); setPeriodDate(""); setPeriodMeasure(""); setPeriodKey(""); setSameUnits(false); }}><option value="">Seleccione una versión</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}</select></label>{" "}
+        <label>Segunda versión <select aria-label="Segunda versión para comparar" disabled={busy} value={versions.some((version) => version.id === comparisonRight) ? comparisonRight : ""} onChange={(event) => { setComparisonRight(event.target.value); setComparison(null); setPeriodResult(null); setPeriodDate(""); setPeriodMeasure(""); setPeriodKey(""); setSameUnits(false); }}><option value="">Seleccione una versión</option>{versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}</select></label>{" "}
         <button type="button" disabled={busy || !versions.some((version) => version.id === comparisonLeft) || !versions.some((version) => version.id === comparisonRight)} onClick={() => void compareVersions()} className="underline">Comparar versiones</button>
         {comparison && versions.some((version) => version.id === comparison.leftId) && versions.some((version) => version.id === comparison.rightId) ? (
           <table className="df-table">
@@ -1245,6 +1277,32 @@ export default function TransformationsView({
           comparison.result.rowDifferences ? <p>Copias de filas excedentes en la primera: {comparison.result.rowDifferences.removed} · en la segunda: {comparison.result.rowDifferences.added}</p> : <p>La comparación de filas completas requiere versiones con el mismo esquema.</p>
         ) : null}
         <p className="text-sm text-gray-600">Un grupo duplicado contiene dos o más filas idénticas dentro de una misma versión. Las diferencias cuentan copias de filas completas; una fila editada puede aparecer en ambos lados.</p>
+        {comparisonLeftVersion && comparisonRightVersion ? <div className="space-y-2">
+          <h4 className="font-semibold">Comparar períodos por fecha</h4>
+          <p className="text-sm text-gray-600">Los dos extremos de cada período están incluidos; las fechas nulas quedan fuera. Seleccione una columna DATE y una medida entera o decimal exacta compartidas.</p>
+          <label>Columna de fecha <select aria-label="Columna de fecha para períodos" disabled={busy} value={periodDate} onChange={(event) => { setPeriodDate(event.target.value); setPeriodResult(null); }}><option value="">Seleccione</option>{dateColumns.map((column) => <option key={column.name} value={column.name}>{column.name}</option>)}</select></label>{" "}
+          <label>Medida <select aria-label="Medida para períodos" disabled={busy} value={periodMeasure} onChange={(event) => { setPeriodMeasure(event.target.value); setPeriodResult(null); setSameUnits(false); }}><option value="">Seleccione</option>{measureColumns.map((column) => <option key={column.name} value={column.name}>{column.name} ({column.type})</option>)}</select></label>
+          <div className="flex flex-wrap gap-2">
+            <label>Primero desde <input type="date" aria-label="Primer período desde" disabled={busy} value={leftFrom} onChange={(event) => { setLeftFrom(event.target.value); setPeriodResult(null); }} /></label>
+            <label>hasta <input type="date" aria-label="Primer período hasta" disabled={busy} value={leftTo} onChange={(event) => { setLeftTo(event.target.value); setPeriodResult(null); }} /></label>
+            <label>Segundo desde <input type="date" aria-label="Segundo período desde" disabled={busy} value={rightFrom} onChange={(event) => { setRightFrom(event.target.value); setPeriodResult(null); }} /></label>
+            <label>hasta <input type="date" aria-label="Segundo período hasta" disabled={busy} value={rightTo} onChange={(event) => { setRightTo(event.target.value); setPeriodResult(null); }} /></label>
+          </div>
+          <label>Clave para identificar cambios (opcional) <select aria-label="Clave para comparar períodos" value={periodKey} disabled={busy || !sameComparisonSchema} onChange={(event) => { setPeriodKey(event.target.value); setPeriodResult(null); }}><option value="">Sin clave</option>{commonColumns.map((column) => <option key={column.name} value={column.name}>{column.name}</option>)}</select></label>
+          {!sameComparisonSchema ? <p className="text-sm text-gray-600">La comparación por clave requiere esquemas idénticos.</p> : null}
+          <label className="block"><input type="checkbox" disabled={busy} checked={sameUnits} onChange={(event) => { setSameUnits(event.target.checked); setPeriodResult(null); }} /> Confirmo que todos los valores comparados usan la misma unidad y moneda.</label>
+          <button type="button" disabled={busy || !periodDate || !periodMeasure || !leftFrom || !leftTo || !rightFrom || !rightTo || !sameUnits} onClick={() => void comparePeriods()} className="underline">Comparar períodos</button>
+          {periodResult ? <div role="status">
+            <table className="df-table"><caption>Resultados por período</caption><thead><tr><th scope="col">Indicador</th><th scope="col">Primero</th><th scope="col">Segundo</th></tr></thead><tbody>
+              <tr><th scope="row">Filas</th><td>{periodResult.left.rows}</td><td>{periodResult.right.rows}</td></tr>
+              <tr><th scope="row">Valores no nulos</th><td>{periodResult.left.valid}</td><td>{periodResult.right.valid}</td></tr>
+              <tr><th scope="row">Suma exacta</th><td>{periodResult.left.sum ?? "Sin valores"}</td><td>{periodResult.right.sum ?? "Sin valores"}</td></tr>
+              <tr><th scope="row">Media aproximada</th><td>{periodResult.left.mean ?? "Sin valores"}</td><td>{periodResult.right.mean ?? "Sin valores"}</td></tr>
+            </tbody></table>
+            {periodResult.keyed ? <p>Claves agregadas: {periodResult.keyed.added} · eliminadas: {periodResult.keyed.removed} · modificadas: {periodResult.keyed.changed} · sin cambios: {periodResult.keyed.unchanged}</p> : null}
+          </div> : null}
+          <p className="text-sm text-gray-600">La clave debe ser única y no nula en cada período. El cambio por clave compara todas las columnas salvo la clave y la fecha elegida. La media usa coma flotante; la suma conserva el valor entero o decimal del motor.</p>
+        </div> : null}
       </section>
     </div>
   );

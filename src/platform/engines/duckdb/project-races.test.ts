@@ -36,6 +36,26 @@ function expectProjectB(manager: DuckDBManager) {
 }
 
 describe("operaciones en vuelo al cambiar de proyecto", () => {
+  it("valida períodos, unidad y aislamiento antes de ejecutar consultas", async () => {
+    const query = vi.fn(async () => row(0));
+    const manager = setup(query);
+    const periodColumns = [
+      { name: "fecha", type: "DATE", nullable: false },
+      { name: "importe", type: "DECIMAL(10,2)", nullable: false },
+      { name: "id", type: "INTEGER", nullable: false },
+    ];
+    Object.assign(manager, { versions: [{ ...source("a1", "a"), columns: periodColumns }, { ...source("a2", "a"), columns: [...periodColumns, { name: "extra", type: "VARCHAR", nullable: true }] }, source("b1", "b")] });
+    const request = { leftVersionId: "a1", rightVersionId: "a1", dateColumn: "fecha", leftFrom: "2024-01-01", leftTo: "2024-01-31", rightFrom: "2024-02-01", rightTo: "2024-02-29", measureColumn: "importe", keyColumn: null, sameUnitsConfirmed: true };
+    await expect(manager.comparePeriods({ ...request, sameUnitsConfirmed: false })).rejects.toThrow(/misma unidad/);
+    await expect(manager.comparePeriods({ ...request, leftFrom: "2024-02-30" })).rejects.toThrow(/períodos válidos/);
+    await expect(manager.comparePeriods({ ...request, leftFrom: "2024-01-01' OR TRUE --" })).rejects.toThrow(/períodos válidos/);
+    await expect(manager.comparePeriods({ ...request, measureColumn: "id" })).rejects.toThrow(/rol de medida/);
+    await expect(manager.comparePeriods({ ...request, rightVersionId: "b1" })).rejects.toThrow(/proyecto activo/);
+    await expect(manager.comparePeriods({ ...request, rightVersionId: "a2", keyColumn: "id" })).rejects.toThrow(/esquemas idénticos/);
+    expect(query).not.toHaveBeenCalled();
+    query.mockResolvedValue(row(1));
+    await expect(manager.comparePeriods(request)).rejects.toThrow(/precisión numérica segura/);
+  });
   it("conserva una copia de la definición ejecutada para repetirla sin mutar el linaje", async () => {
     const manager = setup();
     const definition = { id: "p", name: "Preparar", steps: [{ id: "step-1", type: "deduplicate" as const }] };

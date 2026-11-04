@@ -18,6 +18,8 @@ export {
   type PipelineQuality,
   type PipelineRowDifferences,
   type PipelineVersionComparison,
+  type PeriodComparisonRequest,
+  type PeriodComparisonResult,
   type PipelineStep,
   type PipelineTargetType,
   type PipelineValidation,
