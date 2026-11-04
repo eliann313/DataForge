@@ -58,7 +58,7 @@ export function evaluateFindings(inputs: FindingInput[]): Finding[] {
         text: `${input.column} es asimétrica (|media − mediana|/desvío > 0,5): prefiera la mediana como centro.`,
       });
     }
-    if (input.total > 0 && input.distinct <= 1) {
+    if (input.total > 0 && input.distinct === 1) {
       out.push({
         rule: "constante",
         column: input.column,

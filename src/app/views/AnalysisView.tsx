@@ -8,7 +8,6 @@ import {
   type ColumnInfo,
   type Correlation,
   type FrequencyTable,
-  type GroupedRow,
   type Histogram,
   type NumericDescription,
 } from "@/platform/engines/duckdb/manager";
@@ -179,16 +178,17 @@ export default function AnalysisView() {
         });
       } else {
         if (!xCol) throw new Error("Elija la columna del eje X.");
-        const rows: GroupedRow[] = await engine.groupedStat(
+        if (agg !== "count" && !yCol) throw new Error("Elija la columna numérica para la agregación.");
+        const grouped = await engine.groupedStat(
           xCol,
           agg === "count" ? null : yCol || null,
           agg,
         );
         const aggLabel = agg === "count" ? "conteo" : agg === "sum" ? `suma de ${yCol}` : `media de ${yCol}`;
         setChart({
-          title: `${chartKind === "bar" ? "Barras" : "Líneas"}: ${aggLabel} por ${xCol} (${rows.length} grupos)`,
+          title: `${chartKind === "bar" ? "Barras" : "Líneas"}: ${aggLabel} por ${xCol} (${grouped.rows.length} grupos${grouped.truncated ? "; se muestran los primeros 500, hay más" : ""})`,
           kind: chartKind,
-          points: rows.map((r) => ({ label: fmtCell(r.x), value: r.y })),
+          points: grouped.rows.map((r) => ({ label: fmtCell(r.x), value: r.y })),
         });
       }
     } catch (cause) {

@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildCsvExportHeader, buildCsvExportQuery, buildOrderBy, buildPipelineQuery, buildWhere } from "./manager";
+import { buildCsvExportHeader, buildCsvExportQuery, buildOrderBy, buildPipelineQuery, buildWhere, safeAnalysisNumber } from "./manager";
+
+describe("precisión de agregados", () => {
+  it("rechaza enteros y decimales exactos que perderían dígitos", () => {
+    expect(() => safeAnalysisNumber("9007199254740993")).toThrow(/precisión/);
+    expect(() => safeAnalysisNumber("0.1234567890123456")).toThrow(/precisión/);
+    expect(safeAnalysisNumber("2021.25")).toBe(2021.25);
+    expect(safeAnalysisNumber("0.30000000000000004", false)).toBe(0.30000000000000004);
+  });
+});
 
 describe("buildWhere", () => {
   it("vacío no filtra", () => {

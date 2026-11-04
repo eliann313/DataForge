@@ -154,6 +154,35 @@ export function isNumericPipelineValue(value: string): boolean {
   return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value.trim());
 }
 
+/** Comprueba rango y escala sin convertir enteros o decimales a coma flotante. */
+function fitsNumericReplacement(value: string, rawType: string): boolean {
+  const type = rawType.trim().toUpperCase();
+  if (/^(FLOAT|FLOAT4|FLOAT8|REAL|DOUBLE)$/.test(type)) {
+    const number = Number(value);
+    return Number.isFinite(number) && (!/^(FLOAT|FLOAT4|REAL)$/.test(type) || Number.isFinite(Math.fround(number)));
+  }
+  const match = /^([+-]?)(\d*)(?:\.(\d+))?$/.exec(value.trim());
+  if (!match || (!match[2] && !match[3])) return false;
+  const whole = match[2] || "0";
+  const fraction = match[3] || "";
+  const decimal = /^(?:DECIMAL|NUMERIC)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(type);
+  if (decimal) {
+    const precision = Number(decimal[1]);
+    const scale = Number(decimal[2]);
+    const integerDigits = whole.replace(/^0+/, "").length;
+    return precision >= 1 && precision <= 38 && scale <= precision && integerDigits <= precision - scale && !/[1-9]/.test(fraction.slice(scale));
+  }
+  if (/[1-9]/.test(fraction)) return false;
+  const bits: Record<string, number> = { TINYINT: 8, UTINYINT: 8, SMALLINT: 16, INT2: 16, USMALLINT: 16, INTEGER: 32, INT: 32, INT4: 32, UINTEGER: 32, BIGINT: 64, INT8: 64, UBIGINT: 64, HUGEINT: 128, UHUGEINT: 128 };
+  const width = bits[type];
+  if (!width) return false;
+  const integer = BigInt(`${match[1]}${whole}`);
+  const unsigned = type.startsWith("U");
+  const one = BigInt(1);
+  const max = (one << BigInt(unsigned ? width : width - 1)) - one;
+  return integer >= (unsigned ? BigInt(0) : -max - one) && integer <= max;
+}
+
 /** Referencia lógica a la fuente o a una versión derivada durante la sesión. */
 export interface PipelineVersion {
   id: string;
@@ -320,6 +349,9 @@ export function validatePipeline(
         }
         if (isNumericPipelineColumn(column) && !isNumericPipelineValue(step.value)) {
           return fail(`Ingrese un valor numérico válido para ${column.name}.`, step.id);
+        }
+        if (isNumericPipelineColumn(column) && !fitsNumericReplacement(step.value, column.type)) {
+          return fail(`El valor de reemplazo no cabe en ${column.type} sin pérdida.`, step.id);
         }
         break;
       }

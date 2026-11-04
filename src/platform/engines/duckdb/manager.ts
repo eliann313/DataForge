@@ -189,6 +189,11 @@ export interface GroupedRow {
   y: number | null;
 }
 
+export interface GroupedResult {
+  rows: GroupedRow[];
+  truncated: boolean;
+}
+
 export interface Histogram {
   column: string;
   bins: number;
@@ -1364,18 +1369,19 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
 
   async describeNumeric(column: string): Promise<NumericDescription> {
     const conn = this.requireConn();
+    const schema = await this.getSchema();
+    const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === column)?.type ?? "");
     const col = escapeIdentifier(column);
     const table = escapeIdentifier(this.requireActiveTable());
     const row = toJSONRows(
       await conn.query(
-        `SELECT COUNT(*) AS total, COUNT(${col}) AS valid, SUM(${col}) AS s, AVG(${col}) AS a, MEDIAN(${col}) AS med, MODE(${col}) AS mode, MIN(${col}) AS mn, MAX(${col}) AS mx, VAR_SAMP(${col}) AS var, STDDEV_SAMP(${col}) AS std, QUANTILE_CONT(${col}, 0.25) AS q1, QUANTILE_CONT(${col}, 0.75) AS q3 FROM ${table}`,
+        `SELECT COUNT(*) AS total, COUNT(${col}) AS valid, CAST(SUM(${col}) AS VARCHAR) AS s, AVG(${col}) AS a, MEDIAN(${col}) AS med, CAST(MODE(${col}) AS VARCHAR) AS mode, CAST(MIN(${col}) AS VARCHAR) AS mn, CAST(MAX(${col}) AS VARCHAR) AS mx, VAR_SAMP(${col}) AS var, STDDEV_SAMP(${col}) AS std, QUANTILE_CONT(${col}, 0.25) AS q1, QUANTILE_CONT(${col}, 0.75) AS q3 FROM ${table}`,
       ),
     )[0] as Record<string, unknown>;
     if (!row) throw new Error(`Sin filas para describir ${column}`);
     const num = (v: unknown): number | null => {
       if (v === null || v === undefined) return null;
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
+      return safeAnalysisNumber(v, !approximate);
     };
     const total = Number(row.total);
     const valid = Number(row.valid);
@@ -1427,22 +1433,23 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     groupCol: string,
     numCol: string | null,
     agg: "count" | "sum" | "mean",
-  ): Promise<GroupedRow[]> {
+  ): Promise<GroupedResult> {
     const conn = this.requireConn();
+    if (agg !== "count" && !numCol) throw new Error("Elija la columna numérica para la agregación.");
+    const schema = numCol ? await this.getSchema() : [];
+    const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === numCol)?.type ?? "");
     const g = escapeIdentifier(groupCol);
     const table = escapeIdentifier(this.requireActiveTable());
     const select =
       agg === "count"
         ? "COUNT(*) AS y"
-        : numCol
-          ? `${agg === "sum" ? "SUM" : "AVG"}(${escapeIdentifier(numCol)}) AS y`
-          : "COUNT(*) AS y";
+        : agg === "sum" ? `CAST(SUM(${escapeIdentifier(numCol!)}) AS VARCHAR) AS y` : `AVG(${escapeIdentifier(numCol!)}) AS y`;
     const rows = toJSONRows(
       await conn.query(
-        `SELECT ${g} AS x, ${select} FROM ${table} GROUP BY ${g} ORDER BY x LIMIT 500`,
+        `SELECT ${g} AS x, ${select} FROM ${table} GROUP BY ${g} ORDER BY x LIMIT 501`,
       ),
     );
-    return rows.map((r) => ({ x: r.x ?? null, y: r.y === null ? null : Number(r.y) }));
+    return { rows: rows.slice(0, 500).map((r) => ({ x: r.x ?? null, y: r.y === null ? null : safeAnalysisNumber(r.y, !approximate) })), truncated: rows.length > 500 };
   }
 
   /** Histograma por bines iguales (conteo por intervalo, límites visibles). */
@@ -1490,15 +1497,16 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   /** Agregación sobre una columna (nombre escapado; sin SQL arbitraria). */
   async summarizeNumeric(column: string): Promise<NumericSummary> {
     const conn = this.requireConn();
+    const schema = await this.getSchema();
+    const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === column)?.type ?? "");
     const col = escapeIdentifier(column);
     const table = await conn.query(
-      `SELECT COUNT(${col}) AS n, SUM(${col}) AS s, AVG(${col}) AS a, MIN(${col}) AS mn, MAX(${col}) AS mx FROM ${escapeIdentifier(this.requireActiveTable())}`,
+      `SELECT COUNT(${col}) AS n, CAST(SUM(${col}) AS VARCHAR) AS s, AVG(${col}) AS a, CAST(MIN(${col}) AS VARCHAR) AS mn, CAST(MAX(${col}) AS VARCHAR) AS mx FROM ${escapeIdentifier(this.requireActiveTable())}`,
     );
     const row = toJSONRows(table)[0] as Record<string, unknown> | undefined;
     const num = (v: unknown): number => {
-      const n = typeof v === "bigint" ? Number(v) : Number(v);
-      if (!Number.isFinite(n)) throw new Error(`Agregado no numérico en ${column}`);
-      return n;
+      if (v === null || v === undefined) throw new Error(`Agregado sin valores en ${column}`);
+      return safeAnalysisNumber(v, !approximate);
     };
     if (!row) throw new Error(`Sin filas para resumir ${column}`);
     return {
@@ -1669,7 +1677,10 @@ export function buildPipelineQuery(
         if (step.value === null) throw new Error("Ingrese el valor para reemplazar los nulos.");
         const column = columns.find((candidate) => candidate.name === step.column);
         if (!column) throw new Error(`La columna ya no existe: ${step.column}.`);
-        const replacement = typedFilterValue(step.value, column);
+        const targetType = isNumericPipelineColumn(column) ? safeSqlType(column.type) : null;
+        if (isNumericPipelineColumn(column) && !targetType) throw new Error(`Tipo numérico no compatible: ${column.type}.`);
+        const value = typedFilterValue(step.value, column);
+        const replacement = targetType ? `CAST(${value} AS ${targetType})` : value;
         const projected = columns.map((candidate) =>
           candidate.name === step.column
             ? `COALESCE(${escapeIdentifier(candidate.name)}, ${replacement}) AS ${escapeIdentifier(candidate.name)}`
@@ -1901,6 +1912,19 @@ function pipelineCastSqlType(
 function messageOf(cause: unknown): string {
   if (cause instanceof Error && cause.message) return cause.message;
   return "Fallo desconocido al inicializar DuckDB-Wasm";
+}
+
+/** Rechaza agregados exactos que no se pueden presentar con precisión numérica suficiente. */
+export function safeAnalysisNumber(value: unknown, exact = true): number {
+  const number = Number(value);
+  if (!Number.isFinite(number)) throw new Error("El agregado no es un número finito.");
+  if (Number.isInteger(number) && !Number.isSafeInteger(number)) throw new Error("El agregado supera la precisión numérica segura para mostrarlo.");
+  if (exact && typeof value === "string") {
+    const mantissa = value.toLowerCase().split("e")[0];
+    const significant = mantissa.replace(/[^0-9]/g, "").replace(/^0+/, "").replace(/0+$/, "");
+    if (significant.length > 15) throw new Error("El agregado supera la precisión numérica segura para mostrarlo.");
+  }
+  return number;
 }
 
 /** Convierte una tabla Arrow a filas JSON; BigInt → Number (conteos) o texto. */

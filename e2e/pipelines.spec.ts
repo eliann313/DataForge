@@ -441,6 +441,10 @@ test("reemplaza nulos con un valor validado según el tipo numérico", async ({ 
   await expect(preview.getByText(/2 de 2 filas/)).toBeVisible({ timeout: 30_000 });
   await expect(preview.getByRole("row").nth(2).getByRole("cell")).toHaveText(["2", "0"]);
   await expect(preview.getByText("Filas con algún nulo: 1 → 0")).toBeVisible();
+  await page.getByLabel("Valor de reemplazo 1").fill("0.5");
+  await page.getByRole("button", { name: /^vista previa$/i }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText(/sin pérdida/);
+  await expect(page.locator('section[aria-labelledby="pipeline-vista-previa"]')).toHaveCount(0);
 });
 
 test("normaliza espacios, mayúsculas y texto vacío en una versión derivada", async ({ page }) => {

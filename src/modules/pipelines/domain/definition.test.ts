@@ -68,8 +68,14 @@ describe("validatePipeline", () => {
       { id: "fill-text", type: "fillNull", column: "grupo", value: "00123" },
     ])).valid).toBe(true);
     expect(validatePipeline(columns, definition([
-      { id: "fill-number", type: "fillNull", column: "valor", value: "0.5" },
+      { id: "fill-number", type: "fillNull", column: "valor", value: "5" },
     ])).valid).toBe(true);
+    expect(validatePipeline(columns, definition([{ id: "fill", type: "fillNull", column: "valor", value: "0.5" }])).error).toMatch(/sin pérdida/);
+    expect(validatePipeline(columns, definition([{ id: "fill", type: "fillNull", column: "valor", value: "2147483648" }])).error).toMatch(/sin pérdida/);
+    const decimals = [{ name: "v", type: "DECIMAL(4,2)", nullable: true }];
+    expect(validatePipeline(decimals, definition([{ id: "fill", type: "fillNull", column: "v", value: "12.34" }])).valid).toBe(true);
+    expect(validatePipeline(decimals, definition([{ id: "fill", type: "fillNull", column: "v", value: "12.345" }])).valid).toBe(false);
+    expect(validatePipeline(decimals, definition([{ id: "fill", type: "fillNull", column: "v", value: "100" }])).valid).toBe(false);
     expect(validatePipeline(columns, definition([
       { id: "fill-number", type: "fillNull", column: "valor", value: "cero" },
     ])).error).toMatch(/valor numérico válido/);

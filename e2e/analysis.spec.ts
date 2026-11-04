@@ -64,6 +64,27 @@ test("barras e histograma con alternativa tabular", async ({ page }) => {
   });
 });
 
+test("exige columna numérica para sumar o promediar", async ({ page }) => {
+  const v = view(page);
+  await v.locator("#chart-x").selectOption("producto");
+  await v.locator("#chart-agg").selectOption("sum");
+  await v.getByRole("button", { name: /graficar/i }).click();
+  await expect(v.getByRole("alert")).toContainText("Elija la columna numérica para la agregación.");
+  await expect(v.getByRole("img", { name: /gráfico: barras/i })).toHaveCount(0);
+});
+
+test("advierte cuando el gráfico no incluye todos los grupos", async ({ page }) => {
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  const rows = Array.from({ length: 501 }, (_, index) => `grupo${String(index).padStart(3, "0")}`).join("\n");
+  await page.locator("#csv-file").setInputFiles({ name: "grupos.csv", mimeType: "text/csv", buffer: Buffer.from(`grupo\n${rows}\n`) });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("grupos.csv: 501 filas, 1 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  await view(page).locator("#chart-x").selectOption("grupo");
+  await view(page).getByRole("button", { name: /graficar/i }).click();
+  await expect(view(page).getByRole("img", { name: /primeros 500, hay más/i })).toBeVisible({ timeout: 30_000 });
+});
+
 test("correlación justificada y hallazgos por reglas", async ({ page }) => {
   const v = view(page);
   await v.getByLabel(/columna a/i).selectOption("id");
