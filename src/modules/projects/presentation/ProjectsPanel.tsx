@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { IndexedDBPipelineDefinitionRepository } from "@/modules/pipelines";
+import { IndexedDBProjectRepository } from "../infrastructure/indexeddb";
+import { parseProjectBackup, ProjectBackupService, serializeProjectBackup } from "@/modules/portable";
 import ConfirmDialog from "@/shared/ui/ConfirmDialog";
 import { useProjects } from "./ProjectsContext";
 
@@ -12,6 +15,38 @@ export default function ProjectsPanel() {
   const [newFolder, setNewFolder] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; kind: "p" | "f"; name: string } | null>(null);
   const [confirm, setConfirm] = useState<{ title: string; message: string; label: string; run: () => void } | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const backupService = () => new ProjectBackupService({
+    projects: new IndexedDBProjectRepository(),
+    definitions: new IndexedDBPipelineDefinitionRepository(),
+  });
+  const exportBackup = async (projectId: string, name: string) => {
+    try {
+      setBackupError(null);
+      const backup = await backupService().exportProject(projectId);
+      const url = URL.createObjectURL(new Blob([serializeProjectBackup(backup)], { type: "application/json" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${name.replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 80) || "proyecto"}.dataforge.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : "No se pudo exportar el respaldo.");
+    }
+  };
+  const importBackup = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      setBackupError(null);
+      if (file.size > 5 * 1024 * 1024) throw new Error("El respaldo supera el límite de 5 MiB.");
+      const backup = parseProjectBackup(await file.text());
+      const project = await backupService().importProject(backup);
+      await ctx.refresh();
+      ctx.select(project.id);
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : "No se pudo importar el respaldo.");
+    }
+  };
   // Los fallos ya se publican en ctx.error (alerta visible); aquí solo se
   // evita el rechazo no manejado en consola.
   const run = (task: Promise<unknown>) => task.catch(() => undefined);
@@ -34,6 +69,12 @@ export default function ProjectsPanel() {
           </button>
         </p>
       ) : null}
+      {backupError ? <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-sm">{backupError}</p> : null}
+      <p className="text-sm text-gray-600">Los respaldos portables v1 incluyen metadatos y definiciones de pipelines; no incluyen archivos importados, resultados ni snapshots. Esos datos requieren reimportar las fuentes.</p>
+      <label className="inline-flex cursor-pointer rounded border px-3 py-1 text-sm">
+        Importar respaldo de proyecto
+        <input type="file" accept="application/json,.json" className="sr-only" onChange={(event) => { void importBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
+      </label>
 
       <form
         className="flex flex-wrap items-center gap-2"
@@ -200,6 +241,7 @@ export default function ProjectsPanel() {
                   <button type="button" className="underline" onClick={() => setRenaming({ id: p.id, kind: "p", name: p.name })}>
                     Renombrar
                   </button>
+                  <button type="button" className="underline" onClick={() => void exportBackup(p.id, p.name)}>Descargar respaldo</button>
                   <label className="text-gray-600">
                     Mover a{" "}
                     <select

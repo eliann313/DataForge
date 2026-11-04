@@ -201,7 +201,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Objetivo:** generar entregables útiles y auditables.
 
-**Avance:** `main` permite exportar cualquier versión de sesión a CSV y Parquet. CSV neutraliza encabezados y textos que podrían ejecutarse como fórmulas; la versión DuckDB permanece intacta. El primer corte de snapshots conserva parámetros, resultados calculados y linaje en IndexedDB por proyecto, sin bytes fuente. El Report Builder y respaldo/importación portable siguen pendientes.
+**Avance:** las versiones se exportan a CSV y Parquet; los snapshots persisten parámetros, resultados y linaje completo en IndexedDB; los informes locales conservan referencias verificables a snapshots. El respaldo/importación JSON v1 incluye metadatos del proyecto, definiciones, snapshots e informes y valida sus referencias antes de escribir. Excluye los bytes de datasets y las versiones DuckDB, por lo que la fuente debe volver a importarse para reanudar análisis. Ver [ADR-0009](adr/0009-snapshots-de-analisis.md), [ADR-0010](adr/0010-informes-locales-basados-en-snapshots.md) y [ADR-0011](adr/0011-respaldo-portable-v1-metadatos.md).
 
 **Alcance**
 - Constructor de informes con secciones reordenables: resumen, fuentes, calidad, métricas, gráficos, observaciones, conclusiones propias, metodología y límites.
