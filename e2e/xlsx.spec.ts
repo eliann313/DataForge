@@ -72,3 +72,26 @@ test("rechaza XLSX corrupto y se recupera", async ({ page }, testInfo) => {
   await chooseFile(page, valid);
   await expect(page.locator("#sheet")).toBeVisible({ timeout: 30_000 });
 });
+
+test("rechaza un directorio ZIP alternativo oculto en el comentario", async ({ page }, testInfo) => {
+  const original = buildWorkbook();
+  const eocd = original.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  const directoryOffset = original.readUInt32LE(eocd + 16);
+  const directorySize = original.readUInt32LE(eocd + 12);
+  const alternativeDirectory = Buffer.from(original.subarray(directoryOffset, directoryOffset + directorySize));
+  const fakeEocd = Buffer.from(original.subarray(eocd, eocd + 22));
+  fakeEocd.writeUInt32LE(original.length, 16);
+  fakeEocd.writeUInt16LE(1, 20); // El byte de comentario declarado no existe.
+  original.writeUInt16LE(alternativeDirectory.length + fakeEocd.length, eocd + 20);
+  const target = testInfo.outputPath("ambiguo.xlsx");
+  writeFileSync(target, Buffer.concat([original, alternativeDirectory, fakeEocd]));
+
+  await chooseFile(page, target);
+  await expect(page.locator('section[aria-labelledby="importar"]').getByRole("alert"))
+    .toContainText(/directorio ZIP ambiguo o malformado/, { timeout: 30_000 });
+
+  const valid = testInfo.outputPath("valido.xlsx");
+  writeFileSync(valid, buildWorkbook());
+  await chooseFile(page, valid);
+  await expect(page.locator("#sheet")).toBeVisible({ timeout: 30_000 });
+});
