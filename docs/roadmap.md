@@ -185,6 +185,8 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Comparación en revisión:** la vista previa presenta conteos de filas, filas con algún nulo y grupos de filas completas duplicadas antes y después. Con esquemas idénticos también cuenta copias de filas completas que salen y entran; si cambia el esquema no identifica filas individuales. Se pueden comparar esos indicadores entre dos versiones elegidas, incluidas fuentes de períodos distintos. Los cálculos recorren los datos completos y pueden ser costosos. La fase sigue abierta hasta revisar la evidencia y los hallazgos de la auditoría.
 
+**Límites para decidir el cierre:** la comparación usa versiones completas elegidas por el usuario; no define períodos mediante fechas ni compara sumas o medias de una medida entre períodos. Tampoco relaciona filas por una clave para identificar una edición individual. La revisión debe decidir si estos límites satisfacen el alcance de fase 4, además de aceptar e integrar la pila y revisar el costo de las consultas sobre datos grandes.
+
 **Alcance**
 - Renombrar columnas, transformar tipos, normalizar fechas/texto, filtrar, ordenar, deduplicar, tratar nulos, crear expresiones y agregaciones.
 - Pipeline declarativo con pasos ordenados, preview, manejo de errores, repetir/editar/deshacer mediante versiones.
