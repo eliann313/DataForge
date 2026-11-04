@@ -1589,6 +1589,31 @@ export function buildPipelineQuery(
         columns = [...columns, { ...resultColumn }];
         break;
       }
+      case "aggregate": {
+        const stepValidation = validatePipeline(baseColumns, {
+          id: "sql-builder",
+          name: "Pipeline",
+          steps: steps.slice(0, index + 1),
+        });
+        const aggregateExpressions = step.aggregations.map((aggregation, aggregationIndex) => {
+          const outputColumn = stepValidation.columns[step.groupBy.length + aggregationIndex];
+          if (!outputColumn) throw new Error("No se pudo determinar el tipo de salida de la agregación.");
+          const expression = aggregation.operator === "count"
+            ? "COUNT(*)"
+            : `${aggregation.operator.toUpperCase()}(${escapeIdentifier(aggregation.column)})`;
+          return `${expression} AS ${escapeIdentifier(aggregation.outputName.trim())}`;
+        });
+        const projection = [
+          ...step.groupBy.map(escapeIdentifier),
+          ...aggregateExpressions,
+        ].join(", ");
+        const groupBy = step.groupBy.length > 0
+          ? ` GROUP BY ${step.groupBy.map(escapeIdentifier).join(", ")}`
+          : "";
+        query = `SELECT ${projection} FROM (${query}) AS ${alias}${groupBy}`;
+        columns = stepValidation.columns.map((column) => ({ ...column }));
+        break;
+      }
       case "normalizeText": {
         const column = columns.find((candidate) => candidate.name === step.column);
         if (!column) throw new Error(`La columna ya no existe: ${step.column}.`);

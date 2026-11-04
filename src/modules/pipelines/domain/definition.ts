@@ -16,6 +16,9 @@ export interface PipelineFilter {
 
 export type PipelineTargetType = "INTEGER" | "BIGINT" | "DECIMAL" | "BOOLEAN" | "VARCHAR";
 export type PipelineArithmeticOperator = "add" | "subtract" | "multiply";
+export type PipelineAggregate =
+  | { operator: "count"; outputName: string }
+  | { operator: "sum" | "min" | "max"; column: string; outputName: string };
 export type PipelineDateFormat =
   | "YYYY-MM-DD"
   | "DD/MM/YYYY"
@@ -45,6 +48,7 @@ export type PipelineStep =
       rightColumn: string;
       outputName: string;
     }
+  | { id: string; type: "aggregate"; groupBy: string[]; aggregations: PipelineAggregate[] }
   | {
       id: string;
       type: "normalizeText";
@@ -89,6 +93,9 @@ export function isPipelineDefinition(value: unknown): value is PipelineDefinitio
         return typeof candidate.leftColumn === "string" &&
           PIPELINE_ARITHMETIC_OPERATORS.has(candidate.operator as PipelineArithmeticOperator) &&
           typeof candidate.rightColumn === "string" && typeof candidate.outputName === "string";
+      case "aggregate":
+        return Array.isArray(candidate.groupBy) && candidate.groupBy.every((column) => typeof column === "string") &&
+          Array.isArray(candidate.aggregations) && candidate.aggregations.every(isPipelineAggregate);
       case "normalizeText":
         return typeof candidate.column === "string" && typeof candidate.trimWhitespace === "boolean" &&
           (candidate.letterCase === "preserve" || candidate.letterCase === "lower" || candidate.letterCase === "upper") &&
@@ -107,6 +114,13 @@ export function isPipelineDefinition(value: unknown): value is PipelineDefinitio
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPipelineAggregate(value: unknown): value is PipelineAggregate {
+  if (!isRecord(value) || typeof value.outputName !== "string") return false;
+  if (value.operator === "count") return true;
+  return (value.operator === "sum" || value.operator === "min" || value.operator === "max") &&
+    typeof value.column === "string";
 }
 
 export interface PipelineColumn {
@@ -361,6 +375,63 @@ export function validatePipeline(
         }];
         break;
       }
+      case "aggregate": {
+        if (step.groupBy.some((name, index) => step.groupBy.slice(0, index).some((other) => normalizeName(other) === normalizeName(name)))) {
+          return fail("La agrupación contiene columnas repetidas.", step.id);
+        }
+        const missingGroupColumn = step.groupBy.find((name) => !hasColumn(columns, name));
+        if (missingGroupColumn) {
+          return fail(`La agrupación referencia una columna que ya no existe: ${missingGroupColumn}.`, step.id);
+        }
+        if (step.aggregations.length === 0) {
+          return fail("Agregue al menos una operación de agregación.", step.id);
+        }
+
+        const outputNames = new Set(step.groupBy.map(normalizeName));
+        const aggregateColumns: PipelineColumn[] = [];
+        for (const aggregation of step.aggregations) {
+          const outputName = aggregation.outputName.trim();
+          if (!outputName || outputName.includes("\0")) {
+            return fail("Ingrese un nombre válido para cada resultado de agregación.", step.id);
+          }
+          if (outputName.length > 128) {
+            return fail("El nombre de columna no puede superar los 128 caracteres.", step.id);
+          }
+          const normalizedOutput = normalizeName(outputName);
+          if (outputNames.has(normalizedOutput)) {
+            return fail(`Ya existe una columna llamada «${outputName}».`, step.id);
+          }
+          outputNames.add(normalizedOutput);
+
+          if (aggregation.operator === "count") {
+            aggregateColumns.push({ name: outputName, type: "BIGINT", nullable: false });
+            continue;
+          }
+          const source = findColumn(columns, aggregation.column);
+          if (!source) {
+            return fail(`La agregación referencia una columna que ya no existe: ${aggregation.column}.`, step.id);
+          }
+          if (!isNumericPipelineColumn(source)) {
+            return fail("La suma, el mínimo y el máximo requieren una columna numérica.", step.id);
+          }
+          const resultType = aggregation.operator === "sum"
+            ? sumResultType(source)
+            : source.type.trim().toUpperCase();
+          if (!resultType) {
+            return fail("No se puede sumar esta columna sin exceder la precisión numérica admitida.", step.id);
+          }
+          aggregateColumns.push({
+            name: outputName,
+            type: resultType,
+            nullable: true,
+          });
+        }
+        columns = [
+          ...step.groupBy.map((name) => ({ ...findColumn(columns, name)! })),
+          ...aggregateColumns,
+        ];
+        break;
+      }
       case "normalizeText": {
         const column = findColumn(columns, step.column);
         if (!column) {
@@ -487,6 +558,14 @@ function arithmeticResultType(
     : Math.max(leftParts.precision - leftParts.scale, rightParts.precision - rightParts.scale) + 1;
   const precision = integerDigits + scale;
   return precision <= 38 ? `DECIMAL(${precision},${scale})` : null;
+}
+
+function sumResultType(column: PipelineColumn): string | null {
+  const type = column.type.trim().toUpperCase();
+  if (/^(?:FLOAT|FLOAT4|FLOAT8|REAL|DOUBLE)(?:\s*\(|$)/.test(type)) return "DOUBLE";
+  const decimal = decimalParts(type);
+  if (decimal) return `DECIMAL(38,${decimal.scale})`;
+  return integerParts(type) ? "HUGEINT" : null;
 }
 
 function decimalParts(type: string): { precision: number; scale: number } | null {

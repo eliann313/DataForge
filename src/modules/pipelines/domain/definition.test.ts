@@ -169,6 +169,54 @@ describe("validatePipeline", () => {
     ]))).toBe(false);
   });
 
+  it("valida agregaciones agrupadas y produce un esquema nuevo", () => {
+    const result = validatePipeline([
+      { name: "categoria", type: "VARCHAR", nullable: true },
+      { name: "importe", type: "DECIMAL(10,2)", nullable: true },
+      { name: "unidades", type: "INTEGER", nullable: false },
+    ], definition([
+      {
+        id: "aggregate",
+        type: "aggregate",
+        groupBy: ["categoria"],
+        aggregations: [
+          { operator: "count", outputName: "filas" },
+          { operator: "sum", column: "importe", outputName: "total" },
+          { operator: "min", column: "unidades", outputName: "min_unidades" },
+          { operator: "max", column: "unidades", outputName: "max_unidades" },
+        ],
+      },
+    ]));
+
+    expect(result.valid).toBe(true);
+    expect(result.columns).toEqual([
+      { name: "categoria", type: "VARCHAR", nullable: true },
+      { name: "filas", type: "BIGINT", nullable: false },
+      { name: "total", type: "DECIMAL(38,2)", nullable: true },
+      { name: "min_unidades", type: "INTEGER", nullable: true },
+      { name: "max_unidades", type: "INTEGER", nullable: true },
+    ]);
+  });
+
+  it("rechaza agregaciones ambiguas, repetidas y no numéricas", () => {
+    const source: PipelineColumn[] = [
+      { name: "grupo", type: "VARCHAR", nullable: false },
+      { name: "valor", type: "INTEGER", nullable: true },
+    ];
+    expect(validatePipeline(source, definition([
+      { id: "aggregate", type: "aggregate", groupBy: ["grupo", "GRUPO"], aggregations: [{ operator: "count", outputName: "filas" }] },
+    ])).error).toMatch(/columnas repetidas/);
+    expect(validatePipeline(source, definition([
+      { id: "aggregate", type: "aggregate", groupBy: ["grupo"], aggregations: [{ operator: "count", outputName: "grupo" }] },
+    ])).error).toMatch(/Ya existe/);
+    expect(validatePipeline(source, definition([
+      { id: "aggregate", type: "aggregate", groupBy: [], aggregations: [{ operator: "sum", column: "grupo", outputName: "total" }] },
+    ])).error).toMatch(/columna numérica/);
+    expect(validatePipeline(source, definition([
+      { id: "aggregate", type: "aggregate", groupBy: [], aggregations: [] },
+    ])).error).toMatch(/al menos una operación/);
+  });
+
   it("rechaza formatos inválidos y columnas numéricas al normalizar fechas", () => {
     expect(validatePipeline(columns, definition([
       { id: "date-number", type: "normalizeDate", column: "valor", inputFormat: "DD-MM-YYYY" },

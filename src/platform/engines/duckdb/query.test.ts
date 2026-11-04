@@ -108,4 +108,32 @@ describe("buildPipelineQuery", () => {
     expect(query).toContain('"total""bruto" AS "total"');
   });
 
+  it("genera agregaciones tipadas agrupadas y totales globales", () => {
+    const grouped = buildPipelineQuery("ventas", [
+      { name: "categoria", type: "VARCHAR", nullable: false },
+      { name: "importe", type: "DECIMAL(10,2)", nullable: true },
+    ], [{
+      id: "aggregate",
+      type: "aggregate",
+      groupBy: ["categoria"],
+      aggregations: [
+        { operator: "count", outputName: "filas" },
+        { operator: "sum", column: "importe", outputName: "total" },
+      ],
+    }]);
+    expect(grouped).toContain('SELECT "categoria", COUNT(*) AS "filas", SUM("importe") AS "total"');
+    expect(grouped).toContain('GROUP BY "categoria"');
+
+    const total = buildPipelineQuery("ventas", [
+      { name: "importe", type: "INTEGER", nullable: true },
+    ], [{
+      id: "aggregate",
+      type: "aggregate",
+      groupBy: [],
+      aggregations: [{ operator: "count", outputName: "filas" }],
+    }]);
+    expect(total).toContain('SELECT COUNT(*) AS "filas"');
+    expect(total).not.toContain(" GROUP BY ");
+  });
 });
+

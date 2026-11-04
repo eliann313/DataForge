@@ -8,6 +8,7 @@ import {
   isNumericPipelineColumn,
   isTextPipelineColumn,
   PipelineService,
+  type PipelineAggregate,
   type PipelineDefinition,
   type PipelineDateFormat,
   type PipelineArithmeticOperator,
@@ -52,6 +53,12 @@ const PIPELINE_ARITHMETIC_OPERATORS: { value: PipelineArithmeticOperator; label:
   { value: "subtract", label: "Restar (−)" },
   { value: "multiply", label: "Multiplicar (×)" },
 ];
+const PIPELINE_AGGREGATE_OPERATORS: { value: PipelineAggregate["operator"]; label: string }[] = [
+  { value: "count", label: "Contar filas" },
+  { value: "sum", label: "Sumar" },
+  { value: "min", label: "Mínimo" },
+  { value: "max", label: "Máximo" },
+];
 
 function needsValue(op: PipelineFilterOperator): boolean {
   return op !== "isnull" && op !== "notnull";
@@ -76,6 +83,7 @@ function stepName(step: PipelineStep): string {
     case "convertType": return "Convertir tipo";
     case "normalizeDate": return "Normalizar fecha";
     case "calculate": return "Calcular columna";
+    case "aggregate": return "Agrupar y agregar";
     case "normalizeText": return "Normalizar texto";
     case "rename": return "Renombrar columna";
     case "deduplicate": return "Eliminar duplicados exactos";
@@ -248,6 +256,9 @@ export default function TransformationsView({
         };
         break;
       }
+      case "aggregate":
+        step = { id, type, groupBy: [], aggregations: [{ operator: "count", outputName: "cantidad" }] };
+        break;
       case "normalizeText": {
         const column = available.find(isTextPipelineColumn);
         if (!column) {
@@ -292,6 +303,55 @@ export default function TransformationsView({
     setSteps((all) => all.map((step) => step.id === stepId ? update(step) : step));
     setPreview(null);
     setMessage(null);
+  }
+
+  function addAggregation(stepId: string) {
+    const index = steps.findIndex((step) => step.id === stepId);
+    const current = steps[index];
+    if (!current || current.type !== "aggregate") return;
+    const available = currentColumns(index);
+    const numeric = available.find(isNumericPipelineColumn);
+    const taken = [
+      ...available.map((column) => column.name),
+      ...current.aggregations.map((aggregation) => aggregation.outputName),
+    ];
+    const baseName = numeric ? `${numeric.name}_suma` : "cantidad";
+    let outputName = baseName.slice(0, 128);
+    let suffix = 2;
+    while (taken.some((name) => name.toLocaleLowerCase("en-US") === outputName.toLocaleLowerCase("en-US"))) {
+      const ending = `_${suffix++}`;
+      outputName = `${baseName.slice(0, 128 - ending.length)}${ending}`;
+    }
+    const aggregation: PipelineAggregate = numeric
+      ? { operator: "sum", column: numeric.name, outputName }
+      : { operator: "count", outputName };
+    updateStep(stepId, (step) => step.type === "aggregate"
+      ? { ...step, aggregations: [...step.aggregations, aggregation] }
+      : step);
+  }
+
+  function changeAggregationOperator(
+    stepId: string,
+    aggregationIndex: number,
+    operator: PipelineAggregate["operator"],
+  ) {
+    const stepIndex = steps.findIndex((step) => step.id === stepId);
+    const available = currentColumns(stepIndex).filter(isNumericPipelineColumn);
+    updateStep(stepId, (step) => {
+      if (step.type !== "aggregate") return step;
+      const current = step.aggregations[aggregationIndex];
+      if (!current) return step;
+      const next: PipelineAggregate = operator === "count"
+        ? { operator, outputName: current.outputName }
+        : {
+            operator,
+            column: current.operator === "count"
+              ? available[0]?.name ?? ""
+              : current.column,
+            outputName: current.outputName,
+          };
+      return { ...step, aggregations: step.aggregations.map((item, index) => index === aggregationIndex ? next : item) };
+    });
   }
 
   function moveStep(index: number, direction: -1 | 1) {
@@ -535,6 +595,7 @@ export default function TransformationsView({
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("convertType")} className="rounded border border-gray-300 px-2 py-1 text-sm">Convertir tipo</button>
           <button type="button" disabled={busy || !baseColumns.some((column) => isTextPipelineColumn(column) || isDatePipelineColumn(column))} onClick={() => addStep("normalizeDate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Normalizar fecha</button>
           <button type="button" disabled={busy || currentColumns().filter(isNumericPipelineColumn).length < 2} onClick={() => addStep("calculate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Calcular columna</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("aggregate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Agrupar y agregar</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("rename")} className="rounded border border-gray-300 px-2 py-1 text-sm">Renombrar columna</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("deduplicate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Eliminar duplicados</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("sort")} className="rounded border border-gray-300 px-2 py-1 text-sm">Ordenar filas</button>
@@ -862,6 +923,96 @@ export default function TransformationsView({
                           Solo se permiten suma, resta y multiplicación entre columnas numéricas. DECIMAL conserva precisión; los tipos flotantes producen DOUBLE y pueden redondear.
                         </p>
                       </>
+                    ) : null}
+
+                    {step.type === "aggregate" ? (
+                      <div className="basis-full space-y-3">
+                        <fieldset className="space-y-1">
+                          <legend className="font-medium">Agrupar por (opcional)</legend>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1">
+                            {available.map((column) => (
+                              <label key={column.name} className="flex items-center gap-1">
+                                <input
+                                  type="checkbox"
+                                  aria-label={`Agrupar por ${column.name}`}
+                                  checked={step.groupBy.includes(column.name)}
+                                  disabled={busy}
+                                  onChange={(event) => updateStep(step.id, (current) => {
+                                    if (current.type !== "aggregate") return current;
+                                    const selected = new Set(current.groupBy);
+                                    if (event.target.checked) selected.add(column.name);
+                                    else selected.delete(column.name);
+                                    return { ...current, groupBy: available.map((item) => item.name).filter((name) => selected.has(name)) };
+                                  })}
+                                />
+                                {column.name}
+                              </label>
+                            ))}
+                          </div>
+                        </fieldset>
+                        <div className="space-y-2">
+                          {step.aggregations.map((aggregation, aggregationIndex) => (
+                            <div key={aggregationIndex} className="flex flex-wrap items-end gap-2 rounded border border-gray-200 p-2">
+                              <label>
+                                Operación de agregación {aggregationIndex + 1}{" "}
+                                <select
+                                  aria-label={`Operación de agregación ${aggregationIndex + 1}`}
+                                  value={aggregation.operator}
+                                  disabled={busy}
+                                  onChange={(event) => changeAggregationOperator(step.id, aggregationIndex, event.target.value as PipelineAggregate["operator"])}
+                                  className="rounded border border-gray-300 px-1 py-0.5"
+                                >
+                                  {PIPELINE_AGGREGATE_OPERATORS.map((operator) => <option key={operator.value} value={operator.value}>{operator.label}</option>)}
+                                </select>
+                              </label>
+                              {aggregation.operator !== "count" ? (
+                                <label>
+                                  Columna de agregación {aggregationIndex + 1}{" "}
+                                  <select
+                                    aria-label={`Columna de agregación ${aggregationIndex + 1}`}
+                                    value={aggregation.column}
+                                    disabled={busy || !available.some(isNumericPipelineColumn)}
+                                    onChange={(event) => updateStep(step.id, (current) => current.type === "aggregate"
+                                      ? { ...current, aggregations: current.aggregations.map((item, index) => index === aggregationIndex && item.operator !== "count" ? { ...item, column: event.target.value } : item) }
+                                      : current)}
+                                    className="rounded border border-gray-300 px-1 py-0.5"
+                                  >
+                                    {available.filter(isNumericPipelineColumn).map((column) => <option key={column.name} value={column.name}>{column.name} · {column.type}</option>)}
+                                  </select>
+                                </label>
+                              ) : null}
+                              <label>
+                                Nombre del resultado {aggregationIndex + 1}{" "}
+                                <input
+                                  aria-label={`Nombre de agregación ${aggregationIndex + 1}`}
+                                  value={aggregation.outputName}
+                                  maxLength={128}
+                                  disabled={busy}
+                                  onChange={(event) => updateStep(step.id, (current) => current.type === "aggregate"
+                                    ? { ...current, aggregations: current.aggregations.map((item, index) => index === aggregationIndex ? { ...item, outputName: event.target.value } : item) }
+                                    : current)}
+                                  className="rounded border border-gray-300 px-1 py-0.5"
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                aria-label={`Quitar agregación ${aggregationIndex + 1}`}
+                                disabled={busy || step.aggregations.length < 2}
+                                onClick={() => updateStep(step.id, (current) => current.type === "aggregate"
+                                  ? { ...current, aggregations: current.aggregations.filter((_, index) => index !== aggregationIndex) }
+                                  : current)}
+                                className="text-red-700 underline"
+                              >Quitar</button>
+                            </div>
+                          ))}
+                        </div>
+                        <button type="button" disabled={busy} onClick={() => addAggregation(step.id)} className="rounded border border-gray-300 px-2 py-1 text-sm">
+                          Agregar agregación
+                        </button>
+                        <p className="text-sm text-gray-600">
+                          El conteo incluye todas las filas. Suma, mínimo y máximo solo admiten columnas numéricas; el resultado de la suma conserva tipo decimal o entero.
+                        </p>
+                      </div>
                     ) : null}
 
                     {step.type === "rename" ? (

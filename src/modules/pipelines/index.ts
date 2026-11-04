@@ -9,6 +9,7 @@ export {
   validatePipeline,
   type PipelineColumn,
   type PipelineArithmeticOperator,
+  type PipelineAggregate,
   type PipelineDefinition,
   type PipelineDateFormat,
   type PipelineFilter,

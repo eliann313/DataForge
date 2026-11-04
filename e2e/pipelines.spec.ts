@@ -108,6 +108,31 @@ test("calcula una columna numérica y muestra el resultado antes de crear la ver
   await expect(page.locator('section[aria-labelledby="pipeline-versiones"]').getByText(/Preparación · versión 1 \(activa\)/)).toBeVisible({ timeout: 30_000 });
 });
 
+test("agrupa por categoría y calcula conteos y sumas", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles(path.resolve("public/demo-data/numeros.csv"));
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("numeros.csv: 5 filas, 3 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /agrupar y agregar/i }).click();
+  await page.getByLabel("Agrupar por categoria").check();
+  await page.getByRole("button", { name: /agregar agregación/i }).click();
+  await page.getByLabel("Operación de agregación 2").selectOption("sum");
+  await page.getByLabel("Columna de agregación 2").selectOption("importe");
+  await page.getByLabel("Nombre de agregación 2").fill("importe_suma");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByRole("row")).toHaveCount(4, { timeout: 30_000 });
+  await expect(preview.getByRole("row").filter({ hasText: "alimentos" })).toContainText("2");
+  await expect(preview.getByRole("row").filter({ hasText: "alimentos" })).toContainText("200.75");
+  await expect(preview.getByRole("row").filter({ hasText: "transporte" })).toContainText("275");
+});
+
 test("mantiene varias fuentes por proyecto y aísla el proyecto activo", async ({ page }) => {
   const firstProject = `Fuentes-${Date.now()}`;
   const otherProject = `Otro-${Date.now()}`;
