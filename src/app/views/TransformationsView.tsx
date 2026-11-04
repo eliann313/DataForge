@@ -5,10 +5,12 @@ import {
   columnsBeforeStep,
   IndexedDBPipelineDefinitionRepository,
   isDatePipelineColumn,
+  isNumericPipelineColumn,
   isTextPipelineColumn,
   PipelineService,
   type PipelineDefinition,
   type PipelineDateFormat,
+  type PipelineArithmeticOperator,
   type PipelineFilterOperator,
   type PipelinePreview,
   type PipelineStep,
@@ -45,6 +47,11 @@ const PIPELINE_DATE_FORMATS: { value: PipelineDateFormat; label: string }[] = [
   { value: "DD-MM-YYYY", label: "Día-mes-año (31-12-2025)" },
   { value: "YYYY-MM-DD HH:mm:ss", label: "Año-mes-día y hora (2025-12-31 14:30:00)" },
 ];
+const PIPELINE_ARITHMETIC_OPERATORS: { value: PipelineArithmeticOperator; label: string }[] = [
+  { value: "add", label: "Sumar (+)" },
+  { value: "subtract", label: "Restar (−)" },
+  { value: "multiply", label: "Multiplicar (×)" },
+];
 
 function needsValue(op: PipelineFilterOperator): boolean {
   return op !== "isnull" && op !== "notnull";
@@ -68,6 +75,7 @@ function stepName(step: PipelineStep): string {
     case "fillNull": return "Reemplazar nulos";
     case "convertType": return "Convertir tipo";
     case "normalizeDate": return "Normalizar fecha";
+    case "calculate": return "Calcular columna";
     case "normalizeText": return "Normalizar texto";
     case "rename": return "Renombrar columna";
     case "deduplicate": return "Eliminar duplicados exactos";
@@ -215,6 +223,29 @@ export default function TransformationsView({
           return;
         }
         step = { id, type, column: column.name, inputFormat: "YYYY-MM-DD" };
+        break;
+      }
+      case "calculate": {
+        const numeric = available.filter(isNumericPipelineColumn);
+        if (numeric.length < 2) {
+          setMessage("El cálculo necesita dos columnas numéricas disponibles.");
+          return;
+        }
+        const baseName = `${numeric[0].name}_calculado`.slice(0, 128);
+        let outputName = baseName;
+        let suffix = 2;
+        while (available.some((column) => column.name.toLocaleLowerCase("en-US") === outputName.toLocaleLowerCase("en-US"))) {
+          const ending = `_${suffix++}`;
+          outputName = `${baseName.slice(0, 128 - ending.length)}${ending}`;
+        }
+        step = {
+          id,
+          type,
+          leftColumn: numeric[0].name,
+          operator: "add",
+          rightColumn: numeric[1].name,
+          outputName,
+        };
         break;
       }
       case "normalizeText": {
@@ -503,6 +534,7 @@ export default function TransformationsView({
           <button type="button" disabled={busy || !baseColumns.some(isTextPipelineColumn)} onClick={() => addStep("normalizeText")} className="rounded border border-gray-300 px-2 py-1 text-sm">Normalizar texto</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("convertType")} className="rounded border border-gray-300 px-2 py-1 text-sm">Convertir tipo</button>
           <button type="button" disabled={busy || !baseColumns.some((column) => isTextPipelineColumn(column) || isDatePipelineColumn(column))} onClick={() => addStep("normalizeDate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Normalizar fecha</button>
+          <button type="button" disabled={busy || currentColumns().filter(isNumericPipelineColumn).length < 2} onClick={() => addStep("calculate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Calcular columna</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("rename")} className="rounded border border-gray-300 px-2 py-1 text-sm">Renombrar columna</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("deduplicate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Eliminar duplicados</button>
           <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("sort")} className="rounded border border-gray-300 px-2 py-1 text-sm">Ordenar filas</button>
@@ -773,6 +805,61 @@ export default function TransformationsView({
                         ) : <p>La columna ya está tipada como fecha; se reducirá a DATE.</p>}
                         <p className="basis-full text-sm text-gray-600">
                           Elija el formato real de la columna. Las fechas inválidas se rechazan; los nulos se conservan y la salida queda como DATE.
+                        </p>
+                      </>
+                    ) : null}
+
+                    {step.type === "calculate" ? (
+                      <>
+                        <label>
+                          Primera columna numérica {index + 1}{" "}
+                          <select
+                            aria-label={`Primera columna numérica ${index + 1}`}
+                            value={step.leftColumn}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "calculate" ? { ...current, leftColumn: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {available.filter(isNumericPipelineColumn).map((column) => <option key={column.name} value={column.name}>{column.name} · {column.type}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Operación {index + 1}{" "}
+                          <select
+                            aria-label={`Operación del cálculo ${index + 1}`}
+                            value={step.operator}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "calculate" ? { ...current, operator: event.target.value as PipelineArithmeticOperator } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {PIPELINE_ARITHMETIC_OPERATORS.map((operator) => <option key={operator.value} value={operator.value}>{operator.label}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Segunda columna numérica {index + 1}{" "}
+                          <select
+                            aria-label={`Segunda columna numérica ${index + 1}`}
+                            value={step.rightColumn}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "calculate" ? { ...current, rightColumn: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          >
+                            {available.filter(isNumericPipelineColumn).map((column) => <option key={column.name} value={column.name}>{column.name} · {column.type}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Nombre del resultado {index + 1}{" "}
+                          <input
+                            aria-label={`Nombre del resultado ${index + 1}`}
+                            value={step.outputName}
+                            maxLength={128}
+                            disabled={busy}
+                            onChange={(event) => updateStep(step.id, (current) => current.type === "calculate" ? { ...current, outputName: event.target.value } : current)}
+                            className="rounded border border-gray-300 px-1 py-0.5"
+                          />
+                        </label>
+                        <p className="basis-full text-sm text-gray-600">
+                          Solo se permiten suma, resta y multiplicación entre columnas numéricas. DECIMAL conserva precisión; los tipos flotantes producen DOUBLE y pueden redondear.
                         </p>
                       </>
                     ) : null}

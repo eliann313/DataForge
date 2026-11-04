@@ -15,6 +15,7 @@ export interface PipelineFilter {
 }
 
 export type PipelineTargetType = "INTEGER" | "BIGINT" | "DECIMAL" | "BOOLEAN" | "VARCHAR";
+export type PipelineArithmeticOperator = "add" | "subtract" | "multiply";
 export type PipelineDateFormat =
   | "YYYY-MM-DD"
   | "DD/MM/YYYY"
@@ -36,6 +37,14 @@ export type PipelineStep =
       scale: number;
     }
   | { id: string; type: "normalizeDate"; column: string; inputFormat: PipelineDateFormat }
+  | {
+      id: string;
+      type: "calculate";
+      leftColumn: string;
+      operator: PipelineArithmeticOperator;
+      rightColumn: string;
+      outputName: string;
+    }
   | {
       id: string;
       type: "normalizeText";
@@ -76,6 +85,10 @@ export function isPipelineDefinition(value: unknown): value is PipelineDefinitio
           typeof candidate.precision === "number" && typeof candidate.scale === "number";
       case "normalizeDate":
         return typeof candidate.column === "string" && PIPELINE_DATE_FORMATS.has(candidate.inputFormat as PipelineDateFormat);
+      case "calculate":
+        return typeof candidate.leftColumn === "string" &&
+          PIPELINE_ARITHMETIC_OPERATORS.has(candidate.operator as PipelineArithmeticOperator) &&
+          typeof candidate.rightColumn === "string" && typeof candidate.outputName === "string";
       case "normalizeText":
         return typeof candidate.column === "string" && typeof candidate.trimWhitespace === "boolean" &&
           (candidate.letterCase === "preserve" || candidate.letterCase === "lower" || candidate.letterCase === "upper") &&
@@ -172,6 +185,9 @@ const FILTER_OPERATORS_REQUIRING_VALUE = new Set<PipelineFilterOperator>([
 ]);
 const PIPELINE_TARGET_TYPES = new Set<PipelineTargetType>([
   "INTEGER", "BIGINT", "DECIMAL", "BOOLEAN", "VARCHAR",
+]);
+const PIPELINE_ARITHMETIC_OPERATORS = new Set<PipelineArithmeticOperator>([
+  "add", "subtract", "multiply",
 ]);
 const PIPELINE_DATE_FORMATS = new Set<PipelineDateFormat>([
   "YYYY-MM-DD", "DD/MM/YYYY", "MM/DD/YYYY", "DD-MM-YYYY", "YYYY-MM-DD HH:mm:ss",
@@ -311,6 +327,40 @@ export function validatePipeline(
         );
         break;
       }
+      case "calculate": {
+        const left = findColumn(columns, step.leftColumn);
+        const right = findColumn(columns, step.rightColumn);
+        if (!left || !right) {
+          const missing = !left ? step.leftColumn : step.rightColumn;
+          return fail(`El cálculo referencia una columna que ya no existe: ${missing}.`, step.id);
+        }
+        if (!isNumericPipelineColumn(left) || !isNumericPipelineColumn(right)) {
+          return fail("Los cálculos requieren dos columnas numéricas.", step.id);
+        }
+        if (!PIPELINE_ARITHMETIC_OPERATORS.has(step.operator)) {
+          return fail("La operación del cálculo no es válida.", step.id);
+        }
+        const outputName = step.outputName.trim();
+        if (!outputName || outputName.includes("\0")) {
+          return fail("Ingrese un nombre válido para la columna calculada.", step.id);
+        }
+        if (outputName.length > 128) {
+          return fail("El nombre de columna no puede superar los 128 caracteres.", step.id);
+        }
+        if (columns.some((column) => normalizeName(column.name) === normalizeName(outputName))) {
+          return fail(`Ya existe una columna llamada «${outputName}».`, step.id);
+        }
+        const resultType = arithmeticResultType(left, right, step.operator);
+        if (!resultType) {
+          return fail("El resultado supera la precisión decimal admitida o mezcla DECIMAL con coma flotante.", step.id);
+        }
+        columns = [...columns, {
+          name: outputName,
+          type: resultType,
+          nullable: left.nullable || right.nullable,
+        }];
+        break;
+      }
       case "normalizeText": {
         const column = findColumn(columns, step.column);
         if (!column) {
@@ -407,4 +457,57 @@ function isNumericComparison(operator: PipelineFilterOperator): boolean {
 
 function normalizeName(value: string): string {
   return value.toLocaleLowerCase("en-US");
+}
+
+/** Devuelve un tipo de salida exacto cuando las entradas lo permiten. */
+function arithmeticResultType(
+  left: PipelineColumn,
+  right: PipelineColumn,
+  operator: PipelineArithmeticOperator,
+): string | null {
+  const leftType = left.type.trim().toUpperCase();
+  const rightType = right.type.trim().toUpperCase();
+  const leftFloat = /^(?:FLOAT|FLOAT4|FLOAT8|REAL|DOUBLE)(?:\s*\(|$)/.test(leftType);
+  const rightFloat = /^(?:FLOAT|FLOAT4|FLOAT8|REAL|DOUBLE)(?:\s*\(|$)/.test(rightType);
+  const leftDecimal = decimalParts(leftType);
+  const rightDecimal = decimalParts(rightType);
+  if ((leftFloat || rightFloat) && (leftDecimal || rightDecimal)) return null;
+  if (leftFloat || rightFloat) return "DOUBLE";
+
+  const leftParts = leftDecimal ?? integerParts(leftType);
+  const rightParts = rightDecimal ?? integerParts(rightType);
+  if (!leftParts || !rightParts) return null;
+  if (!leftDecimal && !rightDecimal) return "HUGEINT";
+
+  const scale = operator === "multiply"
+    ? leftParts.scale + rightParts.scale
+    : Math.max(leftParts.scale, rightParts.scale);
+  const integerDigits = operator === "multiply"
+    ? leftParts.precision - leftParts.scale + rightParts.precision - rightParts.scale + 1
+    : Math.max(leftParts.precision - leftParts.scale, rightParts.precision - rightParts.scale) + 1;
+  const precision = integerDigits + scale;
+  return precision <= 38 ? `DECIMAL(${precision},${scale})` : null;
+}
+
+function decimalParts(type: string): { precision: number; scale: number } | null {
+  const match = /^(?:DECIMAL|NUMERIC)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(type);
+  if (!match) return null;
+  const precision = Number(match[1]);
+  const scale = Number(match[2]);
+  return Number.isInteger(precision) && Number.isInteger(scale) &&
+    precision >= 1 && precision <= 38 && scale >= 0 && scale <= precision
+    ? { precision, scale }
+    : null;
+}
+
+function integerParts(type: string): { precision: number; scale: 0 } | null {
+  const digits: Record<string, number> = {
+    UTINYINT: 3, TINYINT: 3, INT1: 3,
+    USMALLINT: 5, SMALLINT: 5, INT2: 5,
+    UINTEGER: 10, INTEGER: 10, INT: 10, INT4: 10,
+    UBIGINT: 20, BIGINT: 19, INT8: 19,
+    HUGEINT: 38,
+  };
+  const precision = digits[type];
+  return precision ? { precision, scale: 0 } : null;
 }

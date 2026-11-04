@@ -94,4 +94,18 @@ describe("buildPipelineQuery", () => {
       { id: "select-1", type: "select", columns: [] },
     ])).toThrow(/al menos una columna/);
   });
+
+  it("construye expresiones aritméticas cerradas y conserva el esquema tras renombrar", () => {
+    const query = buildPipelineQuery("ventas", [
+      { name: "neto", type: "DECIMAL(10,2)", nullable: false },
+      { name: "impuesto", type: "DECIMAL(5,2)", nullable: true },
+    ], [
+      { id: "calc", type: "calculate", leftColumn: "neto", operator: "multiply", rightColumn: "impuesto", outputName: 'total"bruto' },
+      { id: "rename", type: "rename", column: 'total"bruto', newName: "total" },
+    ]);
+
+    expect(query).toContain('CAST("neto" * "impuesto" AS DECIMAL(16,4)) AS "total""bruto"');
+    expect(query).toContain('"total""bruto" AS "total"');
+  });
+
 });

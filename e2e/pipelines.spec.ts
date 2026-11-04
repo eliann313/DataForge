@@ -87,6 +87,27 @@ test("crea una versión derivada sin alterar la fuente y permite activarla otra 
   await expect(replacementVersions.getByText("duplicadas.csv (activa)")).toBeVisible();
 });
 
+test("calcula una columna numérica y muestra el resultado antes de crear la versión", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles(path.resolve("public/demo-data/numeros.csv"));
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("numeros.csv: 5 filas, 3 columnas")).toBeVisible({ timeout: 30_000 });
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  await page.getByRole("button", { name: /calcular columna/i }).click();
+  await expect(page.getByLabel("Nombre del resultado 1")).toHaveValue("id_calculado");
+  await page.getByRole("button", { name: /vista previa/i }).click();
+
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByRole("columnheader", { name: "id_calculado" })).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByRole("row").nth(1)).toContainText(/151\.5/);
+  await page.getByRole("button", { name: /ejecutar y crear versión/i }).click();
+  await expect(page.locator('section[aria-labelledby="pipeline-versiones"]').getByText(/Preparación · versión 1 \(activa\)/)).toBeVisible({ timeout: 30_000 });
+});
+
 test("mantiene varias fuentes por proyecto y aísla el proyecto activo", async ({ page }) => {
   const firstProject = `Fuentes-${Date.now()}`;
   const otherProject = `Otro-${Date.now()}`;

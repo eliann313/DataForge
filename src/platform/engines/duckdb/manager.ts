@@ -1562,6 +1562,33 @@ export function buildPipelineQuery(
         );
         break;
       }
+      case "calculate": {
+        const left = columns.find((column) => column.name === step.leftColumn);
+        const right = columns.find((column) => column.name === step.rightColumn);
+        if (!left || !right) throw new Error("La columna del cálculo ya no existe.");
+        const stepValidation = validatePipeline(baseColumns, {
+          id: "sql-builder",
+          name: "Pipeline",
+          steps: steps.slice(0, index + 1),
+        });
+        const resultColumn = stepValidation.columns.at(-1);
+        if (!resultColumn) throw new Error("No se pudo determinar el tipo de la columna calculada.");
+        const leftExpression = resultColumn.type === "HUGEINT" || resultColumn.type === "DOUBLE"
+          ? `CAST(${escapeIdentifier(left.name)} AS ${resultColumn.type})`
+          : escapeIdentifier(left.name);
+        const rightExpression = resultColumn.type === "HUGEINT" || resultColumn.type === "DOUBLE"
+          ? `CAST(${escapeIdentifier(right.name)} AS ${resultColumn.type})`
+          : escapeIdentifier(right.name);
+        const operator = step.operator === "add" ? "+" : step.operator === "subtract" ? "-" : "*";
+        const calculation = `${leftExpression} ${operator} ${rightExpression}`;
+        const result = resultColumn.type.startsWith("DECIMAL(")
+          ? `CAST(${calculation} AS ${resultColumn.type})`
+          : calculation;
+        const expression = `${result} AS ${escapeIdentifier(step.outputName.trim())}`;
+        query = `SELECT ${[...columns.map((column) => escapeIdentifier(column.name)), expression].join(", ")} FROM (${query}) AS ${alias}`;
+        columns = [...columns, { ...resultColumn }];
+        break;
+      }
       case "normalizeText": {
         const column = columns.find((candidate) => candidate.name === step.column);
         if (!column) throw new Error(`La columna ya no existe: ${step.column}.`);

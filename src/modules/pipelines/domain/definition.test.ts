@@ -126,6 +126,49 @@ describe("validatePipeline", () => {
     expect(timestamp.columns.find((column) => column.name === "fecha_hora")?.type).toBe("DATE");
   });
 
+  it("agrega columnas calculadas con tipos y nulabilidad derivados", () => {
+    const result = validatePipeline(columns, definition([
+      { id: "calc", type: "calculate", leftColumn: "valor", operator: "add", rightColumn: "valor", outputName: "total" },
+    ]));
+
+    expect(result.valid).toBe(true);
+    expect(result.columns.at(-1)).toEqual({ name: "total", type: "HUGEINT", nullable: true });
+
+    const decimal = validatePipeline([
+      { name: "neto", type: "DECIMAL(10,2)", nullable: false },
+      { name: "impuesto", type: "DECIMAL(5,2)", nullable: true },
+    ], definition([
+      { id: "calc", type: "calculate", leftColumn: "neto", operator: "multiply", rightColumn: "impuesto", outputName: "total" },
+    ]));
+    expect(decimal.columns.at(-1)).toEqual({ name: "total", type: "DECIMAL(16,4)", nullable: true });
+
+    const floating = validatePipeline([
+      { name: "a", type: "DOUBLE", nullable: false },
+      { name: "b", type: "INTEGER", nullable: false },
+    ], definition([
+      { id: "calc", type: "calculate", leftColumn: "a", operator: "subtract", rightColumn: "b", outputName: "difference" },
+    ]));
+    expect(floating.columns.at(-1)).toEqual({ name: "difference", type: "DOUBLE", nullable: false });
+  });
+
+  it("rechaza cálculos con columnas incompatibles, nombres repetidos o precisión insuficiente", () => {
+    expect(validatePipeline(columns, definition([
+      { id: "calc", type: "calculate", leftColumn: "grupo", operator: "add", rightColumn: "valor", outputName: "total" },
+    ])).error).toMatch(/dos columnas numéricas/);
+    expect(validatePipeline(columns, definition([
+      { id: "calc", type: "calculate", leftColumn: "valor", operator: "add", rightColumn: "valor", outputName: "GRUPO" },
+    ])).error).toMatch(/Ya existe/);
+    expect(validatePipeline([
+      { name: "a", type: "DECIMAL(38,0)", nullable: false },
+      { name: "b", type: "DECIMAL(38,0)", nullable: false },
+    ], definition([
+      { id: "calc", type: "calculate", leftColumn: "a", operator: "multiply", rightColumn: "b", outputName: "producto" },
+    ])).error).toMatch(/precisión decimal/);
+    expect(isPipelineDefinition(definition([
+      { id: "calc", type: "calculate", leftColumn: "valor", operator: "divide", rightColumn: "valor", outputName: "total" } as unknown as PipelineDefinition["steps"][number],
+    ]))).toBe(false);
+  });
+
   it("rechaza formatos inválidos y columnas numéricas al normalizar fechas", () => {
     expect(validatePipeline(columns, definition([
       { id: "date-number", type: "normalizeDate", column: "valor", inputFormat: "DD-MM-YYYY" },

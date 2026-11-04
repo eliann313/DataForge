@@ -1,7 +1,7 @@
 # DataForge — Plan de primeras entregas
 
 > **Estado:** E1–E6 cerradas; R1 completo. Seguimiento actual: R2 / fase 4.
-> **Fecha:** 2026-10-11 (plan); **avance:** 2026-10-12 en `codex/r2-phase4-pipelines` (PR #16 hacia `develop`).
+> **Fecha:** 2026-10-11 (plan); **avance:** 2026-11-04. Las funciones de múltiples fuentes y combinaciones ya están integradas en `main`; una pila nueva cubre expresiones, agregaciones y exportación procesada.
 > **Base verificada:** documentación, ADR-0001 y ADR-0003 aceptados, ADR-0002 con
 > tabular medido (global propuesto hasta 0B/0C), 0A.1–0A.6, E3.1–E3.3, E4
 > (JSON/Parquet, filtros, roles, profiling), E5 (descriptivos, ECharts,
@@ -127,11 +127,13 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 - La definición puede guardarse por proyecto en IndexedDB y se valida contra el esquema activo al cargarla. Varias fuentes y versiones de cada proyecto viven solo en el Worker durante la sesión. APPEND conserva duplicados con `UNION ALL`, valida tipos/mapeos; JOIN verifica tipos de clave, cardinalidad y fanout y exige confirmación antes de aceptar multiplicación de filas. Las combinaciones guardan ambos padres y todas las fuentes de linaje. Quitar una fuente elimina sus vistas dependientes. Los archivos y resultados se pierden al cerrar/recargar; OPFS y exportación portable siguen diferidos a fase 5.
 - Las pruebas E2E cubren aislamiento de proyectos, duplicados en APPEND, rechazo por cardinalidad incorrecta, confirmación de fanout y limpieza de versiones al quitar una fuente.
 - Los identificadores SQL se escapan, los valores de filtro se codifican y no se acepta SQL libre. Un error de validación no crea ni activa una versión.
+- Las columnas calculadas admiten suma, resta y multiplicación entre tipos numéricos; el esquema de salida deriva tipo y nulabilidad, y rechaza colisiones o resultados DECIMAL fuera de precisión.
 
 ### Siguiente trabajo dentro de las fases existentes
 
-1. Revisar CI y la PR #16 con el SHA actual; el incremento aún no está integrado ni publicado.
-2. Una vez aceptado el cierre de fase 4, avanzar a fase 5: informe reproducible, exportación y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
+1. Completar y revisar agregaciones agrupadas de conteo, suma, mínimo y máximo.
+2. Exportar versiones procesadas a CSV y Parquet sin alterar la versión activa.
+3. Después de esta pila, completar el Report Builder, snapshots y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
 3. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
 
 ### Verificación del corte local de fase 4

@@ -8,6 +8,7 @@ export {
   MAX_PIPELINE_STEPS,
   validatePipeline,
   type PipelineColumn,
+  type PipelineArithmeticOperator,
   type PipelineDefinition,
   type PipelineDateFormat,
   type PipelineFilter,
