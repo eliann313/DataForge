@@ -1,5 +1,7 @@
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { Decimal, makeData, makeVector, Table as ArrowTable, tableToIPC } from "apache-arrow";
+import { Table as ParquetTable, writeParquet } from "parquet-wasm/node";
 
 // E5: análisis y gráficos. Referencias independientes (cálculo manual sobre
 // promo.csv, columna importe = [300, 450.5, 320, 310.75, 640]):
@@ -83,6 +85,38 @@ test("advierte cuando el gráfico no incluye todos los grupos", async ({ page })
   await view(page).locator("#chart-x").selectOption("grupo");
   await view(page).getByRole("button", { name: /graficar/i }).click();
   await expect(view(page).getByRole("img", { name: /primeros 500, hay más/i })).toBeVisible({ timeout: 30_000 });
+});
+
+test("mantiene importado un entero grande y evita mostrar un agregado redondeado", async ({ page }) => {
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.locator("#csv-file").setInputFiles({ name: "grande.csv", mimeType: "text/csv", buffer: Buffer.from("valor\n9007199254740993\n") });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("grande.csv: 1 filas, 1 columnas")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/No se pudo calcular el resumen:.*precisión numérica segura/)).toBeVisible();
+  await expect(page.getByRole("cell", { name: "9007199254740993" })).toBeVisible();
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  await view(page).getByLabel(/columna numérica/i).selectOption("valor");
+  await view(page).getByRole("button", { name: /^calcular$/i }).first().click();
+  await expect(view(page).getByRole("alert")).toContainText("precisión numérica segura");
+});
+
+test("detecta decimales de alta precisión aunque el mínimo y máximo sean simples", async ({ page }) => {
+  const values = ["1000000000000000000", "1234567890123456789", "9000000000000000000"].map(BigInt);
+  const words = new Uint32Array(values.length * 4);
+  values.forEach((value, index) => {
+    for (let part = 0; part < 4; part += 1) words[index * 4 + part] = Number((value >> BigInt(part * 32)) & BigInt("4294967295"));
+  });
+  const vector = makeVector(makeData({ type: new Decimal(19, 20, 128), data: words }));
+  const bytes = writeParquet(ParquetTable.fromIPCStream(tableToIPC(new ArrowTable({ valor: vector }), "stream")));
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.locator("#csv-file").setInputFiles({ name: "precision.parquet", mimeType: "application/octet-stream", buffer: Buffer.from(bytes) });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("precision.parquet: 3 filas, 1 columnas")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/No se pudo calcular el resumen:.*precisión numérica segura/)).toBeVisible();
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  await view(page).getByLabel(/columna numérica/i).selectOption("valor");
+  await view(page).getByRole("button", { name: /^calcular$/i }).first().click();
+  await expect(view(page).getByRole("alert")).toContainText("precisión numérica segura");
 });
 
 test("correlación justificada y hallazgos por reglas", async ({ page }) => {

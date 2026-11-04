@@ -177,6 +177,7 @@ export default function AnalysisView() {
     const request = revision.current;
     setBusy(true);
     setMessage(null);
+    setChart(null);
     try {
       if (chartKind === "hist") {
         if (!yCol) throw new Error("Elija la columna numérica del histograma.");
@@ -235,7 +236,7 @@ export default function AnalysisView() {
     <div className="space-y-6">
       <p className="text-sm text-gray-600">
         Cálculos sobre el dataset activo ({columns.length} columnas). Varianza y
-        desvío muestrales (n−1); cuantiles continuos; nulos excluidos.{" "}
+        desvío muestrales (n−1); cuantiles continuos; nulos excluidos. Las medias, cuantiles, varianzas y correlaciones usan coma flotante y son aproximadas.{" "}
         <button type="button" disabled={busy} onClick={() => void load()} className="underline">
           Actualizar dataset
         </button>

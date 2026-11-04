@@ -118,6 +118,10 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 
 Los roles semánticos editados en Datos se conservan por versión mientras vive la sesión. Los resúmenes, descriptivos, histogramas, agregados numéricos y correlaciones aceptan únicamente columnas numéricas con rol de medida; un identificador puede reclasificarse explícitamente en Datos. Frecuencias y conteos siguen disponibles para identificadores. Los roles se reinician al cerrar o recargar el motor.
 
+La auditoría del corte R2 agrega validaciones para archivos XLSX con directorios ZIP ambiguos y protege el aislamiento si se cambia de proyecto durante una operación. Finanzas redondea importes con dígitos decimales; APPEND conserva unidades de timestamp en nanosegundos y el reemplazo de nulos valida el rango y la escala del tipo físico. Los gráficos exigen una medida para sumar o promediar y advierten cuando hay más de 500 grupos. Las columnas totalmente nulas no se describen como constantes.
+
+Los descriptivos y gráficos numéricos son aproximados cuando usan coma flotante. Para columnas exactas de precisión superior a la que puede mostrarse con seguridad, se rechaza el agregado con un mensaje en lugar de presentar cifras redondeadas como exactas; la importación y la tabla siguen disponibles. Esta comprobación conservadora recorre la columna completa y puede rechazar algunos valores representables.
+
 ### Cortes locales implementados (2026-11-04)
 
 - Pasos tipados para filtrar filas, seleccionar y renombrar columnas, quitar filas con nulos en columnas elegidas, reemplazar nulos, quitar duplicados exactamente iguales y ordenar.
@@ -151,6 +155,12 @@ estático completo pasó 50/50 en Chromium. Las extensiones JSON y Parquet del
 motor se sirven localmente para que las importaciones funcionen sin descargar
 código externo al ejecutar la aplicación. Estos cambios siguen fuera de la demo
 pública R1.
+
+La revisión posterior de esta pila verificó 98/98 pruebas unitarias, tipado,
+lint y build; el smoke del sitio estático pasó 57/57 en Chromium. Incluye casos
+de XLSX ambiguo, aislamiento por proyecto, roles semánticos, precisión numérica,
+comparación de versiones y APPEND de timestamps con nanosegundos. La fase 4
+permanece en revisión hasta aceptar e integrar la pila.
 
 ## Evidencia histórica del backlog 0A (E1–E2)
 

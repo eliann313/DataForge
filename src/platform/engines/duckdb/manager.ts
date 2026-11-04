@@ -1395,6 +1395,17 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   // Definiciones: varianza/desvío MUESTRALES (n−1); cuantiles continuos
   // (interpolación lineal); mediana = cuantil 0.5; nulos siempre excluidos.
 
+  private async assertExactMeasurePrecision(conn: AsyncDuckDBConnection, table: string, column: string, approximate: boolean): Promise<void> {
+    if (approximate) return;
+    const col = escapeIdentifier(column);
+    const digits = `REGEXP_REPLACE(REGEXP_REPLACE(REPLACE(REGEXP_REPLACE(CAST(${col} AS VARCHAR), '^[-+]', ''), '.', ''), '^0+', ''), '0+$', '')`;
+    const result = await conn.query(`SELECT COUNT(*) AS n FROM ${table} WHERE ${col} IS NOT NULL AND (TRY_CAST(${col} AS DOUBLE) > 9007199254740991 OR TRY_CAST(${col} AS DOUBLE) < -9007199254740991 OR LENGTH(${digits}) > 15)`);
+    const row = toJSONRows(result)[0] as Record<string, unknown> | undefined;
+    const count = Number(row?.n);
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error("No se pudo comprobar la precisión de la columna.");
+    if (count > 0) throw new Error("La columna supera la precisión numérica segura para mostrar sus agregados.");
+  }
+
   async describeNumeric(column: string): Promise<NumericDescription> {
     this.requireNumericMeasure(column);
     const conn = this.requireConn();
@@ -1402,6 +1413,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === column)?.type ?? "");
     const col = escapeIdentifier(column);
     const table = escapeIdentifier(this.requireActiveTable());
+    await this.assertExactMeasurePrecision(conn, table, column, approximate);
     const row = toJSONRows(
       await conn.query(
         `SELECT COUNT(*) AS total, COUNT(${col}) AS valid, CAST(SUM(${col}) AS VARCHAR) AS s, AVG(${col}) AS a, MEDIAN(${col}) AS med, CAST(MODE(${col}) AS VARCHAR) AS mode, CAST(MIN(${col}) AS VARCHAR) AS mn, CAST(MAX(${col}) AS VARCHAR) AS mx, VAR_SAMP(${col}) AS var, STDDEV_SAMP(${col}) AS std, QUANTILE_CONT(${col}, 0.25) AS q1, QUANTILE_CONT(${col}, 0.75) AS q3 FROM ${table}`,
@@ -1472,6 +1484,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === numCol)?.type ?? "");
     const g = escapeIdentifier(groupCol);
     const table = escapeIdentifier(this.requireActiveTable());
+    if (numCol && agg !== "count") await this.assertExactMeasurePrecision(conn, table, numCol, approximate);
     const select =
       agg === "count"
         ? "COUNT(*) AS y"
@@ -1519,6 +1532,11 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     const a = escapeIdentifier(colA);
     const b = escapeIdentifier(colB);
     const table = escapeIdentifier(this.requireActiveTable());
+    const schema = await this.getSchema();
+    for (const column of [colA, colB]) {
+      const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === column)?.type ?? "");
+      await this.assertExactMeasurePrecision(conn, table, column, approximate);
+    }
     const row = toJSONRows(
       await conn.query(
         `SELECT CORR(${a}, ${b}) AS r, COUNT(*) AS n FROM ${table} WHERE ${a} IS NOT NULL AND ${b} IS NOT NULL`,
@@ -1535,6 +1553,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     const schema = await this.getSchema();
     const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === column)?.type ?? "");
     const col = escapeIdentifier(column);
+    await this.assertExactMeasurePrecision(conn, escapeIdentifier(this.requireActiveTable()), column, approximate);
     const table = await conn.query(
       `SELECT COUNT(${col}) AS n, CAST(SUM(${col}) AS VARCHAR) AS s, AVG(${col}) AS a, CAST(MIN(${col}) AS VARCHAR) AS mn, CAST(MAX(${col}) AS VARCHAR) AS mx FROM ${escapeIdentifier(this.requireActiveTable())}`,
     );

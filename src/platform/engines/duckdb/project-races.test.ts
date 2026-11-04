@@ -62,7 +62,7 @@ describe("operaciones en vuelo al cambiar de proyecto", () => {
     expect(query).not.toHaveBeenCalled();
     manager.setSemanticRole("id", "medida");
     await manager.describeNumeric("id");
-    expect(query).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("COUNT(*) AS total"));
   });
   it.each(["csv", "json", "parquet"] as const)("importa %s en el proyecto inicial aunque cambie durante la lectura", async (format) => {
     const manager = setup();

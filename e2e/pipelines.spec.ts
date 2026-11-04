@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { makeData, makeVector, Table as ArrowTable, tableToIPC, TimestampNanosecond } from "apache-arrow";
+import { Table as ParquetTable, writeParquet } from "parquet-wasm/node";
 
 test("guarda una definición en el proyecto y la recupera al recargar", async ({ page }) => {
   const project = `Pipelines-${Date.now()}`;
@@ -278,6 +280,36 @@ test("APPEND mapea esquemas diferentes y conserva filas repetidas con UNION ALL"
   await page.getByRole("button", { name: /^transformaciones$/i }).click();
   await expect(versions.getByRole("row")).toHaveCount(2);
   await expect(versions.getByText(/Anexar fuentes · APPEND/)).toHaveCount(0);
+});
+
+test("APPEND conserva la precisión de timestamps en nanosegundos", async ({ page }) => {
+  const parquet = (nanoseconds: string) => {
+    const vector = makeVector(makeData({ type: new TimestampNanosecond(), data: new BigInt64Array([BigInt(nanoseconds)]) }));
+    return Buffer.from(writeParquet(ParquetTable.fromIPCStream(tableToIPC(new ArrowTable({ fecha: vector }), "stream"))));
+  };
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  for (const [name, value] of [["periodo-a.parquet", "1577836800123456789"], ["periodo-b.parquet", "1577836800987654321"]]) {
+    await page.locator("#csv-file").setInputFiles({ name, mimeType: "application/octet-stream", buffer: parquet(value) });
+    await page.getByRole("button", { name: /importar archivo/i }).click();
+    await expect(page.getByText(`${name}: 1 filas, 1 columnas`)).toBeVisible({ timeout: 30_000 });
+  }
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  const combinations = page.locator('section[aria-labelledby="combinaciones-datasets"]');
+  await combinations.getByLabel("Fuente izquierda").selectOption({ label: "periodo-a.parquet · 1 filas" });
+  await combinations.getByLabel("Fuente derecha").selectOption({ label: "periodo-b.parquet · 1 filas" });
+  await combinations.getByRole("button", { name: /vista previa append/i }).click();
+  await expect(combinations.getByText(/resultado: 2/)).toBeVisible({ timeout: 30_000 });
+  await combinations.getByRole("button", { name: /crear versión append/i }).click();
+  await expect(page.locator('section[aria-labelledby="pipeline-versiones"]').getByText(/Anexar fuentes · APPEND/)).toBeVisible();
+  await page.getByRole("button", { name: /convertir tipo/i }).click();
+  await page.getByLabel("Tipo de destino 1").selectOption("VARCHAR");
+  await page.getByRole("button", { name: /^vista previa$/i }).click();
+  const preview = page.locator('section[aria-labelledby="pipeline-vista-previa"]');
+  await expect(preview.getByRole("cell", { name: "2020-01-01 00:00:00.123456789" })).toBeVisible({ timeout: 30_000 });
+  await expect(preview.getByRole("cell", { name: "2020-01-01 00:00:00.987654321" })).toBeVisible();
 });
 
 test("JOIN exige cardinalidad, muestra fanout y bloquea su creación hasta confirmarlo", async ({ page }) => {
