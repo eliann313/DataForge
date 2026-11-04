@@ -128,6 +128,7 @@ Los descriptivos y gráficos numéricos son aproximados cuando usan coma flotant
 - Los filtros respetan el tipo físico: una igualdad sobre texto conserva valores como `00123`; las comparaciones mayor/menor solo se permiten en columnas numéricas y validan el literal.
 - Vista previa con cantidad de filas antes/después y muestra acotada.
 - Ejecutar crea una vista DuckDB derivada, sin sobrescribir la fuente; se puede activar de nuevo la versión fuente o una derivada.
+- Cada versión de pipeline conserva durante la sesión una copia de la definición realmente ejecutada y permite cargarla sobre su versión de origen para revisarla, editarla o repetirla; esta copia no persiste al cerrar el motor.
 - Conversión explícita a `INTEGER`, `BIGINT`, `DECIMAL(p,s)`, `BOOLEAN` o `VARCHAR`. La vista previa y la ejecución rechazan valores incompatibles, desbordes o conversiones que pierdan precisión; los nulos se conservan.
 - Normalización de texto de fecha a `DATE` mediante formatos explícitos (`YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY`, `DD-MM-YYYY` y `YYYY-MM-DD HH:mm:ss`); las fechas inválidas se rechazan antes de crear una versión.
 - La definición puede guardarse por proyecto en IndexedDB y se valida contra el esquema activo al cargarla. Varias fuentes y versiones de cada proyecto viven solo en el Worker durante la sesión. APPEND conserva duplicados con `UNION ALL`, valida tipos/mapeos; JOIN verifica tipos de clave, cardinalidad y fanout y exige confirmación antes de aceptar multiplicación de filas. Las combinaciones guardan ambos padres y todas las fuentes de linaje. Quitar una fuente elimina sus vistas dependientes. Los archivos y resultados se pierden al cerrar/recargar; OPFS y exportación portable siguen diferidos a fase 5.
@@ -156,7 +157,7 @@ motor se sirven localmente para que las importaciones funcionen sin descargar
 código externo al ejecutar la aplicación. Estos cambios siguen fuera de la demo
 pública R1.
 
-La revisión posterior de esta pila verificó 98/98 pruebas unitarias, tipado,
+La revisión posterior de esta pila verificó 99/99 pruebas unitarias, tipado,
 lint y build; el smoke del sitio estático pasó 57/57 en Chromium. Incluye casos
 de XLSX ambiguo, aislamiento por proyecto, roles semánticos, precisión numérica,
 comparación de versiones y APPEND de timestamps con nanosegundos. La fase 4

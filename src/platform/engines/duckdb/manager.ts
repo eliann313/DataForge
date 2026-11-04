@@ -106,6 +106,7 @@ function toPublicPipelineVersion(version: StoredPipelineVersion): PipelineVersio
     parentIds: [...version.parentIds],
     operationType: version.operationType,
     pipelineId: version.pipelineId,
+    executedDefinition: version.executedDefinition ? JSON.parse(JSON.stringify(version.executedDefinition)) as PipelineDefinition : undefined,
     rowCount: version.rowCount,
     columns: version.columns.map((column) => ({ ...column })),
     stepCount: version.stepCount,
@@ -1126,7 +1127,8 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   ): Promise<PipelineVersion> {
     const conn = this.requireConn();
     const base = this.requireVersion(baseVersionId);
-    const validation = validatePipeline(base.columns, definition);
+    const executedDefinition = JSON.parse(JSON.stringify(definition)) as PipelineDefinition;
+    const validation = validatePipeline(base.columns, executedDefinition);
     if (!validation.valid) throw new Error(validation.error ?? "El pipeline no es válido.");
     const derivedCount = this.versions.filter(
       (version) => version.sourceIds.includes(base.sourceId) && version.isView,
@@ -1137,9 +1139,9 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
 
     const sequence = ++this.versionSequence;
     const tableName = `df_pipeline_${sequence}`;
-    const query = buildPipelineQuery(base.tableName, base.columns, definition.steps);
+    const query = buildPipelineQuery(base.tableName, base.columns, executedDefinition.steps);
     try {
-      await assertPipelineConversions(conn, base, definition);
+      await assertPipelineConversions(conn, base, executedDefinition);
       await conn.query(`CREATE VIEW ${escapeIdentifier(tableName)} AS ${query}`);
       const [rowCount, columns] = await Promise.all([
         this.readCount(conn, tableName),
@@ -1150,14 +1152,15 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         sourceId: base.sourceId,
         sourceIds: [...base.sourceIds],
         projectId: base.projectId,
-        name: `${definition.name.trim()} · versión ${derivedCount + 1}`,
+        name: `${executedDefinition.name.trim()} · versión ${derivedCount + 1}`,
         parentId: base.id,
         parentIds: [base.id],
         operationType: "pipeline",
-        pipelineId: definition.id,
+        pipelineId: executedDefinition.id,
+        executedDefinition,
         rowCount,
         columns,
-        stepCount: definition.steps.length,
+        stepCount: executedDefinition.steps.length,
         createdAt: new Date().toISOString(),
         tableName,
         isView: true,

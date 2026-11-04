@@ -48,6 +48,11 @@ test("guarda una definición en el proyecto y la recupera al recargar", async ({
   await page.getByRole("button", { name: "Agregar filtro" }).click();
   await page.getByRole("button", { name: /^vista previa$/i }).click();
   await expect(page.locator('section[aria-labelledby="pipeline-vista-previa"]').getByText(/3 de 3 filas/)).toBeVisible();
+  await versions.getByRole("row", { name: /Preparación · versión 1/ }).getByRole("button", { name: "Cargar pasos" }).click();
+  await expect(page.getByText("Se cargó una copia de los pasos ejecutados y su versión de origen.")).toBeVisible();
+  await page.getByRole("button", { name: "Agregar filtro" }).click();
+  await page.getByRole("button", { name: /^vista previa$/i }).click();
+  await expect(page.locator('section[aria-labelledby="pipeline-vista-previa"]').getByText(/2 de 3 filas/)).toBeVisible();
   await versions.locator("tbody tr").first().getByRole("button", { name: /usar versión/i }).click();
   await expect(versions.getByText("duplicadas.csv (activa)")).toBeVisible();
 });

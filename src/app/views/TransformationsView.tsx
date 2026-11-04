@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   columnsBeforeStep,
   IndexedDBPipelineDefinitionRepository,
@@ -129,7 +129,6 @@ export default function TransformationsView({
   const [comparison, setComparison] = useState<{ leftId: string; rightId: string; result: PipelineVersionComparison } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const stepSequence = useRef(0);
 
   const definition = useMemo<PipelineDefinition>(
     () => ({ id: pipelineId, name: pipelineName, steps }),
@@ -203,7 +202,7 @@ export default function TransformationsView({
       setMessage("No hay columnas disponibles para agregar este paso.");
       return;
     }
-    const id = `step-${++stepSequence.current}`;
+    const id = createPipelineId().replace(/^pipeline-/, "step-");
     let step: PipelineStep;
     switch (type) {
       case "filter":
@@ -482,6 +481,17 @@ export default function TransformationsView({
     } finally {
       setBusy(false);
     }
+  }
+
+  function loadVersionDefinition(version: PipelineVersion) {
+    if (!version.executedDefinition || !version.parentId || !versions.some((item) => item.id === version.parentId)) return;
+    setBaseVersionId(version.parentId);
+    setPipelineId(createPipelineId());
+    setPipelineName(version.executedDefinition.name);
+    setSteps(JSON.parse(JSON.stringify(version.executedDefinition.steps)) as PipelineStep[]);
+    setSelectedDefinition(null);
+    setPreview(null);
+    setMessage("Se cargó una copia de los pasos ejecutados y su versión de origen.");
   }
 
   async function compareVersions() {
@@ -1199,6 +1209,7 @@ export default function TransformationsView({
                         Usar versión
                       </button>
                     )}
+                    {version.executedDefinition ? <button type="button" disabled={busy || !versions.some((item) => item.id === version.parentId)} onClick={() => loadVersionDefinition(version)} className="ml-2 underline">Cargar pasos</button> : null}
                   </td>
                   <td className="space-x-2">
                     <button type="button" disabled={busy} onClick={() => void downloadVersion(version, "csv")} aria-label={`Exportar ${version.name} a CSV`} className="underline">CSV</button>

@@ -36,6 +36,16 @@ function expectProjectB(manager: DuckDBManager) {
 }
 
 describe("operaciones en vuelo al cambiar de proyecto", () => {
+  it("conserva una copia de la definición ejecutada para repetirla sin mutar el linaje", async () => {
+    const manager = setup();
+    const definition = { id: "p", name: "Preparar", steps: [{ id: "step-1", type: "deduplicate" as const }] };
+    const created = await manager.executePipeline("a1", definition);
+    definition.name = "Cambiado";
+    definition.steps[0].id = "otro";
+    if (created.executedDefinition) created.executedDefinition.name = "Mutado desde afuera";
+    const saved = manager.getDatasetVersions().find((version) => version.id === created.id);
+    expect(saved?.executedDefinition).toEqual({ id: "p", name: "Preparar", steps: [{ id: "step-1", type: "deduplicate" }] });
+  });
   it("guarda roles editados por versión y conserva las sugerencias de otras versiones", async () => {
     const manager = setup();
     expect(manager.getSemanticRoles().id).toBe("identificador");

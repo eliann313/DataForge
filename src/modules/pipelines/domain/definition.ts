@@ -198,6 +198,8 @@ export interface PipelineVersion {
   parentIds: string[];
   operationType: "source" | "pipeline" | "append" | "join";
   pipelineId: string | null;
+  /** Copia de los pasos usados para crear la versión durante esta sesión. */
+  executedDefinition?: PipelineDefinition;
   rowCount: number;
   columns: PipelineColumn[];
   stepCount: number;
