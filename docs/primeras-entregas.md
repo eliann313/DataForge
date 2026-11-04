@@ -129,7 +129,7 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 - Los identificadores SQL se escapan, los valores de filtro se codifican y no se acepta SQL libre. Un error de validación no crea ni activa una versión.
 - Las columnas calculadas admiten suma, resta y multiplicación entre tipos numéricos; el esquema de salida deriva tipo y nulabilidad, y rechaza colisiones o resultados DECIMAL fuera de precisión.
 - Las agregaciones producen una versión agrupada nueva. Incluyen conteo de filas, suma, mínimo y máximo numéricos; el conteo no omite nulos y el esquema resultante se valida antes de ejecutar.
-- Cualquier versión de la sesión se puede descargar como CSV o Parquet. CSV antepone un apóstrofo a textos que parecen fórmulas para proteger al abrirlos en hojas de cálculo; Parquet conserva los valores.
+- Cualquier versión de la sesión se puede descargar como CSV o Parquet. CSV antepone un apóstrofo a encabezados y textos que parecen fórmulas para proteger al abrirlos en hojas de cálculo; Parquet conserva los valores.
 
 ### Siguiente trabajo dentro de las fases existentes
 
@@ -137,17 +137,16 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 2. Después de esta pila, completar el Report Builder, snapshots y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
 3. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
 
-La exportación CSV usa `COPY` de DuckDB y neutraliza solo valores de texto que podrían interpretarse como fórmulas; no cambia la fuente ni la versión. Parquet se genera desde resultados Arrow con `parquet-wasm`, cargado al solicitar ese formato desde un asset local que el build copia de `node_modules` a `public/vendor`. El escritor Parquet de DuckDB-Wasm en la versión fijada falla en ejecución (`function signature mismatch`), por eso se usa el escritor Arrow local.
+La exportación CSV usa `COPY` de DuckDB y neutraliza encabezados y valores de texto que podrían interpretarse como fórmulas; no cambia la fuente ni la versión. Parquet se genera desde resultados Arrow con `parquet-wasm`, cargado al solicitar ese formato desde un asset local que el build copia de `node_modules` a `public/vendor`. El escritor Parquet de DuckDB-Wasm en la versión fijada falla en ejecución (`function signature mismatch`), por eso se usa el escritor Arrow local.
 
 ### Verificación del corte local de fase 4
 
 Evidencia de esta pila: `npm run typecheck`, `npm run lint` y `npm test` pasaron;
-Vitest: 75/75. La suite de pipelines pasó 19/19 en Chromium contra Next.js local
-y 19/19 contra el export estático. `npm run build` generó el sitio. El smoke
-estático completo ejecutó 50 pruebas y pasó 48: fallaron dos pruebas de
-importación del explorador (JSON informa `table index is out of bounds`; la
-importación Parquet cierra el navegador). La exportación CSV/Parquet incluida en
-pipelines sí pasó en el build estático. Estos cambios siguen fuera de la demo
+Vitest: 76/76. La suite de pipelines pasó 19/19 en Chromium contra Next.js local
+y 19/19 contra el export estático. `npm run build` generó el sitio y el smoke
+estático completo pasó 50/50 en Chromium. Las extensiones JSON y Parquet del
+motor se sirven localmente para que las importaciones funcionen sin descargar
+código externo al ejecutar la aplicación. Estos cambios siguen fuera de la demo
 pública R1.
 
 ## Evidencia histórica del backlog 0A (E1–E2)

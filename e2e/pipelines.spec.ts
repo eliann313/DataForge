@@ -142,7 +142,7 @@ test("exporta CSV seguro y Parquet sin reemplazar la versión activa", async ({ 
   await page.locator("#csv-file").setInputFiles({
     name: "formula.csv",
     mimeType: "text/csv",
-    buffer: Buffer.from("grupo,valor\n=1+1,2\nnormal,3\n", "utf8"),
+    buffer: Buffer.from("=grupo,valor\n=1+1,2\nnormal,3\n", "utf8"),
   });
   await page.getByRole("button", { name: /importar archivo/i }).click();
   await expect(page.getByText("formula.csv: 2 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
@@ -155,6 +155,7 @@ test("exporta CSV seguro y Parquet sin reemplazar la versión activa", async ({ 
   const csvDownload = await csvDownloadPromise;
   expect(csvDownload.suggestedFilename()).toBe("formula.csv");
   const csvBytes = await readFile(await csvDownload.path());
+  expect(csvBytes.toString("utf8")).toContain('"\'=grupo"');
   expect(csvBytes.toString("utf8")).toContain("'=1+1");
 
   const parquetDownloadPromise = page.waitForEvent("download");

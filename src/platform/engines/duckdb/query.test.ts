@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCsvExportQuery, buildOrderBy, buildPipelineQuery, buildWhere } from "./manager";
+import { buildCsvExportHeader, buildCsvExportQuery, buildOrderBy, buildPipelineQuery, buildWhere } from "./manager";
 
 describe("buildWhere", () => {
   it("vacío no filtra", () => {
@@ -138,6 +138,11 @@ describe("buildPipelineQuery", () => {
 });
 
 describe("buildCsvExportQuery", () => {
+  it("neutraliza encabezados peligrosos y escapa comillas, comas y saltos de línea", () => {
+    const names = ["=1+1", " \t@cmd", 'nombre,"x"', "línea\nnueva", "normal"];
+    const columns = names.map((name) => ({ name, type: "VARCHAR", nullable: false }));
+    expect(buildCsvExportHeader(columns)).toBe(`"'=1+1","' \t@cmd","nombre,""x""","línea\nnueva","normal"\n`);
+  });
   it("neutraliza celdas de texto que pueden ejecutarse como fórmulas", () => {
     const query = buildCsvExportQuery("version_1", [
       { name: "grupo", type: "VARCHAR", nullable: false },

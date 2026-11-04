@@ -505,6 +505,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
     const conn = await db.connect();
     this.conn = conn;
+    await conn.query(`SET custom_extension_repository = ${escapeStringLiteral(`${window.location.origin}/vendor/duckdb-extensions`)}`);
     this.lastPing = await this.runPing(conn);
   }
 
@@ -966,9 +967,13 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       let bytes: Uint8Array;
       if (format === "csv") {
         const select = buildCsvExportQuery(version.tableName, version.columns);
-        await conn.query(`COPY (${select}) TO ${destination} (FORMAT CSV, HEADER TRUE, DELIMITER ',', QUOTE '"', ESCAPE '"')`);
+        await conn.query(`COPY (${select}) TO ${destination} (FORMAT CSV, HEADER FALSE, DELIMITER ',', QUOTE '"', ESCAPE '"')`);
         exportStage = "leer el archivo temporal";
-        bytes = await db.copyFileToBuffer(fileName);
+        const body = await db.copyFileToBuffer(fileName);
+        const header = new TextEncoder().encode(buildCsvExportHeader(version.columns));
+        bytes = new Uint8Array(header.length + body.length);
+        bytes.set(header);
+        bytes.set(body, header.length);
       } else {
         exportStage = "consultar la versión";
         const result = await conn.query(`SELECT * FROM ${escapeIdentifier(version.tableName)}`);
@@ -1555,6 +1560,14 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     this.versions = [];
     this.activeVersionByProject.clear();
   }
+}
+
+/** Codifica los nombres como celdas CSV y neutraliza posibles fórmulas. */
+export function buildCsvExportHeader(columns: readonly PipelineColumn[]): string {
+  return columns.map(({ name }) => {
+    const safe = /^[ \t\r\n]*[=+\-@]/.test(name) ? `'${name}` : name;
+    return `"${safe.replace(/"/g, '""')}"`;
+  }).join(",") + "\n";
 }
 
 /** Proyecta una versión para CSV y neutraliza textos que una hoja ejecutaría como fórmula. */

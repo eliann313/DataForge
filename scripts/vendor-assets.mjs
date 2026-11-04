@@ -19,6 +19,12 @@ const ASSETS = [
     destination: join(root, "public", "vendor", "parquet"),
     files: ["parquet_wasm_bg.wasm"],
   },
+  {
+    name: "duckdb-extensions/v1.5.4/wasm_eh",
+    source: join(root, "vendor", "duckdb-extensions", "v1.5.4", "wasm_eh"),
+    destination: join(root, "public", "vendor", "duckdb-extensions", "v1.5.4", "wasm_eh"),
+    files: ["json.duckdb_extension.wasm", "parquet.duckdb_extension.wasm"],
+  },
 ];
 
 let copied = 0;

@@ -1182,7 +1182,7 @@ export default function TransformationsView({
           </table>
         </div>
         <p className="text-sm text-gray-600">
-          CSV antepone un apóstrofo a textos que podrían ejecutarse como fórmulas al abrirlos en una hoja de cálculo. Parquet conserva los valores. La versión en el motor no se altera.
+          CSV antepone un apóstrofo a encabezados y textos que podrían ejecutarse como fórmulas al abrirlos en una hoja de cálculo. Parquet conserva los valores. La versión en el motor no se altera.
         </p>
       </section>
     </div>
