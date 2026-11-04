@@ -1226,7 +1226,7 @@ export default function TransformationsView({
           </table>
         ) : null}
         {comparison && versions.some((version) => version.id === comparison.leftId) && versions.some((version) => version.id === comparison.rightId) ? (
-          comparison.result.rowDifferences ? <p>Filas completas presentes solo en la primera: {comparison.result.rowDifferences.removed} · solo en la segunda: {comparison.result.rowDifferences.added}</p> : <p>La comparación de filas completas requiere versiones con el mismo esquema.</p>
+          comparison.result.rowDifferences ? <p>Copias de filas excedentes en la primera: {comparison.result.rowDifferences.removed} · en la segunda: {comparison.result.rowDifferences.added}</p> : <p>La comparación de filas completas requiere versiones con el mismo esquema.</p>
         ) : null}
         <p className="text-sm text-gray-600">Un grupo duplicado contiene dos o más filas idénticas dentro de una misma versión. Las diferencias cuentan copias de filas completas; una fila editada puede aparecer en ambos lados.</p>
       </section>

@@ -78,7 +78,7 @@ test("crea una versión derivada sin alterar la fuente y permite activarla otra 
   await expect(comparison.getByRole("row", { name: /^Filas / }).locator("td").nth(0)).toHaveText("3");
   await expect(comparison.getByRole("row", { name: /^Filas / }).locator("td").nth(1)).toHaveText("2");
   await expect(comparison.getByRole("row", { name: /Grupos de filas completas duplicadas/ }).locator("td").nth(1)).toHaveText("0");
-  await expect(page.getByText("Filas completas presentes solo en la primera: 1 · solo en la segunda: 0")).toBeVisible();
+  await expect(page.getByText("Copias de filas excedentes en la primera: 1 · en la segunda: 0")).toBeVisible();
 
   await page.getByRole("button", { name: /^análisis$/i }).click();
   const analysis = page.locator("main");
