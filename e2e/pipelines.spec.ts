@@ -80,6 +80,9 @@ test("crea una versión derivada sin alterar la fuente y permite activarla otra 
   await expect(comparison.getByRole("row", { name: /Grupos de filas completas duplicadas/ }).locator("td").nth(1)).toHaveText("0");
   await expect(page.getByText("Copias de filas excedentes en la primera: 1 · en la segunda: 0")).toBeVisible();
 
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await expect(page.getByLabel("Rol semántico de id")).toHaveValue("identificador");
+  await page.getByLabel("Rol semántico de id").selectOption("medida");
   await page.getByRole("button", { name: /^análisis$/i }).click();
   const analysis = page.locator("main");
   await analysis.getByLabel(/columna numérica/i).selectOption("id");
@@ -91,6 +94,9 @@ test("crea una versión derivada sin alterar la fuente y permite activarla otra 
   await source.getByRole("button", { name: /usar versión/i }).click();
   await expect(versions.getByText("duplicadas.csv (activa)")).toBeVisible();
 
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await expect(page.getByLabel("Rol semántico de id")).toHaveValue("identificador");
+  await page.getByLabel("Rol semántico de id").selectOption("medida");
   await page.getByRole("button", { name: /^análisis$/i }).click();
   await analysis.getByLabel(/columna numérica/i).selectOption("id");
   await analysis.getByRole("button", { name: /^calcular$/i }).first().click();

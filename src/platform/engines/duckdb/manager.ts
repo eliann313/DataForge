@@ -16,6 +16,7 @@ import type {
   ResultRow,
 } from "./contract";
 import { escapeIdentifier } from "./contract";
+import { isNumericMeasure, ROLES, suggestRole, type SemanticRole } from "./semantics";
 import {
   MAX_CSV_BYTES,
   checkCSVFile,
@@ -431,6 +432,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   private versionSequence = 0;
   private exportSequence = 0;
   private versions: StoredPipelineVersion[] = [];
+  private semanticRolesByVersion = new Map<string, Record<string, SemanticRole>>();
 
   /** Suscripción a cambios de estado (paneles sincronizados). */
   onChange(listener: () => void): () => void {
@@ -911,6 +913,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       throw new Error(`No se pudo quitar la fuente «${source.name}»: ${messageOf(cause)}`);
     }
 
+    for (const version of related) this.semanticRolesByVersion.delete(version.id);
     this.versions = this.versions.filter((version) => !version.sourceIds.includes(sourceId));
     const activeWasRemoved = related.some((version) => version.tableName === this.activeTable);
     if (activeWasRemoved) {
@@ -953,6 +956,29 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
 
   getActiveDatasetVersionId(): string | null {
     return this.versions.find((version) => version.tableName === this.activeTable)?.id ?? null;
+  }
+
+  getSemanticRoles(): Record<string, SemanticRole> {
+    const version = this.versions.find((item) => item.tableName === this.activeTable && item.projectId === this.currentProjectId);
+    if (!version) return {};
+    const overrides = this.semanticRolesByVersion.get(version.id) ?? {};
+    return Object.fromEntries(version.columns.map((column) => [column.name, Object.hasOwn(overrides, column.name) ? overrides[column.name] : suggestRole(column.type, column.name)]));
+  }
+
+  setSemanticRole(columnName: string, role: SemanticRole): void {
+    const version = this.versions.find((item) => item.tableName === this.activeTable && item.projectId === this.currentProjectId);
+    if (!version || !version.columns.some((column) => column.name === columnName)) throw new Error("La columna no existe en la versión activa.");
+    if (!ROLES.includes(role)) throw new Error("El rol semántico no es válido.");
+    this.semanticRolesByVersion.set(version.id, { ...this.semanticRolesByVersion.get(version.id), [columnName]: role });
+    this.emit();
+  }
+
+  private requireNumericMeasure(columnName: string): void {
+    const version = this.versions.find((item) => item.tableName === this.activeTable && item.projectId === this.currentProjectId);
+    const column = version?.columns.find((item) => item.name === columnName);
+    if (!column || !isNumericMeasure(column, this.getSemanticRoles())) {
+      throw new Error(`«${columnName}» no es una medida numérica de la versión activa. Cambie su rol en Datos si corresponde.`);
+    }
   }
 
   async getVersionColumns(versionId: string): Promise<PipelineColumn[]> {
@@ -1370,6 +1396,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   // (interpolación lineal); mediana = cuantil 0.5; nulos siempre excluidos.
 
   async describeNumeric(column: string): Promise<NumericDescription> {
+    this.requireNumericMeasure(column);
     const conn = this.requireConn();
     const schema = await this.getSchema();
     const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === column)?.type ?? "");
@@ -1436,8 +1463,11 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     numCol: string | null,
     agg: "count" | "sum" | "mean",
   ): Promise<GroupedResult> {
+    if (agg !== "count") {
+      if (!numCol) throw new Error("Elija la columna numérica para la agregación.");
+      this.requireNumericMeasure(numCol);
+    }
     const conn = this.requireConn();
-    if (agg !== "count" && !numCol) throw new Error("Elija la columna numérica para la agregación.");
     const schema = numCol ? await this.getSchema() : [];
     const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === numCol)?.type ?? "");
     const g = escapeIdentifier(groupCol);
@@ -1483,6 +1513,8 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
    * Se informa n de pares válidos y la advertencia: correlación ≠ causalidad.
    */
   async correlation(colA: string, colB: string): Promise<Correlation> {
+    this.requireNumericMeasure(colA);
+    this.requireNumericMeasure(colB);
     const conn = this.requireConn();
     const a = escapeIdentifier(colA);
     const b = escapeIdentifier(colB);
@@ -1498,6 +1530,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
 
   /** Agregación sobre una columna (nombre escapado; sin SQL arbitraria). */
   async summarizeNumeric(column: string): Promise<NumericSummary> {
+    this.requireNumericMeasure(column);
     const conn = this.requireConn();
     const schema = await this.getSchema();
     const approximate = /^(FLOAT|DOUBLE|REAL)/i.test(schema.find((item) => item.name === column)?.type ?? "");
@@ -1614,6 +1647,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     this.activeTable = null;
     this.versions = [];
     this.activeVersionByProject.clear();
+    this.semanticRolesByVersion.clear();
   }
 }
 

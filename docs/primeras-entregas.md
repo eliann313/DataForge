@@ -116,6 +116,8 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 
 ## R2 / fase 4 — avance actual
 
+Los roles semánticos editados en Datos se conservan por versión mientras vive la sesión. Los resúmenes, descriptivos, histogramas, agregados numéricos y correlaciones aceptan únicamente columnas numéricas con rol de medida; un identificador puede reclasificarse explícitamente en Datos. Frecuencias y conteos siguen disponibles para identificadores. Los roles se reinician al cerrar o recargar el motor.
+
 ### Cortes locales implementados (2026-11-04)
 
 - Pasos tipados para filtrar filas, seleccionar y renombrar columnas, quitar filas con nulos en columnas elegidas, reemplazar nulos, quitar duplicados exactamente iguales y ordenar.

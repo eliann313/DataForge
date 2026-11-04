@@ -86,6 +86,9 @@ test("advierte cuando el gráfico no incluye todos los grupos", async ({ page })
 });
 
 test("correlación justificada y hallazgos por reglas", async ({ page }) => {
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByLabel("Rol semántico de id").selectOption("medida");
+  await page.getByRole("button", { name: /^análisis$/i }).click();
   const v = view(page);
   await v.getByLabel(/columna a/i).selectOption("id");
   await v.getByLabel(/columna b/i).selectOption("importe");
@@ -96,4 +99,22 @@ test("correlación justificada y hallazgos por reglas", async ({ page }) => {
   await v.getByRole("button", { name: /evaluar reglas/i }).click();
   await expect(v.getByText(/\[nulos-altos\]/)).toBeVisible({ timeout: 60_000 });
   await expect(v.getByText(/\[categoria-dominante\]/)).toBeVisible();
+});
+
+test("excluye identificadores hasta que el usuario los declare medida", async ({ page }) => {
+  const v = view(page);
+  await expect(v.locator("#desc-col option[value='id']")).toHaveCount(0);
+  await expect(v.locator("#corr-a option[value='id']")).toHaveCount(0);
+  await expect(v.locator("#desc-col")).toHaveValue("importe");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await expect(page.locator("#num-col option[value='id']")).toHaveCount(0);
+  await page.getByLabel("Rol semántico de id").selectOption("medida");
+  await expect(page.locator("#num-col option[value='id']")).toHaveCount(1);
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  await expect(v.locator("#desc-col option[value='id']")).toHaveCount(1);
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await expect(page.getByLabel("Rol semántico de id")).toHaveValue("medida");
+  await page.getByLabel("Rol semántico de id").selectOption("identificador");
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  await expect(v.locator("#desc-col option[value='id']")).toHaveCount(0);
 });

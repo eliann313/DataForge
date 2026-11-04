@@ -36,6 +36,34 @@ function expectProjectB(manager: DuckDBManager) {
 }
 
 describe("operaciones en vuelo al cambiar de proyecto", () => {
+  it("guarda roles editados por versión y conserva las sugerencias de otras versiones", async () => {
+    const manager = setup();
+    expect(manager.getSemanticRoles().id).toBe("identificador");
+    manager.setSemanticRole("id", "medida");
+    expect(manager.getSemanticRoles().id).toBe("medida");
+    await manager.activateDatasetVersion("a2");
+    expect(manager.getSemanticRoles().id).toBe("identificador");
+    manager.selectProject("b");
+    expect(manager.getSemanticRoles().id).toBe("identificador");
+    manager.selectProject("a");
+    await manager.activateDatasetVersion("a1");
+    expect(manager.getSemanticRoles().id).toBe("medida");
+    expect(() => manager.setSemanticRole("ausente", "medida")).toThrow();
+  });
+
+  it("impide resúmenes y correlaciones de identificadores hasta declararlos medida", async () => {
+    const query = vi.fn(async () => row(0));
+    const manager = setup(query);
+    await expect(manager.describeNumeric("id")).rejects.toThrow(/medida numérica/);
+    await expect(manager.summarizeNumeric("id")).rejects.toThrow(/medida numérica/);
+    await expect(manager.histogram("id")).rejects.toThrow(/medida numérica/);
+    await expect(manager.correlation("id", "id")).rejects.toThrow(/medida numérica/);
+    await expect(manager.groupedStat("id", "id", "mean")).rejects.toThrow(/medida numérica/);
+    expect(query).not.toHaveBeenCalled();
+    manager.setSemanticRole("id", "medida");
+    await manager.describeNumeric("id");
+    expect(query).toHaveBeenCalledOnce();
+  });
   it.each(["csv", "json", "parquet"] as const)("importa %s en el proyecto inicial aunque cambie durante la lectura", async (format) => {
     const manager = setup();
     const bytes = deferred<ArrayBuffer>();
