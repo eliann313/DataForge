@@ -6,6 +6,14 @@ import type {
   PipelineVersion,
 } from "../domain/definition";
 
+export type DatasetExportFormat = "csv" | "parquet";
+
+export interface DatasetExport {
+  fileName: string;
+  mediaType: string;
+  bytes: Uint8Array;
+}
+
 /** Puerto que ejecuta pasos declarativos y administra versiones locales. */
 export interface PipelineExecutionPort {
   getDatasetVersions(): PipelineVersion[];
@@ -21,6 +29,7 @@ export interface PipelineExecutionPort {
     definition: PipelineDefinition,
   ): Promise<PipelineVersion>;
   activateDatasetVersion(versionId: string): Promise<void>;
+  exportDatasetVersion(versionId: string, format: DatasetExportFormat): Promise<DatasetExport>;
 }
 
 /** Guarda definiciones declarativas por proyecto; no conserva archivos ni resultados. */

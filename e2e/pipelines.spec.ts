@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 
@@ -131,6 +132,40 @@ test("agrupa por categoría y calcula conteos y sumas", async ({ page }) => {
   await expect(preview.getByRole("row").filter({ hasText: "alimentos" })).toContainText("2");
   await expect(preview.getByRole("row").filter({ hasText: "alimentos" })).toContainText("200.75");
   await expect(preview.getByRole("row").filter({ hasText: "transporte" })).toContainText("275");
+});
+
+test("exporta CSV seguro y Parquet sin reemplazar la versión activa", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.getByRole("button", { name: /inicializar motor/i }).click();
+  await expect(page.getByText("Estado: Motor listo")).toBeVisible({ timeout: 120_000 });
+  await page.locator("#csv-file").setInputFiles({
+    name: "formula.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("grupo,valor\n=1+1,2\nnormal,3\n", "utf8"),
+  });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("formula.csv: 2 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+
+  const versions = page.locator('section[aria-labelledby="pipeline-versiones"]');
+  const source = versions.getByRole("row").filter({ hasText: "formula.csv" });
+  const csvDownloadPromise = page.waitForEvent("download");
+  await source.getByRole("button", { name: "Exportar formula.csv a CSV" }).click();
+  const csvDownload = await csvDownloadPromise;
+  expect(csvDownload.suggestedFilename()).toBe("formula.csv");
+  const csvBytes = await readFile(await csvDownload.path());
+  expect(csvBytes.toString("utf8")).toContain("'=1+1");
+
+  const parquetDownloadPromise = page.waitForEvent("download");
+  await source.getByRole("button", { name: "Exportar formula.csv a Parquet" }).click();
+  const parquetDownload = await parquetDownloadPromise;
+  expect(parquetDownload.suggestedFilename()).toBe("formula.parquet");
+  const parquetBytes = await readFile(await parquetDownload.path());
+  expect(parquetBytes.toString("ascii", 0, 4)).toBe("PAR1");
+
+  await expect(source.getByRole("cell").nth(1)).toHaveText("2");
+  await expect(source).toContainText("(activa)");
 });
 
 test("mantiene varias fuentes por proyecto y aísla el proyecto activo", async ({ page }) => {

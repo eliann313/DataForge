@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOrderBy, buildPipelineQuery, buildWhere } from "./manager";
+import { buildCsvExportQuery, buildOrderBy, buildPipelineQuery, buildWhere } from "./manager";
 
 describe("buildWhere", () => {
   it("vacío no filtra", () => {
@@ -137,3 +137,17 @@ describe("buildPipelineQuery", () => {
   });
 });
 
+describe("buildCsvExportQuery", () => {
+  it("neutraliza celdas de texto que pueden ejecutarse como fórmulas", () => {
+    const query = buildCsvExportQuery("version_1", [
+      { name: "grupo", type: "VARCHAR", nullable: false },
+      { name: "importe", type: "DECIMAL(12,2)", nullable: false },
+      { name: 'nota"hostil', type: "TEXT", nullable: true },
+    ]);
+
+    expect(query).toContain('CASE WHEN LEFT(LTRIM(CAST("grupo" AS VARCHAR)');
+    expect(query).toContain("THEN CHR(39) || CAST(\"grupo\" AS VARCHAR)");
+    expect(query).toContain('"importe"');
+    expect(query).toContain('AS "nota""hostil"');
+  });
+});

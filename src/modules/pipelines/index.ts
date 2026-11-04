@@ -21,6 +21,6 @@ export {
   type PipelineVersion,
 } from "./domain/definition";
 export { PipelineService } from "./application/service";
-export type { PipelineDefinitionRepository, PipelineExecutionPort } from "./application/ports";
+export type { DatasetExport, DatasetExportFormat, PipelineDefinitionRepository, PipelineExecutionPort } from "./application/ports";
 export { MemoryPipelineDefinitionRepository } from "./infrastructure/memory";
 export { IndexedDBPipelineDefinitionRepository } from "./infrastructure/indexeddb";

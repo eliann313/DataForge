@@ -33,6 +33,7 @@ function port(): PipelineExecutionPort {
     })),
     executePipeline: vi.fn(async () => ({ ...source, id: "version-1", parentId: source.id })),
     activateDatasetVersion: vi.fn(async () => undefined),
+    exportDatasetVersion: vi.fn(async () => ({ fileName: "datos.csv", mediaType: "text/csv", bytes: new Uint8Array() })),
   };
 }
 
@@ -60,6 +61,16 @@ describe("PipelineService", () => {
       steps: [],
     })).rejects.toThrow(/al menos un paso/);
     expect(adapter.executePipeline).not.toHaveBeenCalled();
+  });
+
+  it("delega la exportación de una versión al adaptador", async () => {
+    const adapter = port();
+    const service = new PipelineService(adapter, new MemoryPipelineDefinitionRepository());
+
+    const result = await service.exportVersion("source-1", "csv");
+
+    expect(result.fileName).toBe("datos.csv");
+    expect(adapter.exportDatasetVersion).toHaveBeenCalledWith("source-1", "csv");
   });
 
   it("guarda definiciones solo si son válidas para la versión de origen", async () => {

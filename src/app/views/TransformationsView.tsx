@@ -476,6 +476,31 @@ export default function TransformationsView({
     }
   }
 
+  async function downloadVersion(version: PipelineVersion, format: "csv" | "parquet") {
+    setBusy(true);
+    setMessage(null);
+    let objectUrl: string | null = null;
+    try {
+      const exported = await pipelineService.exportVersion(version.id, format);
+      const arrayBuffer = new ArrayBuffer(exported.bytes.byteLength);
+      new Uint8Array(arrayBuffer).set(exported.bytes);
+      const blob = new Blob([arrayBuffer], { type: exported.mediaType });
+      objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = exported.fileName;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      setMessage(`Se preparó «${exported.fileName}» sin modificar la versión de origen.`);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "No se pudo exportar la versión.");
+    } finally {
+      if (objectUrl) window.setTimeout(() => URL.revokeObjectURL(objectUrl!), 1_000);
+      setBusy(false);
+    }
+  }
+
   function acceptCombinationVersion(version: PipelineVersion) {
     const currentVersions = pipelineService.getVersions();
     setVersions(currentVersions);
@@ -1130,7 +1155,7 @@ export default function TransformationsView({
         <h3 id="pipeline-versiones" className="font-semibold">Versiones disponibles en esta sesión</h3>
         <div className="overflow-x-auto">
           <table className="df-table">
-            <thead><tr><th scope="col">Versión</th><th scope="col">Filas</th><th scope="col">Columnas</th><th scope="col">Origen</th><th scope="col">Acción</th></tr></thead>
+            <thead><tr><th scope="col">Versión</th><th scope="col">Filas</th><th scope="col">Columnas</th><th scope="col">Origen</th><th scope="col">Acción</th><th scope="col">Exportar</th></tr></thead>
             <tbody>
               {versions.map((version) => (
                 <tr key={version.id}>
@@ -1147,11 +1172,18 @@ export default function TransformationsView({
                       </button>
                     )}
                   </td>
+                  <td className="space-x-2">
+                    <button type="button" disabled={busy} onClick={() => void downloadVersion(version, "csv")} aria-label={`Exportar ${version.name} a CSV`} className="underline">CSV</button>
+                    <button type="button" disabled={busy} onClick={() => void downloadVersion(version, "parquet")} aria-label={`Exportar ${version.name} a Parquet`} className="underline">Parquet</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <p className="text-sm text-gray-600">
+          CSV antepone un apóstrofo a textos que podrían ejecutarse como fórmulas al abrirlos en una hoja de cálculo. Parquet conserva los valores. La versión en el motor no se altera.
+        </p>
       </section>
     </div>
   );

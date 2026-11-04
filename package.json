@@ -16,17 +16,19 @@
     "bench": "playwright test --config=playwright.bench.config.ts",
     "gen:bench": "node benchmarks/gen-csv.mjs",
     "smoke:static": "node scripts/smoke-static.mjs",
-    "vendor:duckdb": "node scripts/vendor-duckdb.mjs",
-    "postinstall": "npm run vendor:duckdb",
-    "predev": "npm run vendor:duckdb",
-    "prebuild": "npm run vendor:duckdb"
+    "vendor:assets": "node scripts/vendor-assets.mjs",
+    "postinstall": "npm run vendor:assets",
+    "predev": "npm run vendor:assets",
+    "prebuild": "npm run vendor:assets"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
     "@tailwindcss/postcss": "4.3.3",
     "@vercel/analytics": "^2.0.1",
+    "apache-arrow": "17.0.0",
     "echarts": "6.1.0",
     "next": "16.4.3",
+    "parquet-wasm": "0.9.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "read-excel-file": "9.3.12",

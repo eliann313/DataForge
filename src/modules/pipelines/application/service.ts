@@ -4,7 +4,7 @@ import {
   type PipelinePreview,
   type PipelineVersion,
 } from "../domain/definition";
-import type { PipelineDefinitionRepository, PipelineExecutionPort } from "./ports";
+import type { DatasetExport, DatasetExportFormat, PipelineDefinitionRepository, PipelineExecutionPort } from "./ports";
 
 export class PipelineService {
   constructor(
@@ -43,6 +43,10 @@ export class PipelineService {
 
   activate(versionId: string): Promise<void> {
     return this.execution.activateDatasetVersion(versionId);
+  }
+
+  exportVersion(versionId: string, format: DatasetExportFormat): Promise<DatasetExport> {
+    return this.execution.exportDatasetVersion(versionId, format);
   }
 
   listDefinitions(projectId: string): Promise<PipelineDefinition[]> {

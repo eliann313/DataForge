@@ -116,7 +116,7 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 
 ## R2 / fase 4 — avance actual
 
-### Cortes locales implementados (2026-10-12)
+### Cortes locales implementados (2026-11-04)
 
 - Pasos tipados para filtrar filas, seleccionar y renombrar columnas, quitar filas con nulos en columnas elegidas, reemplazar nulos, quitar duplicados exactamente iguales y ordenar.
 - Los filtros respetan el tipo físico: una igualdad sobre texto conserva valores como `00123`; las comparaciones mayor/menor solo se permiten en columnas numéricas y validan el literal.
@@ -128,24 +128,27 @@ Definir varianza muestral/poblacional, percentiles, empates de moda y tratamient
 - Las pruebas E2E cubren aislamiento de proyectos, duplicados en APPEND, rechazo por cardinalidad incorrecta, confirmación de fanout y limpieza de versiones al quitar una fuente.
 - Los identificadores SQL se escapan, los valores de filtro se codifican y no se acepta SQL libre. Un error de validación no crea ni activa una versión.
 - Las columnas calculadas admiten suma, resta y multiplicación entre tipos numéricos; el esquema de salida deriva tipo y nulabilidad, y rechaza colisiones o resultados DECIMAL fuera de precisión.
+- Las agregaciones producen una versión agrupada nueva. Incluyen conteo de filas, suma, mínimo y máximo numéricos; el conteo no omite nulos y el esquema resultante se valida antes de ejecutar.
+- Cualquier versión de la sesión se puede descargar como CSV o Parquet. CSV antepone un apóstrofo a textos que parecen fórmulas para proteger al abrirlos en hojas de cálculo; Parquet conserva los valores.
 
 ### Siguiente trabajo dentro de las fases existentes
 
-1. Completar y revisar agregaciones agrupadas de conteo, suma, mínimo y máximo.
-2. Exportar versiones procesadas a CSV y Parquet sin alterar la versión activa.
-3. Después de esta pila, completar el Report Builder, snapshots y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
+1. Revisar la pila de expresiones, agregaciones y exportaciones.
+2. Después de esta pila, completar el Report Builder, snapshots y respaldo portable; decidir persistencia de archivos con evidencia y actualizar ADR-0003.
 3. Mantener 0B/0C como investigación opcional; no bloquear R2 con Pyodide o Rust.
+
+La exportación CSV usa `COPY` de DuckDB y neutraliza solo valores de texto que podrían interpretarse como fórmulas; no cambia la fuente ni la versión. Parquet se genera desde resultados Arrow con `parquet-wasm`, cargado al solicitar ese formato desde un asset local que el build copia de `node_modules` a `public/vendor`. El escritor Parquet de DuckDB-Wasm en la versión fijada falla en ejecución (`function signature mismatch`), por eso se usa el escritor Arrow local.
 
 ### Verificación del corte local de fase 4
 
-Evidencia del incremento actual: `npm run typecheck`, `npm run lint` y `npm test`
-pasaron; Vitest: 67/67. `npm run e2e -- --workers=1 e2e/pipelines.spec.ts`
-pasó 32/32 en Chromium y Firefox contra Next.js local. Tras ampliar la prueba de
-APPEND para quitar una fuente y comprobar que desaparecen sus vistas derivadas,
-ese recorrido pasó 2/2 en Chromium/Firefox. `npm run build` generó el export
-estático y `npm run smoke:static` pasó 47/47 en Chromium. El smoke detectó y se
-ajustó una expectativa E2E desactualizada sobre el texto real del contexto de
-proyecto. Estos cambios siguen fuera de la demo pública R1.
+Evidencia de esta pila: `npm run typecheck`, `npm run lint` y `npm test` pasaron;
+Vitest: 75/75. La suite de pipelines pasó 19/19 en Chromium contra Next.js local
+y 19/19 contra el export estático. `npm run build` generó el sitio. El smoke
+estático completo ejecutó 50 pruebas y pasó 48: fallaron dos pruebas de
+importación del explorador (JSON informa `table index is out of bounds`; la
+importación Parquet cierra el navegador). La exportación CSV/Parquet incluida en
+pipelines sí pasó en el build estático. Estos cambios siguen fuera de la demo
+pública R1.
 
 ## Evidencia histórica del backlog 0A (E1–E2)
 

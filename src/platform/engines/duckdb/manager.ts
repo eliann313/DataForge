@@ -32,6 +32,8 @@ import {
   type PipelineColumn,
   type PipelineDefinition,
   type PipelineDateFormat,
+  type DatasetExport,
+  type DatasetExportFormat,
   type PipelineExecutionPort,
   type PipelinePreview,
   type PipelineStep,
@@ -48,6 +50,23 @@ import {
   type DatasetSource,
   type JoinDefinition,
 } from "../../../modules/datasets";
+
+type ParquetRuntime = typeof import("parquet-wasm/esm");
+let parquetRuntimePromise: Promise<ParquetRuntime> | null = null;
+
+function loadParquetRuntime(): Promise<ParquetRuntime> {
+  if (!parquetRuntimePromise) {
+    const pending = import("parquet-wasm/esm").then(async (runtime) => {
+      await runtime.default(new URL("/vendor/parquet/parquet_wasm_bg.wasm", window.location.origin));
+      return runtime;
+    });
+    parquetRuntimePromise = pending;
+    void pending.catch(() => {
+      if (parquetRuntimePromise === pending) parquetRuntimePromise = null;
+    });
+  }
+  return parquetRuntimePromise;
+}
 
 interface DuckDBBundle {
   mainModule?: string;
@@ -402,6 +421,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   private activeVersionByProject = new Map<string | null, string>();
   private datasetSequence = 0;
   private versionSequence = 0;
+  private exportSequence = 0;
   private versions: StoredPipelineVersion[] = [];
 
   /** Suscripción a cambios de estado (paneles sincronizados). */
@@ -927,6 +947,61 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   async getVersionColumns(versionId: string): Promise<PipelineColumn[]> {
     const version = this.requireVersion(versionId);
     return this.readSchema(this.requireConn(), version.tableName);
+  }
+
+  async exportDatasetVersion(
+    versionId: string,
+    format: DatasetExportFormat,
+  ): Promise<DatasetExport> {
+    const conn = this.requireConn();
+    const db = this.db;
+    if (!db) throw new Error("El motor no está listo para exportar.");
+    if (format !== "csv" && format !== "parquet") throw new Error("El formato de exportación no es válido.");
+    const version = this.requireVersion(versionId);
+    const fileName = `df_export_${++this.exportSequence}.csv`;
+    const destination = escapeStringLiteral(fileName);
+
+    let exportStage = "ejecutar COPY";
+    try {
+      let bytes: Uint8Array;
+      if (format === "csv") {
+        const select = buildCsvExportQuery(version.tableName, version.columns);
+        await conn.query(`COPY (${select}) TO ${destination} (FORMAT CSV, HEADER TRUE, DELIMITER ',', QUOTE '"', ESCAPE '"')`);
+        exportStage = "leer el archivo temporal";
+        bytes = await db.copyFileToBuffer(fileName);
+      } else {
+        exportStage = "consultar la versión";
+        const result = await conn.query(`SELECT * FROM ${escapeIdentifier(version.tableName)}`);
+        exportStage = "preparar el formato Arrow";
+        const [{ tableToIPC }, parquet] = await Promise.all([
+          import("apache-arrow"),
+          loadParquetRuntime(),
+        ]);
+        const arrowBytes = tableToIPC(result, "stream");
+        exportStage = "escribir el archivo Parquet";
+        const table = parquet.Table.fromIPCStream(arrowBytes);
+        const properties = new parquet.WriterPropertiesBuilder()
+          .setCompression(parquet.Compression.ZSTD)
+          .build();
+        bytes = parquet.writeParquet(table, properties);
+      }
+      if (bytes.byteLength === 0) throw new Error("DuckDB devolvió un archivo vacío.");
+      const safeName = version.name.replace(/\.[^.]+$/, "").normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("en-US")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60) || "dataforge";
+      return {
+        fileName: `${safeName}.${format}`,
+        mediaType: format === "csv" ? "text/csv;charset=utf-8" : "application/vnd.apache.parquet",
+        bytes,
+      };
+    } catch (cause) {
+      throw new Error(`Falló la exportación ${format.toUpperCase()} al ${exportStage}: ${messageOf(cause)}`);
+    } finally {
+      if (format === "csv") await db.dropFile(fileName).catch(() => undefined);
+    }
   }
 
   async previewPipeline(
@@ -1480,6 +1555,22 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     this.versions = [];
     this.activeVersionByProject.clear();
   }
+}
+
+/** Proyecta una versión para CSV y neutraliza textos que una hoja ejecutaría como fórmula. */
+export function buildCsvExportQuery(
+  tableName: string,
+  columns: readonly PipelineColumn[],
+): string {
+  const projection = columns.map((column) => {
+    const identifier = escapeIdentifier(column.name);
+    if (!isTextPipelineColumn(column)) return identifier;
+    const value = `CAST(${identifier} AS VARCHAR)`;
+    const firstNonWhitespace = `LEFT(LTRIM(${value}, ' ' || CHR(9) || CHR(10) || CHR(13)), 1)`;
+    const dangerous = `${firstNonWhitespace} IN ('=', '+', '-', '@')`;
+    return `CASE WHEN ${dangerous} THEN CHR(39) || ${value} ELSE ${value} END AS ${identifier}`;
+  });
+  return `SELECT ${projection.join(", ")} FROM ${escapeIdentifier(tableName)}`;
 }
 
 /** Construye SQL cerrado desde operaciones validadas; nunca recibe SQL del usuario. */
