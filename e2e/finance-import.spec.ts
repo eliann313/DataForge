@@ -47,3 +47,24 @@ test("importa XLSX de primera hoja conservando centavos", async ({ page }) => {
   await expect(movement.getByText("Libro XLSX", { exact: true })).toBeVisible();
   await expect(movement.getByText(/12,34/)).toBeVisible();
 });
+
+test("página la vista previa y la lista principal sin truncar el lote", async ({ page }) => {
+  const panel = page.locator('section[aria-labelledby="importar-movimientos"]');
+  const rows = Array.from({ length: 55 }, (_, index) => `2024-03-01,Compra ${index + 1},gasto,1,Compras`).join("\n");
+  await panel.getByLabel("Seleccionar archivo").setInputFiles({ name: "lote.csv", mimeType: "text/csv", buffer: Buffer.from(`fecha,descripcion,tipo,importe,categoria\n${rows}\n`) });
+  await panel.getByRole("button", { name: /validar y ver vista previa/i }).click();
+  await expect(panel.getByText(/55 nuevos · 0 duplicados excluidos · 0 errores/)).toBeVisible();
+  const previewRows = panel.locator("tbody tr");
+  await expect(previewRows).toHaveCount(50);
+  await panel.getByRole("button", { name: "Filas siguientes" }).click();
+  await expect(previewRows).toHaveCount(5);
+  await expect(panel.getByText("Página 2 de 2")).toBeVisible();
+  await panel.getByRole("button", { name: /confirmar importación/i }).click();
+  await expect(panel.getByRole("status")).toContainText(/se importaron 55 movimientos/i);
+
+  const movements = page.locator('section[aria-labelledby="movimientos"]');
+  await expect(movements.locator("tbody tr")).toHaveCount(50);
+  await movements.getByRole("button", { name: "Movimientos siguientes" }).click();
+  await expect(movements.locator("tbody tr")).toHaveCount(5);
+  await expect(movements.getByText("Página 2 de 2")).toBeVisible();
+});

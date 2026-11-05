@@ -4,7 +4,7 @@ import { parseCsv } from "./import-file";
 import { cellToText } from "./import-file";
 import { MemoryTransactionRepository } from "../infrastructure/memory";
 
-const account = { id: "ars", name: "Banco", currency: "ARS" as const, createdAt: "2024-01-01" };
+const account = { id: "ars", name: "Banco", currency: "ARS" as const, type: "bank" as const, createdAt: "2024-01-01" };
 const mapping = { date: 0, description: 1, kind: 2, amount: 3, category: 4 } as const;
 
 describe("importación financiera local", () => {
@@ -44,5 +44,15 @@ describe("importación financiera local", () => {
     const preview = await service.preview([["2024-01-02", "Café", "gasto", "0,10", "Alimentos"], ["2024-01-02", "Café", "gasto", "0,10", "Alimentos"]], mapping, "ARS", account);
     expect(await service.confirm(preview)).toBe(1);
     expect((await repo.list()).map((tx) => tx.amountMinor)).toEqual([10]);
+  });
+
+  it("rechaza ingresos en extractos de tarjeta y admite gastos", async () => {
+    const repo = new MemoryTransactionRepository();
+    const service = new FinanceImportService(repo, () => "card-row", () => "2024-01-01T00:00:00Z");
+    const card = { ...account, id: "card", type: "card" as const };
+    const preview = await service.preview([["2024-01-02", "Devolución", "credit", "10", "Otro"], ["2024-01-03", "Compra", "debit", "10", "Compras"]], mapping, "ARS", card);
+    expect(preview).toMatchObject({ validCount: 1, errorCount: 1 });
+    expect(preview.rows[0].error).toMatch(/No se pueden importar ingresos/);
+    expect(preview.rows[1].transaction?.kind).toBe("gasto");
   });
 });

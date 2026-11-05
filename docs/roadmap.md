@@ -221,6 +221,8 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Avance verificado (rama `codex/r3-finance-import`, apilada sobre cuentas/transferencias):** alta de cuentas ARS/USD, movimientos manuales asociados a una cuenta, saldos por cuenta y transferencias propias entre cuentas de igual moneda. La migración IndexedDB v1→v2 agrega cuentas iniciales y asocia movimientos previos. Se añade importación local de CSV y XLSX (primera hoja), mapeo explícito de fecha, descripción, tipo, importe y categoría, selección de moneda/cuenta, vista previa, errores por fila, detección de duplicados y confirmación. Solo se guardan lotes sin errores y en una única transacción IndexedDB. Los importes se validan y persisten en centavos enteros. Límites: UTF-8, máximo 10 MiB, 100.000 filas y 100 columnas; no se admiten XLS/XLSB/ODS, archivos protegidos, libros con varias hojas seleccionables ni autodetección de esquemas; los duplicados son candidatos exactos por fecha, tipo, centavos, moneda, cuenta y descripción normalizada.
 
+**Siguiente corte en curso:** cuentas de tarjeta con deuda positiva; compras como gasto, pagos como transferencia bancaria hacia la tarjeta y reintegros parciales enlazados a gastos. Pagos y reintegros se excluyen de ingresos/egresos; los reintegros se presentan por separado. La migración v2→v3 clasifica las cuentas previas como bancarias. Ver [ADR-0015](adr/0015-finance-card-accounts-and-refunds.md). Este corte aún no cierra fase 6.
+
 **Alcance**
 - Entidades de cuentas, categorías, ingresos, gastos, transferencias, reintegros, presupuestos y movimientos.
 - Formulario manual: fecha, descripción, importe, moneda, categoría, cuenta, notas; alta, edición, duplicación y baja.

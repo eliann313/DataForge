@@ -25,6 +25,7 @@ export class FinanceImportService {
           category: validateText("category", get("category")), notes: "", accountId: account.id,
           createdAt: this.now(), updatedAt: this.now(),
         };
+        if (account.type === "card" && tx.kind === "ingreso") throw new FinanceError("validation", "No se pueden importar ingresos a una cuenta de tarjeta.");
         const key = duplicateKey(tx);
         const duplicate = keys.has(key);
         keys.add(key);

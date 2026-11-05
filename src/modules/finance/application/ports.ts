@@ -28,6 +28,7 @@ export interface CreateInput {
   notes?: string;
   accountId?: string;
   destinationAccountId?: string;
+  linkedTransactionId?: string;
 }
 
 export interface UpdateInput extends CreateInput {
@@ -38,6 +39,7 @@ export interface CurrencyTotal {
   currency: Currency;
   income: number;
   expense: number;
+  refunds: number;
   balance: number;
 }
 
@@ -54,5 +56,6 @@ export interface MonthPoint {
   currency: Currency;
   income: number;
   expense: number;
+  refunds: number;
   balance: number;
 }

@@ -2,7 +2,7 @@ import { FinanceError, type Currency } from "./money";
 
 // Movimiento financiero manual asociado a una cuenta; las transferencias
 // conservan origen/destino sin convertirse en ingreso o gasto. El importe es exacto.
-export type MovementKind = "ingreso" | "gasto" | "transferencia";
+export type MovementKind = "ingreso" | "gasto" | "transferencia" | "reintegro";
 
 export interface FinancialTransaction {
   id: string;
@@ -16,6 +16,7 @@ export interface FinancialTransaction {
   notes: string;
   accountId?: string;
   destinationAccountId?: string;
+  linkedTransactionId?: string;
   createdAt: string;
   updatedAt: string;
 }

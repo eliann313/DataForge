@@ -5,6 +5,7 @@ export interface FinancialAccount {
   name: string;
   currency: Currency;
   createdAt: string;
+  type: "bank" | "card";
 }
 
 export function validateAccountName(raw: string): string {

@@ -55,13 +55,33 @@ describe("adaptador IndexedDB de finanzas", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0].accountId).toBe("account-default-usd");
       expect(accounts.map((account) => account.currency).sort()).toEqual(["ARS", "USD"]);
+      expect(accounts.every((account) => account.type === "bank")).toBe(true);
     } finally { repo.close(); }
+  });
+
+  it("migra las cuentas v2 asignando tipo bancaria en v3", async () => {
+    const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("dataforge-finance", 2);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore("transactions", { keyPath: "id" });
+        req.result.createObjectStore("accounts", { keyPath: "id" });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    const tx = legacy.transaction("accounts", "readwrite");
+    tx.objectStore("accounts").put({ id: "legacy", name: "Cuenta antigua", currency: "ARS", createdAt: "2024-01-01" });
+    await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+    legacy.close();
+    const repo = new IndexedDBTransactionRepository();
+    try { expect(await repo.findAccountById("legacy")).toMatchObject({ id: "legacy", type: "bank" }); }
+    finally { repo.close(); }
   });
 
   it("guarda un lote completo en una transacción y conserva centavos tras reabrir", async () => {
     const repo = new IndexedDBTransactionRepository();
     const service = new FinanceImportService(repo, (() => { let i = 0; return () => `batch-${++i}`; })(), () => "2024-03-01T00:00:00Z");
-    const preview = await service.preview([["2024-03-01", "A", "ingreso", "0,10", "Trabajo"], ["2024-03-02", "B", "gasto", "0,20", "Comida"]], { date: 0, description: 1, kind: 2, amount: 3, category: 4 }, "ARS", { id: "account-default", name: "Cuenta principal", currency: "ARS", createdAt: "2024-01-01" });
+    const preview = await service.preview([["2024-03-01", "A", "ingreso", "0,10", "Trabajo"], ["2024-03-02", "B", "gasto", "0,20", "Comida"]], { date: 0, description: 1, kind: 2, amount: 3, category: 4 }, "ARS", { id: "account-default", name: "Cuenta principal", currency: "ARS", type: "bank", createdAt: "2024-01-01" });
     await expect(service.confirm(preview)).resolves.toBe(2);
     repo.close();
     const reopened = new IndexedDBTransactionRepository();
@@ -72,7 +92,7 @@ describe("adaptador IndexedDB de finanzas", () => {
   it("revierte el lote entero si una inserción falla", async () => {
     const repo = new IndexedDBTransactionRepository();
     const service = new FinanceImportService(repo, (() => { let i = 0; return () => `same-${i++}`; })(), () => "2024-03-01T00:00:00Z");
-    const preview = await service.preview([["2024-03-01", "A", "ingreso", "1", "Trabajo"], ["2024-03-02", "B", "gasto", "2", "Comida"]], { date: 0, description: 1, kind: 2, amount: 3, category: 4 }, "ARS", { id: "account-default", name: "Cuenta principal", currency: "ARS", createdAt: "2024-01-01" });
+    const preview = await service.preview([["2024-03-01", "A", "ingreso", "1", "Trabajo"], ["2024-03-02", "B", "gasto", "2", "Comida"]], { date: 0, description: 1, kind: 2, amount: 3, category: 4 }, "ARS", { id: "account-default", name: "Cuenta principal", currency: "ARS", type: "bank", createdAt: "2024-01-01" });
     const first = preview.rows[0].transaction!;
     const second = { ...preview.rows[1].transaction!, id: first.id };
     preview.rows[1].transaction = second;

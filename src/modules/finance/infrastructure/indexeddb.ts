@@ -7,11 +7,11 @@ import type { TransactionRepository } from "../application/ports";
 import type { FinancialAccount } from "../domain/account";
 
 const DB_NAME = "dataforge-finance";
-const VERSION = 2;
+const VERSION = 3;
 const STORE = "transactions";
 const ACCOUNTS = "accounts";
-const DEFAULT_ACCOUNT: FinancialAccount = { id: "account-default", name: "Cuenta principal", currency: "ARS", createdAt: "2026-01-01T00:00:00.000Z" };
-const DEFAULT_USD_ACCOUNT: FinancialAccount = { id: "account-default-usd", name: "Cuenta en dólares", currency: "USD", createdAt: "2026-01-01T00:00:00.000Z" };
+const DEFAULT_ACCOUNT: FinancialAccount = { id: "account-default", name: "Cuenta principal", currency: "ARS", type: "bank", createdAt: "2026-01-01T00:00:00.000Z" };
+const DEFAULT_USD_ACCOUNT: FinancialAccount = { id: "account-default-usd", name: "Cuenta en dólares", currency: "USD", type: "bank", createdAt: "2026-01-01T00:00:00.000Z" };
 
 function failed(operation: string, cause: unknown): FinanceError {
   if (cause instanceof FinanceError) return cause;
@@ -159,6 +159,16 @@ export class IndexedDBTransactionRepository implements TransactionRepository {
               if (!current) return;
               const row = current.value as FinancialTransaction;
               if (!row.accountId) current.update({ ...row, accountId: row.currency === "USD" ? DEFAULT_USD_ACCOUNT.id : DEFAULT_ACCOUNT.id });
+              current.continue();
+            };
+          }
+          if (upgrade && (event as IDBVersionChangeEvent).oldVersion < 3) {
+            const cursor = upgrade.objectStore(ACCOUNTS).openCursor();
+            cursor.onsuccess = () => {
+              const current = cursor.result;
+              if (!current) return;
+              const account = current.value as FinancialAccount;
+              if (account.type !== "bank" && account.type !== "card") current.update({ ...account, type: "bank" });
               current.continue();
             };
           }
