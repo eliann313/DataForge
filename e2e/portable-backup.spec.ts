@@ -101,7 +101,7 @@ test("exporta e importa snapshots e informes sin incluir ni asociar la fuente", 
   expect(backup.analysisSnapshots[0].source.sessionId).toBe("session-historica");
   expect(backup.reports[0].sections[0].snapshotId).toBe("snapshot-portable-e2e");
 
-  await page.locator('input[type="file"]').setInputFiles({
+  await page.locator('input[type="file"][accept="application/json,.json"]').setInputFiles({
     name: "proyecto.dataforge.json",
     mimeType: "application/json",
     buffer: await readFile(await download.path()),

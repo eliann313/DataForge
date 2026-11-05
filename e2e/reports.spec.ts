@@ -6,14 +6,16 @@ test("permite crear un informe local y exportar HTML imprimible", async ({ page 
   await page.addInitScript(() => {
     const browserWindow = window as typeof window & {
       __holdReportQueries?: boolean;
-      __delayedReportCallbacks?: Array<() => void>;
-      __releaseReportQueries?: () => void;
+      __delayedReportCallbacks?: Array<{ projectId: unknown; release: () => void }>;
+      __releaseReportQueries?: (projectId?: string) => void;
     };
     browserWindow.__delayedReportCallbacks = [];
-    browserWindow.__releaseReportQueries = () => {
-      browserWindow.__holdReportQueries = false;
-      for (const release of browserWindow.__delayedReportCallbacks ?? []) release();
-      browserWindow.__delayedReportCallbacks = [];
+    browserWindow.__releaseReportQueries = (projectId) => {
+      const pending = browserWindow.__delayedReportCallbacks ?? [];
+      const released = projectId === undefined ? pending : pending.filter((item) => item.projectId === projectId);
+      browserWindow.__delayedReportCallbacks = projectId === undefined ? [] : pending.filter((item) => item.projectId !== projectId);
+      for (const item of released) item.release();
+      if (browserWindow.__delayedReportCallbacks.length === 0) browserWindow.__holdReportQueries = false;
     };
     const originalGetAll = IDBIndex.prototype.getAll;
     IDBIndex.prototype.getAll = function (...args) {
@@ -27,7 +29,10 @@ test("permite crear un informe local y exportar HTML imprimible", async ({ page 
         set(target, property, value) {
           if (property === "onsuccess") {
             target.addEventListener("success", (event) => {
-              browserWindow.__delayedReportCallbacks?.push(() => value.call(target, event));
+              browserWindow.__delayedReportCallbacks?.push({
+                projectId: args[0],
+                release: () => value.call(target, event),
+              });
             }, { once: true });
             return true;
           }
@@ -128,19 +133,33 @@ test("permite crear un informe local y exportar HTML imprimible", async ({ page 
     (window as typeof window & { __holdReportQueries?: boolean }).__holdReportQueries = true;
   });
   await page.getByRole("button", { name: /^informes$/i }).click();
-  await page.waitForFunction(() => (window as typeof window & { __delayedReportCallbacks?: unknown[] }).__delayedReportCallbacks?.length === 2);
+  await page.waitForFunction((projectId) => {
+    const pending = (window as typeof window & { __delayedReportCallbacks?: Array<{ projectId: unknown }> }).__delayedReportCallbacks ?? [];
+    return pending.filter((item) => item.projectId === projectId).length === 2;
+  }, projectId);
   await page.getByRole("button", { name: /^inicio$/i }).click();
   const otherProject = `${project}-other`;
   await page.getByLabel(/nombre de proyecto nuevo/i).fill(otherProject);
   await page.getByRole("button", { name: /^crear proyecto$/i }).click();
   await expect(page.getByText(`Proyecto: ${otherProject}`)).toBeVisible({ timeout: 15_000 });
+  const otherProjectId = await page.evaluate(() => localStorage.getItem("df-active-project"));
+  expect(otherProjectId).toBeTruthy();
   await page.getByRole("button", { name: /^informes$/i }).click();
-  await expect(page.getByText(/Cargando informes de este proyecto/)).toBeVisible();
+  await page.waitForFunction((targetProjectId) => {
+    const pending = (window as typeof window & { __delayedReportCallbacks?: Array<{ projectId: unknown }> }).__delayedReportCallbacks ?? [];
+    return pending.filter((item) => item.projectId === targetProjectId).length === 2;
+  }, otherProjectId);
   await expect(page.getByRole("button", { name: /^guardar$/i })).toBeDisabled();
   await expect(page.getByRole("button", { name: /exportar html/i })).toBeDisabled();
   await expect(page.getByText("Resumen de prueba", { exact: true })).toHaveCount(0);
-  await page.waitForFunction(() => (window as typeof window & { __delayedReportCallbacks?: unknown[] }).__delayedReportCallbacks?.length === 4);
-  await page.evaluate(() => (window as typeof window & { __releaseReportQueries?: () => void }).__releaseReportQueries?.());
+  await page.evaluate((sourceProjectId) => (window as typeof window & { __releaseReportQueries?: (id?: string) => void }).__releaseReportQueries?.(sourceProjectId!), projectId);
+  await page.waitForFunction((targetProjectId) => {
+    const pending = (window as typeof window & { __delayedReportCallbacks?: Array<{ projectId: unknown }> }).__delayedReportCallbacks ?? [];
+    return pending.length === 2 && pending.every((item) => item.projectId === targetProjectId);
+  }, otherProjectId);
+  await expect(page.getByRole("button", { name: /^guardar$/i })).toBeDisabled();
+  await expect(page.getByText("Resumen de prueba", { exact: true })).toHaveCount(0);
+  await page.evaluate(() => (window as typeof window & { __releaseReportQueries?: (id?: string) => void }).__releaseReportQueries?.());
   await expect(page.getByText("Todavía no hay informes.")).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole("button", { name: /^inicio$/i }).click();
