@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   columnsBeforeStep,
   IndexedDBPipelineDefinitionRepository,
@@ -24,6 +24,22 @@ import { useProjects } from "@/modules/projects";
 import { MAX_PORTABLE_DATASET_BYTES } from "@/modules/portable";
 import { engine } from "@/platform/engines/duckdb/manager";
 import DatasetCombinationPanel from "@/app/components/DatasetCombinationPanel";
+import {
+  ArrowRight,
+  Database,
+  Filter,
+  Info,
+  Layers3,
+  LockKeyhole,
+  Play,
+  Save,
+  SlidersHorizontal,
+  Sparkles,
+  Table2,
+  Type,
+  Upload,
+  Workflow,
+} from "lucide-react";
 
 const pipelineService = new PipelineService(engine, new IndexedDBPipelineDefinitionRepository());
 
@@ -97,6 +113,42 @@ function stepName(step: PipelineStep): string {
 function createPipelineId(): string {
   const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `pipeline-${id}`;
+}
+
+function FeatureCard({ icon, title, description }: { icon: ReactNode; title: string; description: string }) {
+  return (
+    <article className="flex items-start gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-violet-50 text-violet-700" aria-hidden="true">{icon}</span>
+      <div><h3 className="font-semibold text-slate-900">{title}</h3><p className="mt-1 text-sm leading-6 text-slate-600">{description}</p></div>
+    </article>
+  );
+}
+
+function PipelineProgress({ hasDataset, hasSteps, hasResult = false }: { hasDataset: boolean; hasSteps: boolean; hasResult?: boolean }) {
+  const stages = [
+    { number: "01", title: "Origen", detail: hasDataset ? "Dataset seleccionado" : "Importar dataset", icon: Database, done: hasDataset, current: !hasDataset },
+    { number: "02", title: "Limpiar", detail: hasDataset ? "Configurar pasos" : "Esperando dataset", icon: Sparkles, done: hasSteps, current: hasDataset && !hasSteps },
+    { number: "03", title: "Transformar", detail: hasSteps ? "Pipeline en edición" : "Esperando pasos", icon: SlidersHorizontal, done: false, current: hasSteps },
+    { number: "04", title: "Resultado", detail: hasResult ? "Versión creada" : "Vista previa y versiones", icon: Table2, done: hasResult, current: false },
+  ];
+
+  return (
+    <nav aria-label="Etapas del pipeline" className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:grid-cols-2 xl:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr] xl:items-center xl:p-4">
+      {stages.map((stage, index) => {
+        const Icon = stage.icon;
+        return (
+          <div key={stage.number} className="contents">
+            <div className={`flex min-w-0 items-center gap-3 rounded-xl border px-4 py-3 ${stage.current ? "border-violet-600 bg-violet-50 ring-1 ring-violet-100" : stage.done ? "border-violet-200 bg-white" : "border-slate-200 bg-slate-50"}`} aria-current={stage.current ? "step" : undefined}>
+              <Icon size={22} className={stage.current || stage.done ? "shrink-0 text-violet-700" : "shrink-0 text-slate-400"} aria-hidden="true" />
+              <div className="min-w-0 flex-1"><p className="font-semibold text-slate-900">{stage.number} {stage.title}</p><p className="truncate text-sm text-slate-500">{stage.detail}</p></div>
+              {!stage.current && !stage.done && <LockKeyhole size={15} className="shrink-0 text-slate-400" aria-hidden="true" />}
+            </div>
+            {index < stages.length - 1 ? <ArrowRight size={18} className="mx-auto hidden text-slate-400 xl:block" aria-hidden="true" /> : null}
+          </div>
+        );
+      })}
+    </nav>
+  );
 }
 
 export default function TransformationsView({
@@ -598,33 +650,82 @@ export default function TransformationsView({
 
   if (versions.length === 0) {
     return (
-      <section className="max-w-3xl space-y-3" aria-labelledby="transformaciones-titulo">
-        <h2 id="transformaciones-titulo" className="text-xl font-bold">Transformaciones · R2</h2>
-        <p role="status">Importe un archivo en Datos para crear un pipeline local.</p>
-        <button
-          type="button"
-          onClick={onImportData}
-          className="rounded bg-violet-800 px-3 py-2 text-sm font-medium text-white"
-        >
-          Ir a Datos
-        </button>
-      </section>
+      <div className="space-y-6" aria-labelledby="transformaciones-titulo">
+        <header className="flex flex-wrap items-start justify-between gap-5">
+          <div>
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+              <h2 id="transformaciones-titulo" className="text-3xl font-bold tracking-tight text-slate-900">Transformaciones</h2>
+              <span className="inline-flex items-center gap-2 rounded-full bg-violet-100 px-3 py-1.5 text-sm font-semibold text-violet-800">
+                <Layers3 size={16} aria-hidden="true" /> Pipeline local · R2
+              </span>
+            </div>
+            <p className="text-base text-slate-600">Prepara, limpia y organiza tus datos con pasos reproducibles.</p>
+          </div>
+          <div className="flex max-w-xl items-start gap-3 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm text-slate-700">
+            <Info size={19} className="mt-0.5 shrink-0 text-violet-700" aria-hidden="true" />
+            <p>Las transformaciones se ejecutan localmente. Tus datos no salen del navegador.</p>
+          </div>
+        </header>
+
+        <PipelineProgress hasDataset={false} hasSteps={false} />
+
+        <section className="rounded-3xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm sm:px-10" aria-labelledby="pipeline-vacio">
+          <div className="mx-auto mb-7 flex max-w-md items-center justify-center gap-3 rounded-full bg-gradient-to-r from-violet-50 via-purple-50 to-violet-50 py-5 text-violet-700">
+            <span className="grid size-14 place-items-center rounded-2xl border border-violet-100 bg-white shadow-sm"><Database size={26} aria-hidden="true" /></span>
+            <ArrowRight size={18} className="text-violet-400" aria-hidden="true" />
+            <span className="grid size-14 place-items-center rounded-2xl border border-violet-100 bg-white shadow-sm"><Sparkles size={26} aria-hidden="true" /></span>
+            <ArrowRight size={18} className="text-violet-400" aria-hidden="true" />
+            <span className="grid size-14 place-items-center rounded-2xl border border-violet-100 bg-white shadow-sm"><SlidersHorizontal size={26} aria-hidden="true" /></span>
+            <ArrowRight size={18} className="text-violet-400" aria-hidden="true" />
+            <span className="grid size-14 place-items-center rounded-2xl border border-violet-100 bg-white shadow-sm"><Table2 size={26} aria-hidden="true" /></span>
+          </div>
+          <h3 id="pipeline-vacio" className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Crea tu primer pipeline</h3>
+          <p className="mx-auto mt-2 max-w-xl text-slate-600">Para comenzar, importa un archivo desde Datos o prueba con datos de ejemplo.</p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <button type="button" onClick={onImportData} className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
+              <Upload size={17} aria-hidden="true" /> Importar archivo
+            </button>
+            <button type="button" onClick={onImportData} className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
+              Ir a Datos
+            </button>
+          </div>
+          <p role="status" className="mt-4 text-xs text-slate-500">Al importar un archivo, aparecerán aquí las herramientas para filtrar, cambiar tipos y combinar datasets.</p>
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-3" aria-label="Acciones disponibles en un pipeline">
+          <FeatureCard icon={<Filter size={22} />} title="Filtrar y ordenar" description="Selecciona los registros que necesitas y define el orden de salida." />
+          <FeatureCard icon={<Type size={22} />} title="Cambiar tipos" description="Convierte columnas al tipo de dato correcto: texto, número o fecha." />
+          <FeatureCard icon={<span className="text-2xl font-semibold leading-none">Σ</span>} title="Agrupar y calcular" description="Resume información con agrupaciones y cálculos reproducibles." />
+        </section>
+      </div>
     );
   }
 
   return (
-    <div className="space-y-6" aria-labelledby="transformaciones-titulo">
-      <header className="space-y-1">
-        <h2 id="transformaciones-titulo" className="text-xl font-bold">Transformaciones · Fase 4</h2>
-        <p className="text-sm text-gray-600">
-          Guarde definiciones en un proyecto de este dispositivo y cree versiones derivadas repetibles. Los archivos y las versiones derivadas permanecen en la sesión; no se guardan con la definición.
-        </p>
+    <div className="transformations-view space-y-6 text-slate-800 [&_select]:rounded-lg [&_select]:border [&_select]:border-slate-300 [&_select]:bg-white [&_select]:px-2 [&_select]:py-1.5 [&_input:not([type=checkbox])]:rounded-lg [&_input:not([type=checkbox])]:border [&_input:not([type=checkbox])]:border-slate-300 [&_input:not([type=checkbox])]:px-2 [&_input:not([type=checkbox])]:py-1.5 [&_label]:text-sm [&_label]:text-slate-700 [&_section]:scroll-mt-6 [&_section]:rounded-2xl [&_section]:border [&_section]:border-slate-200 [&_section]:bg-white [&_section]:p-4 [&_section]:shadow-sm sm:[&_section]:p-5 [&_fieldset]:rounded-xl [&_fieldset]:border-slate-200 [&_button]:transition-colors [&_button:disabled]:cursor-not-allowed [&_button:disabled]:opacity-50 [&_h3]:text-slate-900" aria-labelledby="transformaciones-titulo">
+      <header className="flex flex-wrap items-start justify-between gap-5">
+        <div>
+          <div className="mb-2 flex flex-wrap items-center gap-3">
+            <h2 id="transformaciones-titulo" className="text-3xl font-bold tracking-tight text-slate-900">Transformaciones</h2>
+            <span className="inline-flex items-center gap-2 rounded-full bg-violet-100 px-3 py-1.5 text-sm font-semibold text-violet-800"><Layers3 size={16} aria-hidden="true" /> Pipeline local · R2</span>
+          </div>
+          <p className="text-base text-slate-600">Prepara, limpia y organiza tus datos con pasos reproducibles.</p>
+          <p className="mt-1 text-xs text-slate-500">Las definiciones se guardan en el proyecto de este dispositivo; los datos y las versiones permanecen en esta sesión.</p>
+        </div>
+        <div className="flex max-w-xl items-start gap-3 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm text-slate-700">
+          <Info size={19} className="mt-0.5 shrink-0 text-violet-700" aria-hidden="true" />
+          <p>Las transformaciones se ejecutan localmente. Tus datos no salen del navegador.</p>
+        </div>
       </header>
 
-      <DatasetCombinationPanel versions={versions} onVersionCreated={acceptCombinationVersion} />
+      <PipelineProgress hasDataset hasSteps={steps.length > 0} hasResult={versions.some((version) => version.parentIds.length > 0)} />
 
-      <section className="space-y-2 rounded border border-gray-200 bg-white p-4" aria-labelledby="pipelines-guardados">
-        <h3 id="pipelines-guardados" className="font-semibold">Definiciones guardadas</h3>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <DatasetCombinationPanel versions={versions} onVersionCreated={acceptCombinationVersion} />
+      </div>
+
+      <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="pipelines-guardados">
+        <div className="flex items-center gap-2"><Save size={18} className="text-violet-700" aria-hidden="true" /><h3 id="pipelines-guardados" className="font-semibold text-slate-900">Definiciones guardadas</h3></div>
         <p className="text-sm text-gray-600">
           {activeProject
             ? `Proyecto activo: ${activeProject.name}. Las definiciones se almacenan localmente.`
@@ -661,8 +762,8 @@ export default function TransformationsView({
         </div>
       </section>
 
-      <section className="space-y-3 rounded border border-gray-200 bg-white p-4" aria-labelledby="pipeline-configuracion">
-        <h3 id="pipeline-configuracion" className="font-semibold">Definición del pipeline</h3>
+      <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5" aria-labelledby="pipeline-configuracion">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 id="pipeline-configuracion" className="font-semibold">Definición del pipeline</h3><p className="mt-1 text-sm text-slate-600">Configura el orden de las operaciones y revisa el efecto antes de crear una versión.</p></div><Workflow size={21} className="text-violet-700" aria-hidden="true" /></div>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-sm">
             Versión de origen
@@ -700,18 +801,18 @@ export default function TransformationsView({
         </div>
 
         <div className="flex flex-wrap gap-2" aria-label="Agregar un paso">
-          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("filter")} className="rounded border border-gray-300 px-2 py-1 text-sm">Agregar filtro</button>
-          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("select")} className="rounded border border-gray-300 px-2 py-1 text-sm">Seleccionar columnas</button>
-          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("dropNulls")} className="rounded border border-gray-300 px-2 py-1 text-sm">Quitar filas con nulos</button>
-          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("fillNull")} className="rounded border border-gray-300 px-2 py-1 text-sm">Reemplazar nulos</button>
-          <button type="button" disabled={busy || !baseColumns.some(isTextPipelineColumn)} onClick={() => addStep("normalizeText")} className="rounded border border-gray-300 px-2 py-1 text-sm">Normalizar texto</button>
-          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("convertType")} className="rounded border border-gray-300 px-2 py-1 text-sm">Convertir tipo</button>
-          <button type="button" disabled={busy || !baseColumns.some((column) => isTextPipelineColumn(column) || isDatePipelineColumn(column))} onClick={() => addStep("normalizeDate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Normalizar fecha</button>
-          <button type="button" disabled={busy || currentColumns().filter(isNumericPipelineColumn).length < 2} onClick={() => addStep("calculate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Calcular columna</button>
-          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("aggregate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Agrupar y agregar</button>
-          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("rename")} className="rounded border border-gray-300 px-2 py-1 text-sm">Renombrar columna</button>
-          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("deduplicate")} className="rounded border border-gray-300 px-2 py-1 text-sm">Eliminar duplicados</button>
-          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("sort")} className="rounded border border-gray-300 px-2 py-1 text-sm">Ordenar filas</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("filter")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Agregar filtro</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("select")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Seleccionar columnas</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("dropNulls")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Quitar filas con nulos</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("fillNull")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Reemplazar nulos</button>
+          <button type="button" disabled={busy || !baseColumns.some(isTextPipelineColumn)} onClick={() => addStep("normalizeText")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Normalizar texto</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("convertType")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Convertir tipo</button>
+          <button type="button" disabled={busy || !baseColumns.some((column) => isTextPipelineColumn(column) || isDatePipelineColumn(column))} onClick={() => addStep("normalizeDate")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Normalizar fecha</button>
+          <button type="button" disabled={busy || currentColumns().filter(isNumericPipelineColumn).length < 2} onClick={() => addStep("calculate")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Calcular columna</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("aggregate")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Agrupar y agregar</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("rename")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Renombrar columna</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("deduplicate")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Eliminar duplicados</button>
+          <button type="button" disabled={busy || baseColumns.length === 0} onClick={() => addStep("sort")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm hover:border-violet-300 hover:bg-violet-50">Ordenar filas</button>
         </div>
 
         {steps.length === 0 ? <p className="text-sm text-gray-600">Agregue pasos en el orden en que deben ejecutarse.</p> : null}
@@ -1202,7 +1303,7 @@ export default function TransformationsView({
             type="button"
             disabled={busy || !baseVersionId || steps.length === 0}
             onClick={() => void createPreview()}
-            className="rounded border border-gray-300 px-3 py-2 text-sm"
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50"
           >
             {busy ? "Procesando…" : "Vista previa"}
           </button>
@@ -1210,9 +1311,9 @@ export default function TransformationsView({
             type="button"
             disabled={busy || !baseVersionId || steps.length === 0}
             onClick={() => void executePipeline()}
-            className="rounded bg-violet-800 px-3 py-2 text-sm font-medium text-white"
+            className="inline-flex items-center gap-2 rounded-lg bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-800"
           >
-            Ejecutar y crear versión
+            <Play size={16} aria-hidden="true" /> Ejecutar y crear versión
           </button>
         </div>
         {message ? <p role="status" className="text-sm text-gray-700">{message}</p> : null}

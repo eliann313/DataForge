@@ -12,6 +12,7 @@ const config = [
       "public/vendor/**",
       "playwright-report/**",
       "test-results/**",
+      "scratch/**",
     ],
   },
 ];

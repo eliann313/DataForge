@@ -20,11 +20,12 @@ test("el motor arranca diferido y el ciclo cerrar/reiniciar recupera", async ({
   await expect(page.getByText(/Versión DuckDB:/)).toBeVisible();
 
   // Cierre libera el Worker.
-  await page.getByRole("button", { name: /^cerrar$/i }).click();
+  await page.getByText("Opciones del motor", { exact: true }).click();
+  await page.getByRole("button", { name: /cerrar motor/i }).click();
   await expect(page.getByText("Estado: Motor cerrado")).toBeVisible();
 
   // Reinicio recupera un motor operativo.
-  await page.getByRole("button", { name: /reiniciar/i }).click();
+  await page.getByRole("button", { name: /reiniciar motor/i }).click();
   await expect(page.getByText("Estado: Motor listo")).toBeVisible({
     timeout: 120_000,
   });

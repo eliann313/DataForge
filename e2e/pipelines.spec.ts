@@ -233,7 +233,7 @@ test("mantiene varias fuentes por proyecto y aísla el proyecto activo", async (
   await page.getByLabel(/nombre de proyecto nuevo/i).fill(otherProject);
   await page.getByRole("button", { name: /^crear proyecto$/i }).click();
   await page.getByRole("button", { name: /^datos$/i }).click();
-  await expect(datasets.getByText(/No hay fuentes cargadas/)).toBeVisible({ timeout: 15_000 });
+  await expect(datasets.getByText("Todavía no hay datos cargados")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: /^inicio$/i }).click();
   await page.getByRole("radio", { name: `Abrir ${firstProject}` }).check();
   await page.getByRole("button", { name: /^datos$/i }).click();

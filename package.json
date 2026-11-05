@@ -27,6 +27,7 @@
     "@vercel/analytics": "^2.0.1",
     "apache-arrow": "17.0.0",
     "echarts": "6.1.0",
+    "lucide-react": "^1.69.0",
     "next": "16.4.3",
     "parquet-wasm": "0.9.0",
     "react": "19.3.1",

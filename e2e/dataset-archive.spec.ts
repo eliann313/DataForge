@@ -83,7 +83,8 @@ test("respaldo .dfdataset exporta/importa versiones y rechaza un payload alterad
   page.once("dialog", (dialog) => void dialog.accept());
   await sources.getByRole("button", { name: /quitar de la sesión/i }).click();
   await page.getByRole("button", { name: /^transformaciones$/i }).click();
-  await expect(page.getByText("Importe un archivo en Datos para crear un pipeline local.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Crea tu primer pipeline" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Importar archivo" })).toBeVisible();
 });
 
 test("restaura el linaje materializado de APPEND y JOIN con varias fuentes", async ({ page }) => {

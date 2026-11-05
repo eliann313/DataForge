@@ -77,7 +77,8 @@ test("renombra y elimina con confirmación", async ({ page }) => {
   await row2.getByRole("button", { name: /eliminar/i }).click();
   await page.getByRole("button", { name: /^eliminar$/i }).last().click();
   await expect(page.getByText(`${project}-b`, { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Sin proyecto abierto")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Ubicación" })).toContainText("Workspace");
+  await expect(page.getByRole("navigation", { name: "Ubicación" })).not.toContainText(`Proyecto: ${project}-b`);
 });
 
 test("bloquea eliminar carpeta no vacía", async ({ page }) => {
@@ -101,11 +102,11 @@ test("bloquea eliminar carpeta no vacía", async ({ page }) => {
 });
 
 test("probar un ejemplo lo importa en Datos", async ({ page }) => {
-  await page
-    .getByRole("button", { name: /probar este ejemplo/i })
-    .first()
-    .click();
+  await page.getByRole("link", { name: /probar un ejemplo/i }).click();
+  await expect(page.getByRole("heading", { name: /empieza con un ejemplo/i })).toBeVisible();
+  await page.getByRole("button", { name: "Explorar", exact: true }).first().click();
   // Navega a Datos e importa el CSV ficticio con la ruta general.
+  await expect(page.getByRole("heading", { name: /^datos$/i })).toBeVisible();
   await expect(page.getByText(/12 filas, 6 columnas/)).toBeVisible({
     timeout: 120_000,
   });

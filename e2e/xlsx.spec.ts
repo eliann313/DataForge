@@ -25,6 +25,7 @@ async function chooseFile(page: Page, filePath: string) {
 }
 
 test("registra la sonda de lectura nativa (ruta A)", async ({ page }) => {
+  await page.getByText("Herramientas avanzadas", { exact: true }).click();
   await page.getByRole("button", { name: /probar lectura nativa/i }).click();
   // Veredicto honesto cualquiera sea el soporte; el detalle queda visible.
   await expect(page.getByText(/Lectura nativa \(read_xlsx\)/)).toBeVisible({
