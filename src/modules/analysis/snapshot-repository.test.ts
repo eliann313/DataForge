@@ -14,9 +14,13 @@ async function reset() {
 }
 
 function snapshot(projectId: string, versionId: string) {
+  const base = (id: string, sourceId: string) => ({ versionId: id, projectId, name: `${sourceId}.csv`, operationType: "source" as const,
+    sourceIds: [sourceId], parentIds: [], pipelineId: null, executedDefinition: null, rowCount: 2,
+    columns: [{ name: "id", type: "INTEGER", nullable: false }], stepCount: 0, createdAt: "2026-11-04T12:00:00.000Z" });
+  const versions = versionId === "v1" ? [base(versionId, "source-1")] : [base(versionId, "source-1")];
   return createAnalysisSnapshot({
     projectId, title: "Resumen",
-    source: { sessionId: "session-test", versionId, sourceId: "source-1", datasetName: "ventas.csv", rowCount: 2, columns: [] },
+    source: { sessionId: "session-test", versionId, sourceId: "source-1", datasetName: "ventas.csv", rowCount: 2, columns: [], lineage: { rootVersionId: versionId, nodes: versions } },
     parameters: { description: { column: "importe" } }, results: { description: { mean: 3 } },
   });
 }
@@ -37,7 +41,9 @@ describe("IndexedDB analysis snapshots", () => {
     expect(await reopened.findById("p2", one.id)).toBeNull();
     expect(await reopened.findById("p1", one.id)).toEqual(one);
     await expect(reopened.save({ ...one, title: "No sobrescribir" })).rejects.toThrow();
-    const sameIdOtherProject = { ...one, projectId: "p2", source: { ...one.source, versionId: "other-version" } };
+    const sameIdOtherProject = { ...one, projectId: "p2", source: { ...one.source, versionId: "other-version", lineage: {
+      rootVersionId: "other-version", nodes: one.source.lineage.nodes.map((node) => ({ ...node, versionId: "other-version", projectId: "p2" })),
+    } } };
     await reopened.save(sameIdOtherProject);
     expect(await reopened.findById("p2", one.id)).toEqual(sameIdOtherProject);
     await reopened.delete("p2", one.id);

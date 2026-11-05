@@ -11,6 +11,10 @@ export {
   validateAnalysisSnapshot,
   type AnalysisSnapshot,
   type AnalysisSnapshotRepository,
+  type SnapshotLineage,
+  type SnapshotLineageNode,
+  type SnapshotVersionReference,
   type SnapshotValue,
+  captureSnapshotLineage,
 } from "./snapshots";
 export { IndexedDBAnalysisSnapshotRepository } from "./snapshot-repository";

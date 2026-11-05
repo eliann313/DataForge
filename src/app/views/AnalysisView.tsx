@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createAnalysisSnapshot, evaluateFindings, IndexedDBAnalysisSnapshotRepository, type AnalysisSnapshot, type Finding, type SnapshotValue } from "@/modules/analysis";
+import { captureSnapshotLineage, createAnalysisSnapshot, evaluateFindings, IndexedDBAnalysisSnapshotRepository, type AnalysisSnapshot, type Finding, type SnapshotValue } from "@/modules/analysis";
 import { isNumericMeasure, type SemanticRole } from "@/platform/engines/duckdb/semantics";
 import {
   engine,
@@ -108,6 +108,20 @@ export default function AnalysisView() {
           sourceId: engine.getActiveSourceId() ?? activeSummary.datasetId,
           datasetName: activeSummary.fileName, rowCount: activeSummary.rows,
           columns: activeSummary.columns.map(({ name, type, nullable }) => ({ name, type, nullable })),
+          lineage: captureSnapshotLineage(activeSummary.versionId, projectId, engine.getDatasetVersions().map((version) => ({
+            versionId: version.id,
+            projectId: version.projectId ?? "",
+            name: version.name,
+            operationType: version.operationType,
+            sourceIds: version.sourceIds,
+            parentIds: version.parentIds,
+            pipelineId: version.pipelineId,
+            executedDefinition: (version.executedDefinition ?? null) as unknown as SnapshotValue,
+            rowCount: version.rowCount,
+            columns: version.columns,
+            stepCount: version.stepCount,
+            createdAt: version.createdAt,
+          }))),
         },
         parameters, results,
       });
@@ -321,6 +335,7 @@ export default function AnalysisView() {
           {visibleSelectedSnapshot ? <div className="rounded bg-gray-50 p-3" aria-label="Resultado guardado">
             <h3 className="font-semibold">{visibleSelectedSnapshot.title}</h3>
             <p>{visibleSelectedSnapshot.source.datasetName}; {visibleSelectedSnapshot.source.rowCount} filas; versión {visibleSelectedSnapshot.source.versionId} (sesión anterior).</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs" aria-label="Linaje del snapshot">{JSON.stringify(visibleSelectedSnapshot.source.lineage, null, 2)}</pre>
             <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs">Parámetros: {JSON.stringify(visibleSelectedSnapshot.parameters, null, 2)}</pre>
             <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(visibleSelectedSnapshot.results, null, 2)}</pre>
             <button type="button" onClick={() => setSelectedSnapshot(null)} className="underline">Cerrar</button>
@@ -551,6 +566,7 @@ export default function AnalysisView() {
         {visibleSelectedSnapshot ? <div className="mt-3 rounded bg-gray-50 p-3" aria-label="Resultado guardado">
           <div className="flex justify-between"><h3 className="font-semibold">{visibleSelectedSnapshot.title}</h3><button type="button" onClick={() => setSelectedSnapshot(null)} className="underline">Cerrar</button></div>
           <p>Dataset: {visibleSelectedSnapshot.source.datasetName}; {visibleSelectedSnapshot.source.rowCount} filas; versión {visibleSelectedSnapshot.source.versionId}.</p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs" aria-label="Linaje del snapshot">{JSON.stringify(visibleSelectedSnapshot.source.lineage, null, 2)}</pre>
           <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs">Parámetros: {JSON.stringify(visibleSelectedSnapshot.parameters, null, 2)}</pre>
           <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(visibleSelectedSnapshot.results, null, 2)}</pre>
           <button type="button" onClick={() => {

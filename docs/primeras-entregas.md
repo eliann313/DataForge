@@ -18,7 +18,7 @@ El orden ejecutado fue **E1 → E2 → E3 → E4 → E5 → E6**. Las condicione
 
 ### Fase 5 — Snapshots: primer corte
 
-El módulo Análisis guarda por proyecto un snapshot inmutable con parámetros, resultados ya calculados y referencia explícita a `versionId`, `sourceId`, nombre y esquema. El linaje conserva padres, fuentes y pasos ejecutados de pipelines con un límite de 256 nodos. Metadatos y resultados se guardan en IndexedDB con límite de 2 MiB por snapshot; los bytes del dataset y versiones DuckDB no persisten.
+El módulo Análisis guarda por proyecto un snapshot inmutable con parámetros, resultados ya calculados y referencia explícita a `versionId`, `sourceId`, nombre y esquema. El linaje copia de forma validada todos los padres y fuentes y los pasos ejecutados de pipelines, con un límite de 256 nodos. Metadatos y resultados se guardan en IndexedDB con límite de 2 MiB por snapshot; no persisten bytes del dataset ni versiones DuckDB.
 
 Después de recargar se puede consultar el resultado histórico, pero no repetir el cálculo. Reimportar el mismo archivo no lo vincula automáticamente. Report Builder y respaldo/importación portable siguen pendientes. Borrar un proyecto tampoco borra snapshots de la base separada: quedan huérfanos locales, aislados por UUID, invisibles y sin gestión desde la interfaz (ADR-0009).
 
