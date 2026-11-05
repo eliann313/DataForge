@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { IndexedDBPipelineDefinitionRepository } from "@/modules/pipelines";
+import { IndexedDBAnalysisSnapshotRepository } from "@/modules/analysis";
+import { IndexedDBReportRepository } from "@/modules/reports";
 import { IndexedDBProjectRepository } from "../infrastructure/indexeddb";
 import { parseProjectBackup, ProjectBackupService, serializeProjectBackup } from "@/modules/portable";
 import ConfirmDialog from "@/shared/ui/ConfirmDialog";
@@ -19,6 +21,8 @@ export default function ProjectsPanel() {
   const backupService = () => new ProjectBackupService({
     projects: new IndexedDBProjectRepository(),
     definitions: new IndexedDBPipelineDefinitionRepository(),
+    snapshots: new IndexedDBAnalysisSnapshotRepository(),
+    reports: new IndexedDBReportRepository(),
   });
   const exportBackup = async (projectId: string, name: string) => {
     try {
@@ -70,7 +74,7 @@ export default function ProjectsPanel() {
         </p>
       ) : null}
       {backupError ? <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-sm">{backupError}</p> : null}
-      <p className="text-sm text-gray-600">Los respaldos portables v1 incluyen metadatos y definiciones de pipelines; no incluyen archivos importados, resultados ni snapshots. Esos datos requieren reimportar las fuentes.</p>
+      <p className="text-sm text-gray-600">Los respaldos portables v1 incluyen metadatos, definiciones de pipelines, snapshots de resultados e informes. No incluyen los bytes de datasets ni las versiones DuckDB; para reanudar análisis, vuelva a importar las fuentes.</p>
       <label className="inline-flex cursor-pointer rounded border px-3 py-1 text-sm">
         Importar respaldo de proyecto
         <input type="file" accept="application/json,.json" className="sr-only" onChange={(event) => { void importBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />

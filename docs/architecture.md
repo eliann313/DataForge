@@ -216,7 +216,7 @@ Cada versión de pipeline conserva en memoria una copia de la definición ejecut
 
 **Objetivo:** IndexedDB para metadatos/configuración y OPFS para ficheros o estructuras tabulares cuando el flujo lo justifique; exportación/importación de proyectos como respaldo. La persistencia está sujeta a cuotas, limpieza por usuario/navegador y disponibilidad en dispositivo.
 
-**Real hasta el corte actual de R2:** metadatos de proyectos y definiciones de pipeline en IndexedDB; datasets y vistas derivadas viven en memoria del Worker y se pierden al cerrarlo o recargar. El formato portable v1 solo copia metadata y recetas. Persistencia de bytes/OPFS, snapshots, informes y respaldo completo siguen pendientes.
+**Real hasta el corte actual de R2:** metadatos de proyectos, definiciones de pipeline, snapshots de resultados e informes locales viven en IndexedDB. Datasets y vistas derivadas viven en memoria del Worker y se pierden al cerrarlo o recargar. El respaldo portable v1 copia artefactos JSON y valida las referencias informe-snapshot; excluye bytes de datasets y versiones DuckDB. No constituye recuperación de las fuentes ni de la sesión analítica.
 
 **Futuro opcional:** autenticación y Neon PostgreSQL para cuentas, carpetas y configuraciones sincronizadas; almacenamiento privado de objetos si se aprueba subir datasets. No usar PostgreSQL como repositorio principal de archivos grandes. Autorización por propietario verificada del lado del servidor. **Ningún archivo se sincroniza sin consentimiento.**
 

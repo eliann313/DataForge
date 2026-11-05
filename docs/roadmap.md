@@ -1,6 +1,6 @@
 # DataForge — Roadmap maestro
 
-> **Estado al 2026-11-04:** R1 (0A–3B; E1–E6) y R2/fase 4 están cerrados. `main` incorpora pipelines tipados, varias fuentes aisladas por proyecto durante la sesión, APPEND/JOIN validados, expresiones, agregaciones y comparación de períodos. CSV/Parquet procesado inicia fase 5. El primer corte de snapshots conserva resultados, parámetros y linaje de versiones por proyecto en IndexedDB; archivos y versiones continúan en memoria del Worker. Report Builder y respaldo portable siguen pendientes. La evidencia del cierre de fase 4 corresponde al commit integrado y al build estático local.
+> **Estado al 2026-11-05:** R1 (0A–3B; E1–E6) y R2/fase 4 están cerrados. `main` incorpora pipelines tipados, varias fuentes aisladas por proyecto durante la sesión, APPEND/JOIN validados, expresiones, agregaciones y comparación de períodos. El stack local de fase 5 añade exportación CSV/Parquet, snapshots de resultados con linaje, informes locales y respaldo portable de artefactos JSON. Archivos y versiones de sesión siguen en memoria del Worker y quedan fuera del respaldo; la fuente se debe volver a importar. La evidencia del cierre de fase 4 corresponde al commit integrado y al build estático local.
 
 **Objetivo:** construir una plataforma de análisis de datos autoservicio, en español, con procesamiento local en el navegador, proyectos persistentes, visualizaciones, pipelines reproducibles e instrumentos científicos especializados.  
 **Alcance:** proyecto educativo y de portfolio; objetivo de infraestructura sin servicios pagos.  
