@@ -5,8 +5,9 @@ import { IndexedDBPipelineDefinitionRepository } from "@/modules/pipelines";
 import { IndexedDBAnalysisSnapshotRepository } from "@/modules/analysis";
 import { IndexedDBReportRepository } from "@/modules/reports";
 import { IndexedDBProjectRepository } from "../infrastructure/indexeddb";
-import { parseProjectBackup, ProjectBackupService, serializeProjectBackup } from "@/modules/portable";
+import { DatasetArchiveService, parseProjectBackup, ProjectBackupService, serializeProjectBackup } from "@/modules/portable";
 import ConfirmDialog from "@/shared/ui/ConfirmDialog";
+import { engine } from "@/platform/engines/duckdb/manager";
 import { useProjects } from "./ProjectsContext";
 
 // Gestión local de carpetas y proyectos (E3): crear, abrir, renombrar,
@@ -18,6 +19,9 @@ export default function ProjectsPanel() {
   const [renaming, setRenaming] = useState<{ id: string; kind: "p" | "f"; name: string } | null>(null);
   const [confirm, setConfirm] = useState<{ title: string; message: string; label: string; run: () => void } | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [datasetArchiveMessage, setDatasetArchiveMessage] = useState<string | null>(null);
+  const [datasetArchiveError, setDatasetArchiveError] = useState(false);
+  const datasetArchiveService = () => new DatasetArchiveService({ projects: new IndexedDBProjectRepository(), datasets: engine });
   const backupService = () => new ProjectBackupService({
     projects: new IndexedDBProjectRepository(),
     definitions: new IndexedDBPipelineDefinitionRepository(),
@@ -51,6 +55,47 @@ export default function ProjectsPanel() {
       setBackupError(error instanceof Error ? error.message : "No se pudo importar el respaldo.");
     }
   };
+  const exportDatasetArchive = async (projectId: string, name: string) => {
+    try {
+      setDatasetArchiveMessage(null);
+      setDatasetArchiveError(false);
+      const archive = await datasetArchiveService().exportProject(projectId, engine.getPortableSessionId());
+      const url = URL.createObjectURL(archive);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${name.replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 80) || "proyecto"}.dfdataset`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setDatasetArchiveMessage(`Se descargó el archivo de datasets de «${name}».`);
+    } catch (error) {
+      setDatasetArchiveError(true);
+      setDatasetArchiveMessage(error instanceof Error ? error.message : "No se pudo exportar el archivo de datasets.");
+    }
+  };
+  const askImportDatasetArchive = (file: File | undefined, projectId: string, projectName: string) => {
+    if (!file) return;
+    setDatasetArchiveMessage(null);
+    setConfirm({
+      title: `Importar datasets en «${projectName}»`,
+      message: `Se agregarán las versiones del archivo «${file.name}» al proyecto seleccionado. El archivo incluye Parquet, esquema y linaje. No modifica proyectos existentes ni recupera carpetas, informes o snapshots. El tamaño máximo es 50 MiB en total y 20 MiB por versión.`,
+      label: "Importar datasets",
+      run: () => {
+        void (async () => {
+          try {
+            const result = await datasetArchiveService().importIntoProject(file, projectId, true);
+            await ctx.refresh();
+            setDatasetArchiveError(false);
+            setDatasetArchiveMessage(`Se importaron ${result.versionIdByRef.size} versiones en «${projectName}». Los datos quedan disponibles durante la sesión actual del motor.`);
+          } catch (error) {
+            setDatasetArchiveError(true);
+            setDatasetArchiveMessage(error instanceof Error ? error.message : "No se pudo importar el archivo de datasets.");
+          }
+        })();
+      },
+    });
+  };
   // Los fallos ya se publican en ctx.error (alerta visible); aquí solo se
   // evita el rechazo no manejado en consola.
   const run = (task: Promise<unknown>) => task.catch(() => undefined);
@@ -73,7 +118,9 @@ export default function ProjectsPanel() {
         </p>
       ) : null}
       {backupError ? <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-sm">{backupError}</p> : null}
-      <p className="text-sm text-gray-600">Los respaldos portables v1 incluyen metadatos, definiciones de pipelines, snapshots de resultados e informes. No incluyen los bytes de datasets ni las versiones DuckDB; para reanudar análisis, vuelva a importar las fuentes.</p>
+      {datasetArchiveMessage ? <p role={datasetArchiveError ? "alert" : "status"} className={`rounded border p-2 text-sm ${datasetArchiveError ? "border-red-300 bg-red-50" : "border-green-300 bg-green-50"}`}>{datasetArchiveMessage}</p> : null}
+      <p className="text-sm text-gray-600">El respaldo portable v1 incluye metadatos, definiciones de pipelines, snapshots de resultados e informes. No incluye los bytes de datasets ni versiones DuckDB; para reanudar análisis, vuelva a importar las fuentes.</p>
+      <p className="text-sm text-gray-600">El archivo opcional <code>.dfdataset</code> guarda versiones Parquet materializadas, esquema y linaje de datasets que siguen en la sesión DuckDB. No incluye carpetas, definiciones guardadas de pipelines, snapshots ni informes. Al importarlo, elija el proyecto de destino; los datos restaurados viven en el Worker hasta cerrar o recargar la página. Máximo: 20 MiB por versión y 50 MiB por archivo.</p>
       <label className="inline-flex cursor-pointer rounded border px-3 py-1 text-sm">
         Importar respaldo de proyecto
         <input type="file" accept="application/json,.json" className="sr-only" onChange={(event) => { void importBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
@@ -245,6 +292,11 @@ export default function ProjectsPanel() {
                     Renombrar
                   </button>
                   <button type="button" className="underline" onClick={() => void exportBackup(p.id, p.name)}>Descargar respaldo</button>
+                  <button type="button" className="underline" onClick={() => void exportDatasetArchive(p.id, p.name)}>Descargar datasets (.dfdataset)</button>
+                  <label className="cursor-pointer underline">
+                    Importar datasets aquí
+                    <input type="file" accept=".dfdataset,application/vnd.dataforge.dataset-archive" className="sr-only" onChange={(event) => { askImportDatasetArchive(event.currentTarget.files?.[0], p.id, p.name); event.currentTarget.value = ""; }} />
+                  </label>
                   <label className="text-gray-600">
                     Mover a{" "}
                     <select

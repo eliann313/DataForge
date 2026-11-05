@@ -16,6 +16,7 @@ import type {
   ResultRow,
 } from "./contract";
 import { escapeIdentifier } from "./contract";
+import { arrowReaderToParquetStream, readBoundedStreamToBlob } from "./parquet-stream";
 import { isNumericMeasure, ROLES, suggestRole, type SemanticRole } from "./semantics";
 import {
   MAX_CSV_BYTES,
@@ -434,6 +435,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   private datasetSequence = 0;
   private versionSequence = 0;
   private exportSequence = 0;
+  private portableSessionId: string | null = null;
   private versions: StoredPipelineVersion[] = [];
   private semanticRolesByVersion = new Map<string, Record<string, SemanticRole>>();
 
@@ -457,6 +459,12 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
 
   getStatus(): EngineStatus {
     return this.status;
+  }
+
+  /** Identidad opaca de esta instancia de sesión; no se usa para asociar datos por heurística. */
+  getPortableSessionId(): string {
+    this.portableSessionId ??= crypto.randomUUID();
+    return this.portableSessionId;
   }
 
   getLastError(): EngineError | null {
@@ -699,6 +707,83 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     );
   }
 
+  /** Importa un asset Parquet ya validado por el contenedor portable. */
+  async importPortableParquet(name: string, bytes: Uint8Array, projectId: string): Promise<ImportSummary> {
+    this.requireConn();
+    if (!name.trim() || name.length > 1024 || !projectId.trim() || bytes.byteLength === 0 || bytes.byteLength > 20 * 1024 * 1024) {
+      throw new Error("El asset Parquet portable está vacío o supera el límite de 20 MiB.");
+    }
+    if (bytes.byteLength < 8 || new TextDecoder().decode(bytes.slice(0, 4)) !== "PAR1" || new TextDecoder().decode(bytes.slice(-4)) !== "PAR1") {
+      throw new Error("El asset portable no es un archivo Parquet completo.");
+    }
+    // DuckDB/WASM may retain a scan cache keyed by virtual filename. Reusing
+    // `df_upload.parquet` across archive assets can read the previous asset
+    // after its registered buffer is dropped, so every import gets a fresh path.
+    const registerName = `df_portable_${this.datasetSequence}_${crypto.randomUUID()}.parquet`;
+    return this.materialize(
+      name,
+      bytes.byteLength,
+      bytes,
+      registerName,
+      `SELECT * FROM read_parquet(${escapeStringLiteral(registerName)})`,
+      projectId,
+    );
+  }
+
+  /** Reatacha el linaje del manifiesto a tablas materializadas recién importadas. */
+  restorePortableVersionMetadata(versionId: string, metadata: {
+    name: string;
+    operationType: PipelineVersion["operationType"];
+    sourceId: string;
+    sourceIds: string[];
+    parentIds: string[];
+    pipelineId: string | null;
+    executedDefinition?: PipelineVersion["executedDefinition"];
+    stepCount: number;
+    createdAt: string;
+    semanticRoles: Record<string, string>;
+  }): void {
+    const version = this.requireVersion(versionId);
+    if (!metadata.name.trim() || metadata.name.length > 1024 || !metadata.sourceIds.length
+      || new Set(metadata.sourceIds).size !== metadata.sourceIds.length || new Set(metadata.parentIds).size !== metadata.parentIds.length
+      || !Number.isSafeInteger(metadata.stepCount) || metadata.stepCount < 0 || !Number.isFinite(Date.parse(metadata.createdAt))) {
+      throw new Error("Los metadatos de linaje portable están dañados.");
+    }
+    if (metadata.operationType === "source") {
+      if (metadata.sourceId !== versionId || metadata.sourceIds.length !== 1 || metadata.sourceIds[0] !== versionId || metadata.parentIds.length > 0 || metadata.pipelineId !== null) {
+        throw new Error("La identidad de una fuente portable no coincide.");
+      }
+    } else if (!metadata.parentIds.length || metadata.sourceId !== metadata.sourceIds[0]) {
+      throw new Error("La versión portable derivada no tiene padres y fuentes consistentes.");
+    }
+    const sources = metadata.sourceIds.map((id) => this.versions.find((candidate) => candidate.id === id && candidate.projectId === version.projectId && candidate.operationType === "source"));
+    const parents = metadata.parentIds.map((id) => this.versions.find((candidate) => candidate.id === id && candidate.projectId === version.projectId));
+    if (sources.some((item) => !item) || parents.some((item) => !item)
+      || parents.some((parent) => parent!.sourceIds.some((id) => !metadata.sourceIds.includes(id)))
+      || Object.entries(metadata.semanticRoles).some(([column, role]) => !version.columns.some((item) => item.name === column) || !ROLES.includes(role as SemanticRole))) {
+      throw new Error("El linaje o los roles semánticos del manifiesto no corresponden al proyecto importado.");
+    }
+    if (metadata.executedDefinition && metadata.operationType !== "pipeline") throw new Error("El manifiesto adjunta una receta a una versión que no es de pipeline.");
+    const index = this.versions.findIndex((candidate) => candidate.id === versionId);
+    if (index < 0) throw new Error("La versión importada ya no está disponible.");
+    this.versions[index] = {
+      ...version,
+      name: metadata.name.trim(),
+      sourceId: metadata.sourceId,
+      sourceIds: [...metadata.sourceIds],
+      parentId: metadata.parentIds[0] ?? null,
+      parentIds: [...metadata.parentIds],
+      operationType: metadata.operationType,
+      pipelineId: metadata.pipelineId,
+      executedDefinition: metadata.executedDefinition,
+      stepCount: metadata.stepCount,
+      createdAt: metadata.createdAt,
+      isView: false,
+    };
+    this.semanticRolesByVersion.set(versionId, { ...metadata.semanticRoles } as Record<string, SemanticRole>);
+    this.emit();
+  }
+
   /**
    * Sonda de ruta A (0A.4): lectura XLSX directa con DuckDB-Wasm en la
    * versión fijada. Registra el resultado sin asumir soporte.
@@ -757,6 +842,9 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     const sequence = this.datasetSequence + 1;
     const stagingName = `df_dataset_next_${sequence}`;
     const tableName = `df_dataset_${sequence}`;
+    const versionId = `source-${sequence}`;
+    const previousActiveTable = this.activeTable;
+    const previousActiveVersionId = this.activeVersionByProject.get(projectId);
     await db.registerFileBuffer(registerName, bytes);
     try {
       await conn.query(
@@ -779,7 +867,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
         throw cause;
       }
       this.datasetSequence = sequence;
-      const sourceId = `source-${sequence}`;
+      const sourceId = versionId;
       const createdAt = new Date().toISOString();
       const durationMs = Math.round(performance.now() - started);
       this.versions.push({
@@ -817,9 +905,15 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     } catch (cause) {
       try {
         await conn.query(`DROP TABLE IF EXISTS ${escapeIdentifier(stagingName)}`);
+        await conn.query(`DROP TABLE IF EXISTS ${escapeIdentifier(tableName)}`);
       } catch {
         // Limpieza best-effort tras fallo.
       }
+      this.versions = this.versions.filter((version) => version.id !== versionId);
+      if (this.activeTable === tableName) this.activeTable = previousActiveTable;
+      if (previousActiveVersionId) this.activeVersionByProject.set(projectId, previousActiveVersionId);
+      else this.activeVersionByProject.delete(projectId);
+      if (this.datasetSequence === sequence) this.datasetSequence = sequence - 1;
       throw {
         code: "query-failed",
         message: `No se pudo importar el archivo: ${messageOf(cause)}`,
@@ -855,9 +949,9 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     this.emit();
   }
 
-  getDatasetSources(): DatasetSource[] {
+  getDatasetSources(projectId: string | null = this.currentProjectId): DatasetSource[] {
     return this.versions
-      .filter((version) => version.projectId === this.currentProjectId && version.operationType === "source")
+      .filter((version) => version.projectId === projectId && version.operationType === "source")
       .map((version) => ({
         id: version.id,
         projectId: version.projectId,
@@ -892,20 +986,20 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     };
   }
 
-  /** Libera una fuente y todas sus vistas derivadas sin tocar otras fuentes. */
-  async removeDataset(sourceId: string): Promise<void> {
+  /** Libera una fuente y todas sus versiones dependientes, también materializadas. */
+  async removeDataset(sourceId: string, projectId: string | null = this.currentProjectId): Promise<void> {
     const source = this.versions.find(
-      (version) => version.id === sourceId && version.operationType === "source" && version.projectId === this.currentProjectId,
+      (version) => version.id === sourceId && version.operationType === "source" && version.projectId === projectId,
     );
-    if (!source) throw new Error("La fuente ya no está disponible en el proyecto activo.");
+    if (!source) throw new Error("La fuente ya no está disponible en el proyecto indicado.");
     const related = this.versions.filter((version) => version.sourceIds.includes(sourceId));
     const conn = this.requireConn();
     try {
       await conn.query("BEGIN TRANSACTION");
       for (const version of [...related].reverse()) {
         if (version.isView) await conn.query(`DROP VIEW ${escapeIdentifier(version.tableName)}`);
+        else await conn.query(`DROP TABLE ${escapeIdentifier(version.tableName)}`);
       }
-      await conn.query(`DROP TABLE ${escapeIdentifier(source.tableName)}`);
       await conn.query("COMMIT");
     } catch (cause) {
       try {
@@ -919,13 +1013,17 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     for (const version of related) this.semanticRolesByVersion.delete(version.id);
     this.versions = this.versions.filter((version) => !version.sourceIds.includes(sourceId));
     const activeWasRemoved = related.some((version) => version.tableName === this.activeTable);
-    if (activeWasRemoved) {
+    const activeVersionId = this.activeVersionByProject.get(projectId);
+    if (activeVersionId && related.some((version) => version.id === activeVersionId)) {
       const next = [...this.versions].reverse().find(
-        (version) => version.projectId === this.currentProjectId,
+        (version) => version.projectId === projectId,
       );
-      this.activeTable = next?.tableName ?? null;
-      if (next) this.activeVersionByProject.set(this.currentProjectId, next.id);
-      else this.activeVersionByProject.delete(this.currentProjectId);
+      if (next) this.activeVersionByProject.set(projectId, next.id);
+      else this.activeVersionByProject.delete(projectId);
+    }
+    if (activeWasRemoved && this.currentProjectId === projectId) {
+      const nextId = this.activeVersionByProject.get(projectId);
+      this.activeTable = nextId ? this.versions.find((version) => version.id === nextId)?.tableName ?? null : null;
     }
     this.emit();
   }
@@ -951,9 +1049,9 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
     return this.readCount(this.requireConn(), this.requireActiveTable());
   }
 
-  getDatasetVersions(): PipelineVersion[] {
+  getDatasetVersions(projectId: string | null = this.currentProjectId): PipelineVersion[] {
     return this.versions
-      .filter((version) => version.projectId === this.currentProjectId)
+      .filter((version) => version.projectId === projectId)
       .map(toPublicPipelineVersion);
   }
 
@@ -968,7 +1066,7 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   }
 
   getVersionSemanticRoles(versionId: string): Record<string, SemanticRole> {
-    const version = this.versions.find((item) => item.id === versionId && item.projectId === this.currentProjectId);
+    const version = this.versions.find((item) => item.id === versionId);
     if (!version) return {};
     const overrides = this.semanticRolesByVersion.get(version.id) ?? {};
     return Object.fromEntries(version.columns.map((column) => [column.name, Object.hasOwn(overrides, column.name) ? overrides[column.name] : suggestRole(column.type, column.name)]));
@@ -1051,6 +1149,29 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
       throw new Error(`Falló la exportación ${format.toUpperCase()} al ${exportStage}: ${messageOf(cause)}`);
     } finally {
       if (format === "csv") await db.dropFile(fileName).catch(() => undefined);
+    }
+  }
+
+  /** Exporta Parquet por batches y rechaza al superar el presupuesto del respaldo. */
+  async exportPortableDatasetVersion(versionId: string, maxBytes: number): Promise<{ fileName: string; mediaType: string; blob: Blob; byteLength: number }> {
+    const conn = this.requireConn();
+    const version = this.requireVersion(versionId);
+    const query = `SELECT * FROM ${escapeIdentifier(version.tableName)}`;
+    let reader: Awaited<ReturnType<typeof conn.send>> | null = null;
+    try {
+      const parquet = await loadParquetRuntime();
+      reader = await conn.send(query, true);
+      const parquetStream = await arrowReaderToParquetStream(reader, parquet);
+      const exported = await readBoundedStreamToBlob(parquetStream, maxBytes);
+      if (exported.byteLength === 0) throw new Error("DuckDB devolvió un archivo vacío.");
+      return {
+        fileName: `${portableFileStem(version.name)}.parquet`,
+        mediaType: "application/vnd.apache.parquet",
+        ...exported,
+      };
+    } catch (cause) {
+      await reader?.cancel().catch(() => undefined);
+      throw new Error(`No se pudo respaldar «${version.name}» en Parquet: ${messageOf(cause)}`);
     }
   }
 
@@ -1386,8 +1507,8 @@ export class DuckDBManager implements PipelineExecutionPort, DatasetCombinationP
   async activateDatasetVersion(versionId: string): Promise<void> {
     const version = this.requireVersion(versionId);
     this.requireConn();
-    this.activeTable = version.tableName;
     this.activeVersionByProject.set(version.projectId, version.id);
+    if (this.currentProjectId === version.projectId) this.activeTable = version.tableName;
     this.emit();
   }
 
@@ -2045,7 +2166,17 @@ function pipelineCastSqlType(
 
 function messageOf(cause: unknown): string {
   if (cause instanceof Error && cause.message) return cause.message;
+  if (typeof cause === "object" && cause !== null && "message" in cause && typeof cause.message === "string") return cause.message;
   return "Fallo desconocido al inicializar DuckDB-Wasm";
+}
+
+function portableFileStem(name: string): string {
+  return name.replace(/\.[^.]+$/, "").normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60) || "dataforge";
 }
 
 /** Rechaza agregados exactos que no se pueden presentar con precisión numérica suficiente. */

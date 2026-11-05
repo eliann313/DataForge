@@ -21,6 +21,7 @@ import {
   type PipelineVersion,
 } from "@/modules/pipelines";
 import { useProjects } from "@/modules/projects";
+import { MAX_PORTABLE_DATASET_BYTES } from "@/modules/portable";
 import { engine } from "@/platform/engines/duckdb/manager";
 import DatasetCombinationPanel from "@/app/components/DatasetCombinationPanel";
 
@@ -559,6 +560,28 @@ export default function TransformationsView({
       setMessage(`Se preparó «${exported.fileName}» sin modificar la versión de origen.`);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "No se pudo exportar la versión.");
+    } finally {
+      if (objectUrl) window.setTimeout(() => URL.revokeObjectURL(objectUrl!), 1_000);
+      setBusy(false);
+    }
+  }
+
+  async function downloadPortableParquet(version: PipelineVersion) {
+    setBusy(true);
+    setMessage(null);
+    let objectUrl: string | null = null;
+    try {
+      const exported = await engine.exportPortableDatasetVersion(version.id, MAX_PORTABLE_DATASET_BYTES);
+      objectUrl = URL.createObjectURL(exported.blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = exported.fileName;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      setMessage(`Se preparó «${exported.fileName}» por bloques. Límite: 20 MiB por versión.`);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : "No se pudo crear la copia Parquet portable.");
     } finally {
       if (objectUrl) window.setTimeout(() => URL.revokeObjectURL(objectUrl!), 1_000);
       setBusy(false);
@@ -1246,6 +1269,7 @@ export default function TransformationsView({
                   <td className="space-x-2">
                     <button type="button" disabled={busy} onClick={() => void downloadVersion(version, "csv")} aria-label={`Exportar ${version.name} a CSV`} className="underline">CSV</button>
                     <button type="button" disabled={busy} onClick={() => void downloadVersion(version, "parquet")} aria-label={`Exportar ${version.name} a Parquet`} className="underline">Parquet</button>
+                    <button type="button" disabled={busy} onClick={() => void downloadPortableParquet(version)} aria-label={`Copia portable de ${version.name} en Parquet`} className="underline">Copia limitada</button>
                   </td>
                 </tr>
               ))}
@@ -1253,7 +1277,7 @@ export default function TransformationsView({
           </table>
         </div>
         <p className="text-sm text-gray-600">
-          CSV antepone un apóstrofo a encabezados y textos que podrían ejecutarse como fórmulas al abrirlos en una hoja de cálculo. Parquet conserva los valores. La versión en el motor no se altera.
+          CSV antepone un apóstrofo a encabezados y textos que podrían ejecutarse como fórmulas al abrirlos en una hoja de cálculo. Parquet conserva los valores. La copia portable escribe por batches y limita cada versión a 20 MiB; no contiene metadatos del proyecto. La versión en el motor no se altera.
         </p>
       </section>
       <section className="space-y-2" aria-labelledby="comparar-versiones">
