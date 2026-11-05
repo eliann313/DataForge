@@ -107,12 +107,20 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
           service.listProjects(),
           service.listFolders(),
         ]);
-        const cleanup = await service.recoverPendingProjectArtifactsCleanup();
+        let cleanupProjectIds: string[] = [];
+        let cleanupErrors: string[] = [];
+        try {
+          const cleanup = await service.recoverPendingProjectArtifactsCleanup();
+          cleanupProjectIds = cleanup.projectIds;
+          cleanupErrors = cleanup.errors;
+        } catch (cause) {
+          cleanupErrors = [messageOf(cause)];
+        }
         if (!cancelled) {
           setProjects(p);
           setFolders(f);
-          setCleanupPendingProjectIds(cleanup.projectIds);
-          setError(cleanup.errors.length > 0 ? cleanup.errors.join(" ") : null);
+          setCleanupPendingProjectIds(cleanupProjectIds);
+          setError(cleanupErrors.length > 0 ? cleanupErrors.join(" ") : null);
         }
       } catch (cause) {
         if (!cancelled) setError(messageOf(cause));
