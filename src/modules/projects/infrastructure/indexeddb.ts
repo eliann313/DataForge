@@ -1,20 +1,21 @@
 // Adaptadores IndexedDB de metadatos de projects (fase 1 / E3).
 // - Solo navegador: `typeof indexedDB === "undefined"` → error explícito
 //   (nunca se toca en SSR/build).
-// - Esquema versionado (hoy v1) con registro en `meta`; si el almacenado es
+// - Esquema versionado (hoy v2) con registro en `meta`; si el almacenado es
 //   mayor que el soportado se rechaza (sin migraciones silenciosas).
 // - Cada método = una transacción (sin estados parciales por operación).
 import { ProjectError } from "../domain/errors";
 import type { Folder } from "../domain/folder";
 import type { Project } from "../domain/project";
-import type { FolderRepository, ProjectRepository } from "../application/ports";
+import type { FolderRepository, ProjectCleanupIntent, ProjectCleanupJournal, ProjectRepository } from "../application/ports";
 import { matchesQuery } from "./memory";
 
 const DB_NAME = "dataforge";
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const PROJECTS = "projects";
 const FOLDERS = "folders";
 const META = "meta";
+const CLEANUP_INTENTS = "cleanup-intents";
 
 function failed(operation: string, cause: unknown): ProjectError {
   if (cause instanceof ProjectError) return cause;
@@ -81,22 +82,26 @@ class Connection {
           if (!db.objectStoreNames.contains(META)) {
             db.createObjectStore(META, { keyPath: "key" });
           }
+          if (!db.objectStoreNames.contains(CLEANUP_INTENTS)) {
+            db.createObjectStore(CLEANUP_INTENTS, { keyPath: "projectId" });
+          }
         };
-        req.onsuccess = () => resolve(req.result);
+        req.onsuccess = () => {
+          const db = req.result;
+          db.onversionchange = () => this.close();
+          resolve(db);
+        };
         req.onerror = () => reject(req.error ?? new Error("Apertura fallida"));
         req.onblocked = () =>
           reject(new Error("Apertura bloqueada por otra pestaña"));
-      }).then(
-        async (db) => {
+      }).then(async (db) => {
           await this.checkSchemaVersion(db);
           this.db = db;
           return db;
-        },
-        (cause: unknown) => {
+        }).catch((cause: unknown) => {
           this.opening = null;
           throw cause;
-        },
-      );
+        });
     }
     return this.opening;
   }
@@ -125,7 +130,7 @@ class Connection {
       );
     }
     try {
-      if (!existing) store.put({ key: "schemaVersion", version: SCHEMA_VERSION });
+      if (!existing || existing.version < SCHEMA_VERSION) store.put({ key: "schemaVersion", version: SCHEMA_VERSION });
       await transactionDone(tx);
     } catch (cause) {
       throw failed("versionado de esquema", cause);
@@ -280,5 +285,54 @@ export class IndexedDBFolderRepository
     } catch (cause) {
       throw failed("baja de carpeta", cause);
     }
+  }
+}
+
+/** Persist cleanup intents atomically with the user initiated project deletion. */
+export class IndexedDBProjectCleanupJournal extends Connection implements ProjectCleanupJournal {
+  async deleteProjectAndRecordIntent(projectId: string, createdAt: string): Promise<void> {
+    const db = await this.open();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction([PROJECTS, CLEANUP_INTENTS], "readwrite");
+      const projects = tx.objectStore(PROJECTS);
+      const request = projects.get(projectId);
+      let failure: Error | null = null;
+      request.onsuccess = () => {
+        if (request.result === undefined) {
+          failure = new ProjectError("project-not-found", "Proyecto inexistente.");
+          tx.abort();
+          return;
+        }
+        tx.objectStore(CLEANUP_INTENTS).put({ projectId, createdAt } satisfies ProjectCleanupIntent);
+        projects.delete(projectId);
+      };
+      request.onerror = () => reject(request.error ?? new Error("No se pudo leer el proyecto para eliminarlo."));
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(failure ?? tx.error ?? new Error("Se canceló la eliminación del proyecto."));
+      tx.onerror = () => reject(tx.error ?? new Error("Falló la eliminación del proyecto."));
+    });
+  }
+
+  async listPending(): Promise<ProjectCleanupIntent[]> {
+    const db = await this.open();
+    const tx = db.transaction(CLEANUP_INTENTS, "readonly");
+    const rows = await request<unknown[]>(tx.objectStore(CLEANUP_INTENTS).getAll());
+    await transactionDone(tx);
+    const valid = rows.every((row) => {
+      if (!row || typeof row !== "object") return false;
+      const intent = row as Partial<ProjectCleanupIntent>;
+      return typeof intent.projectId === "string" && intent.projectId.trim().length > 0
+        && typeof intent.createdAt === "string" && Number.isFinite(Date.parse(intent.createdAt));
+    });
+    if (!valid) throw new ProjectError("storage-failed", "El registro persistente de limpieza está dañado; no se limpió ningún proyecto.");
+    return rows as ProjectCleanupIntent[];
+  }
+
+  async complete(projectId: string): Promise<void> {
+    if (!projectId.trim()) return;
+    const db = await this.open();
+    const tx = db.transaction(CLEANUP_INTENTS, "readwrite");
+    tx.objectStore(CLEANUP_INTENTS).delete(projectId);
+    await transactionDone(tx);
   }
 }

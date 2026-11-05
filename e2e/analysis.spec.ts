@@ -38,6 +38,88 @@ test("descriptivos exactos con definiciones visibles", async ({ page }) => {
   await expect(v.getByText(/muestrales \(n−1\)/)).toBeVisible();
 });
 
+test("guarda un snapshot por proyecto y muestra resultados históricos tras recargar sin vincular la fuente", async ({ page }) => {
+  const project = `Snapshots-${Date.now()}`;
+  await page.getByRole("button", { name: /^inicio$/i }).click();
+  await page.getByLabel(/nombre de proyecto nuevo/i).fill(project);
+  await page.getByRole("button", { name: /^crear proyecto$/i }).click();
+  await expect(page.getByText(project, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByLabel(`Abrir ${project}`).check();
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.locator("#csv-file").setInputFiles({ name: "clientes.csv", mimeType: "text/csv", buffer: Buffer.from("id,importe\n1,404.25\n2,215.50\n", "utf8") });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("clientes.csv: 2 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.locator("#csv-file").setInputFiles({ name: "regiones.csv", mimeType: "text/csv", buffer: Buffer.from("customer_id,region\n1,Norte\n2,Sur\n", "utf8") });
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("regiones.csv: 2 filas, 2 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  const combinations = page.locator('section[aria-labelledby="combinaciones-datasets"]');
+  await combinations.getByRole("button", { name: /^join$/i }).click();
+  await combinations.getByLabel("Fuente izquierda").selectOption({ label: "clientes.csv · 2 filas" });
+  await combinations.getByLabel("Fuente derecha").selectOption({ label: "regiones.csv · 2 filas" });
+  await combinations.getByLabel("Tipo de JOIN").selectOption("inner");
+  await combinations.getByLabel("Cardinalidad del JOIN").selectOption("one-to-one");
+  await combinations.getByRole("button", { name: /agregar par de claves/i }).click();
+  await combinations.getByLabel("Clave izquierda JOIN 1").selectOption("id");
+  await combinations.getByLabel("Clave derecha JOIN 1").selectOption("customer_id");
+  await combinations.getByRole("button", { name: /vista previa join/i }).click();
+  await combinations.getByRole("button", { name: /crear versión join/i }).click();
+  await expect(page.locator('section[aria-labelledby="pipeline-versiones"]').getByText(/Relacionar fuentes · JOIN \(activa\)/)).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  const v = view(page);
+  await v.getByLabel(/columna numérica/i).selectOption("importe");
+  await v.getByRole("button", { name: /^calcular$/i }).first().click();
+  await expect(v.getByText("404.25", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await v.locator("#desc-col").selectOption("");
+  await v.locator("#snapshot-title").fill("Resumen de ventas");
+  await v.getByRole("button", { name: /guardar snapshot/i }).click();
+  await expect(v.getByRole("status")).toContainText(/snapshot guardado/i);
+
+  await page.reload();
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  await expect(view(page).getByRole("button", { name: "Resumen de ventas" })).toBeVisible({ timeout: 15_000 });
+  await expect(view(page).getByText(/fuente no disponible en esta sesión/)).toBeVisible();
+  await view(page).getByRole("button", { name: "Resumen de ventas" }).click();
+  await expect(view(page).getByLabel("Resultado guardado")).toContainText("404.25");
+  await expect(view(page).getByLabel("Resultado guardado")).toContainText('"column": "importe"');
+  const historicalLineage = view(page).getByLabel("Linaje del snapshot");
+  await expect(historicalLineage).toContainText('"operationType": "join"');
+  await expect(historicalLineage).toContainText('"name": "clientes.csv"');
+  await expect(historicalLineage).toContainText('"name": "regiones.csv"');
+  await expect(historicalLineage).toContainText('"parentIds"');
+  await expect(view(page).getByText(/no se vincula automáticamente/)).toBeVisible();
+
+  const otherProject = `Snapshots-otro-${Date.now()}`;
+  await page.getByRole("button", { name: /^inicio$/i }).click();
+  await page.getByLabel(/nombre de proyecto nuevo/i).fill(otherProject);
+  await page.getByRole("button", { name: /^crear proyecto$/i }).click();
+  await expect(page.getByText(otherProject, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByLabel(`Abrir ${otherProject}`).check();
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  await expect(view(page).getByLabel("Resultado guardado")).toHaveCount(0);
+  await expect(view(page).getByRole("button", { name: "Resumen de ventas" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /^inicio$/i }).click();
+  const deletedProjectRow = page.getByRole("listitem").filter({ hasText: project });
+  await deletedProjectRow.getByRole("button", { name: "Eliminar" }).click();
+  const confirmDelete = page.getByRole("dialog", { name: "Eliminar proyecto" });
+  await expect(confirmDelete).toContainText(/sus artefactos guardados en este dispositivo se eliminarán/);
+  await confirmDelete.getByRole("button", { name: "Eliminar" }).click();
+  await expect(page.getByText(project, { exact: true })).toHaveCount(0);
+  const remainingSnapshots = await page.evaluate(async () => new Promise<number>((resolve, reject) => {
+    const request = indexedDB.open("dataforge-analysis-snapshots", 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction("snapshots", "readonly");
+      const keys = tx.objectStore("snapshots").getAllKeys();
+      keys.onsuccess = () => { resolve(keys.result.length); db.close(); };
+      keys.onerror = () => reject(keys.error);
+    };
+  }));
+  expect(remainingSnapshots).toBe(0);
+});
+
 test("frecuencias con denominadores visibles", async ({ page }) => {
   await view(page).locator("#freq-col").selectOption("producto");
   await view(page).getByRole("button", { name: /^calcular$/i }).nth(1).click();

@@ -3,7 +3,7 @@
 > **Versión:** 1.0 — 10 de octubre de 2026  
 > **Repositorio:** [eliann313/DataForge](https://github.com/eliann313/DataForge) · Rama principal: **main**  
 > **Estado al redactar (10-10-2026):** planificación y documentación, sin código de aplicación. Ese estado es histórico; R1 se cerró el 12-10-2026 y el checkout actual contiene la aplicación.
-> **Fase activa al redactar:** **0A — Fundamento tabular**. **Fase actual:** R2 / fase 4; primer corte de pipelines local, no publicado.
+> **Fase activa al redactar:** **0A — Fundamento tabular**. **Fase actual:** R2 / fase 5; fase 4 integrada y verificada, con datos y versiones limitados a la sesión.
 > **Carácter:** documento de transferencia de contexto para colaboradores y agentes de IA, **no una orden de implementar todas las fases**.
 
 Este documento consolida la visión, el MVP, la arquitectura, el modelo de datos, las decisiones, el roadmap completo y las reglas de ejecución. Es una **fotografía de planificación**: antes de modificar el proyecto se debe inspeccionar el estado real del repositorio. En caso de divergencia, las implementaciones verificadas, pruebas y ADR aceptados tienen prioridad; el alcance inmediato se controla en [MVP.md](./MVP.md), el detalle vivo de fases en [roadmap.md](./roadmap.md) y las reglas para agentes en [AGENTS.md](../AGENTS.md).
@@ -752,4 +752,4 @@ El objetivo es hacer **análisis útiles, correctos y reproducibles con mínima 
 
 > **Primero construir una aplicación que resuelva correctamente problemas comunes de análisis de datos. Después aumentar su profundidad científica, especialización e integración.**
 
-La complejidad tecnológica debe responder a necesidades medibles, no a la acumulación de frameworks o algoritmos. R1 está cerrado; el trabajo actual continúa en **R2/fase 4**, comenzando por pipelines reproducibles que preservan la fuente. Completar 0B/0C sigue siendo opcional y no bloquea R2.
+La complejidad tecnológica debe responder a necesidades medibles, no a la acumulación de frameworks o algoritmos. R1 y R2/fase 4 están cerrados; el trabajo actual continúa en **R2/fase 5** con snapshots, informes y respaldo portable. Completar 0B/0C sigue siendo opcional y no bloquea R2.

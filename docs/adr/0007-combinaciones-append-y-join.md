@@ -1,6 +1,6 @@
 # ADR-0007 — Semántica y validación de APPEND/JOIN
 
-- **Estado:** Aceptado localmente (2026-10-12, PR #16; pendiente de revisión e integración).
+- **Estado:** Aceptado e integrado en `main` (PR #16/#17).
 - **Relacionados:** [ADR-0004](./0004-versiones-derivadas-de-pipelines.md), [ADR-0006](./0006-multiples-datasets-en-sesion.md), [roadmap](../roadmap.md).
 
 ## Contexto

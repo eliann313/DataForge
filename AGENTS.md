@@ -6,7 +6,7 @@ Este archivo reúne las reglas de trabajo con agentes de IA. El [README](./READM
 
 1. Leer, en este orden: [README](./README.md), [MVP](./docs/MVP.md), [roadmap](./docs/roadmap.md), [arquitectura](./docs/architecture.md) y los [ADR](./docs/adr/README.md) relevantes.
 2. Revisar el **estado real del repositorio**: contiene aplicación, documentación y pruebas. No describir como implementado lo que solo está planificado; la evidencia del código y sus verificaciones tiene prioridad sobre snapshots antiguos.
-3. Respetar la **fase activa** y sus criterios de aceptación. R1 (E1–E6) está cerrado; la fase activa es R2, fase 4. Confirmar el avance en `docs/primeras-entregas.md` y `docs/roadmap.md`. No agregar funcionalidades de fases posteriores porque aparezcan en un mockup.
+3. Respetar la **fase activa** y sus criterios de aceptación. R1 (E1–E6) y R2/fase 4 están cerrados; la fase activa es R2, fase 5. Confirmar el avance en `docs/primeras-entregas.md` y `docs/roadmap.md`. No agregar funcionalidades de fases posteriores porque aparezcan en un mockup.
 
 ## 2. Arquitectura
 
@@ -58,6 +58,10 @@ Proteger frente a archivos malformados o hostiles (ZIP/XML), inyección SQL, iny
 1. Registrar decisiones de arquitectura en [`docs/adr`](./docs/adr/README.md) y actualizar el roadmap al avanzar.
 2. Mantener README y documentos alineados con la implementación real.
 3. Seguir el estilo de commits existente (Conventional Commits: `docs:`, `feat:`, `fix:`, etc.).
+
+## 8. Trabajo temporal
+
+Usar `scratch/` en la raíz para pruebas y archivos temporales locales. Al terminar, eliminar solo los temporales generados por la tarea cuando ya no sean necesarios; preservar los archivos ajenos. No guardar allí documentación, fixtures ni otros archivos que deban versionarse.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

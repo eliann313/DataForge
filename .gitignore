@@ -15,3 +15,6 @@ benchmarks/data/
 # sistema
 .DS_Store
 *.local
+
+# trabajo temporal local
+/scratch/

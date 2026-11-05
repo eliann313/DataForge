@@ -19,3 +19,15 @@ export interface FolderRepository {
   listByParent(parentId: string | null): Promise<Folder[]>;
   delete(id: string): Promise<void>;
 }
+
+export interface ProjectCleanupIntent {
+  projectId: string;
+  createdAt: string;
+}
+
+/** Persistente y separada del borrado crudo usado por importación/rollback. */
+export interface ProjectCleanupJournal {
+  deleteProjectAndRecordIntent(projectId: string, createdAt: string): Promise<void>;
+  listPending(): Promise<ProjectCleanupIntent[]>;
+  complete(projectId: string): Promise<void>;
+}

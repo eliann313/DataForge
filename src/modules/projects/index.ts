@@ -8,6 +8,8 @@ export { ProjectError, type ProjectErrorCode } from "./domain/errors";
 export type {
   ProjectRepository,
   FolderRepository,
+  ProjectCleanupIntent,
+  ProjectCleanupJournal,
 } from "./application/ports";
 export { ProjectsService, type ServiceDeps } from "./application/service";
 export {
@@ -17,5 +19,6 @@ export {
 export {
   IndexedDBProjectRepository,
   IndexedDBFolderRepository,
+  IndexedDBProjectCleanupJournal,
 } from "./infrastructure/indexeddb";
 export { ProjectsProvider, useProjects } from "./presentation/ProjectsContext";

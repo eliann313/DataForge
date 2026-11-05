@@ -96,6 +96,22 @@ export class IndexedDBPipelineDefinitionRepository implements PipelineDefinition
     }
   }
 
+  async deleteProject(projectId: string): Promise<void> {
+    if (!projectId.trim()) return;
+    try {
+      const db = await this.open();
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const request = store.index("by-project").getAllKeys(IDBKeyRange.only(projectId));
+      request.onsuccess = () => {
+        for (const key of request.result) store.delete(key);
+      };
+      await transactionDone(tx);
+    } catch (cause) {
+      throw storageError("eliminar definiciones del proyecto", cause);
+    }
+  }
+
   private async open(): Promise<IDBDatabase> {
     if (this.db) return this.db;
     if (typeof indexedDB === "undefined") {

@@ -11,7 +11,12 @@ import AnalysisView from "./views/AnalysisView";
 import FinanceView from "./views/FinanceView";
 import InicioView, { type ExampleDataset } from "./views/InicioView";
 import TransformationsView from "./views/TransformationsView";
+import { ReportsView, IndexedDBReportRepository } from "@/modules/reports";
+import { IndexedDBAnalysisSnapshotRepository } from "@/modules/analysis";
 import type { ExampleRequest } from "@/platform/engines/duckdb/ImportPanel";
+
+const reportRepository = new IndexedDBReportRepository();
+const snapshotRepository = new IndexedDBAnalysisSnapshotRepository();
 
 // Shell E3: sidebar oscura, contenido claro, inspector contextual.
 // Sin rutas dinámicas (exportación estática): la vista es estado local.
@@ -84,6 +89,9 @@ function WorkspaceHome() {
               ) : view === "transformaciones" ? (
                 <TransformationsView onImportData={() => navigate("datos")} />
               ) : null}
+              <div hidden={view !== "informes"}>
+                <ReportsView reports={reportRepository} snapshots={snapshotRepository} active={view === "informes"} />
+              </div>
             </main>
             <Inspector />
           </div>

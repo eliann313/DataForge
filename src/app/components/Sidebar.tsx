@@ -1,8 +1,6 @@
 "use client";
 
-// Navegación documentada (docs/design/README.md §3). Solo Inicio y Datos
-// están disponibles en E3; el resto se muestra deshabilitado con aviso,
-// no como funcionalidad.
+// Navegación documentada (docs/design/README.md §3).
 export type ViewName =
   | "inicio"
   | "datos"
@@ -19,7 +17,7 @@ const ITEMS: { id: ViewName; label: string; ready: boolean }[] = [
   { id: "finanzas", label: "Finanzas", ready: true },
   { id: "transformaciones", label: "Transformaciones", ready: true },
   { id: "laboratorio", label: "Laboratorio", ready: false },
-  { id: "informes", label: "Informes", ready: false },
+  { id: "informes", label: "Informes", ready: true },
 ];
 
 export default function Sidebar({

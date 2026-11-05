@@ -8,11 +8,14 @@
 import { ProjectError } from "../domain/errors";
 import { validateFolderName, type Folder } from "../domain/folder";
 import { validateProjectName, type Project } from "../domain/project";
-import type { FolderRepository, ProjectRepository } from "./ports";
+import type { FolderRepository, ProjectCleanupJournal, ProjectRepository } from "./ports";
 
 export interface ServiceDeps {
   projects: ProjectRepository;
   folders: FolderRepository;
+  cleanupJournal?: ProjectCleanupJournal;
+  /** Limpieza de registros pertenecientes al proyecto en almacenes separados. */
+  deleteProjectArtifacts?: (projectId: string) => Promise<void>;
   now?: () => string;
   generateId?: () => string;
 }
@@ -20,12 +23,17 @@ export interface ServiceDeps {
 export class ProjectsService {
   private readonly projects: ProjectRepository;
   private readonly folders: FolderRepository;
+  private readonly deleteProjectArtifacts?: (projectId: string) => Promise<void>;
+  private readonly cleanupJournal?: ProjectCleanupJournal;
+  private readonly pendingArtifactCleanupIds = new Set<string>();
   private readonly now: () => string;
   private readonly generateId: () => string;
 
   constructor(deps: ServiceDeps) {
     this.projects = deps.projects;
     this.folders = deps.folders;
+    this.deleteProjectArtifacts = deps.deleteProjectArtifacts;
+    this.cleanupJournal = deps.cleanupJournal;
     this.now = deps.now ?? (() => new Date().toISOString());
     this.generateId = deps.generateId ?? (() => crypto.randomUUID());
   }
@@ -73,8 +81,65 @@ export class ProjectsService {
   }
 
   async deleteProject(id: string): Promise<void> {
-    await this.requireProject(id);
-    await this.projects.delete(id);
+    if (this.cleanupJournal) await this.cleanupJournal.deleteProjectAndRecordIntent(id, this.now());
+    else {
+      await this.requireProject(id);
+      await this.projects.delete(id);
+    }
+    if (this.deleteProjectArtifacts) {
+      try {
+        await this.cleanupArtifactsAndClearIntent(id);
+      } catch (cause) {
+        this.pendingArtifactCleanupIds.add(id);
+        throw this.cleanupError(cause);
+      }
+    } else if (this.cleanupJournal) {
+      this.pendingArtifactCleanupIds.add(id);
+      throw this.cleanupError(new Error("No hay un limpiador de artefactos configurado."));
+    }
+  }
+
+  async retryProjectArtifactsCleanup(id: string): Promise<void> {
+    if (!this.deleteProjectArtifacts) throw new ProjectError("project-cleanup-failed", "La limpieza de datos locales no está configurada.");
+    const persistedPending = this.cleanupJournal
+      ? (await this.cleanupJournal.listPending()).some((intent) => intent.projectId === id)
+      : false;
+    if (!this.pendingArtifactCleanupIds.has(id) && !persistedPending) {
+      throw new ProjectError("project-cleanup-failed", "No hay una limpieza de proyecto pendiente para este ID en esta sesión.");
+    }
+    if (await this.projects.findById(id)) {
+      throw new ProjectError("project-cleanup-failed", "El ID vuelve a pertenecer a un proyecto activo; no se borraron sus datos.");
+    }
+    try {
+      await this.cleanupArtifactsAndClearIntent(id);
+      this.pendingArtifactCleanupIds.delete(id);
+    } catch (cause) {
+      throw this.cleanupError(cause);
+    }
+  }
+
+  async recoverPendingProjectArtifactsCleanup(): Promise<{ projectIds: string[]; errors: string[] }> {
+    if (!this.cleanupJournal) return { projectIds: [...this.pendingArtifactCleanupIds], errors: [] };
+    const [intents, projects] = await Promise.all([this.cleanupJournal.listPending(), this.projects.list()]);
+    const activeIds = new Set(projects.map((project) => project.id));
+    const pending: string[] = [];
+    const errors: string[] = [];
+    for (const intent of intents) {
+      if (activeIds.has(intent.projectId)) {
+        pending.push(intent.projectId);
+        errors.push(`No se limpiaron datos de ${intent.projectId}: el ID pertenece a un proyecto activo.`);
+        continue;
+      }
+      try {
+        await this.cleanupArtifactsAndClearIntent(intent.projectId);
+        this.pendingArtifactCleanupIds.delete(intent.projectId);
+      } catch (cause) {
+        pending.push(intent.projectId);
+        this.pendingArtifactCleanupIds.add(intent.projectId);
+        errors.push(this.cleanupError(cause).message);
+      }
+    }
+    return { projectIds: pending, errors };
   }
 
   getProject(id: string): Promise<Project> {
@@ -197,6 +262,20 @@ export class ProjectsService {
       current = folder ? folder.parentId : null;
     }
     return false;
+  }
+
+  private cleanupError(cause: unknown): ProjectError {
+    const detail = cause instanceof Error && cause.message ? `: ${cause.message}` : ".";
+    return new ProjectError(
+      "project-cleanup-failed",
+      `El proyecto fue eliminado, pero no se pudieron limpiar todos sus artefactos locales${detail} Los registros restantes siguen aislados bajo el ID eliminado; use la acción de reintento para limpiarlos.`,
+    );
+  }
+
+  private async cleanupArtifactsAndClearIntent(projectId: string): Promise<void> {
+    if (!this.deleteProjectArtifacts) throw new Error("No hay un limpiador de artefactos configurado.");
+    await this.deleteProjectArtifacts(projectId);
+    await this.cleanupJournal?.complete(projectId);
   }
 }
 

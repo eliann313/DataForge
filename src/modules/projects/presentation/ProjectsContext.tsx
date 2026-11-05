@@ -13,7 +13,10 @@ import { ProjectsService } from "../application/service";
 import { ProjectError } from "../domain/errors";
 import type { Folder } from "../domain/folder";
 import type { Project } from "../domain/project";
-import { IndexedDBFolderRepository, IndexedDBProjectRepository } from "../infrastructure/indexeddb";
+import { IndexedDBFolderRepository, IndexedDBProjectCleanupJournal, IndexedDBProjectRepository } from "../infrastructure/indexeddb";
+import { IndexedDBAnalysisSnapshotRepository } from "../../analysis";
+import { IndexedDBPipelineDefinitionRepository } from "../../pipelines";
+import { IndexedDBReportRepository } from "../../reports/infrastructure/indexeddb";
 
 const ACTIVE_KEY = "df-active-project";
 
@@ -37,6 +40,8 @@ interface ProjectsState {
   moveFolder: (id: string, parentId: string | null) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
   dismissError: () => void;
+  cleanupPendingProjectIds: string[];
+  retryProjectCleanup: (projectId: string) => Promise<void>;
 }
 
 const Context = createContext<ProjectsState | null>(null);
@@ -53,6 +58,12 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
       new ProjectsService({
         projects: new IndexedDBProjectRepository(),
         folders: new IndexedDBFolderRepository(),
+        cleanupJournal: new IndexedDBProjectCleanupJournal(),
+        deleteProjectArtifacts: async (projectId) => {
+          await new IndexedDBAnalysisSnapshotRepository().deleteProject(projectId);
+          await new IndexedDBPipelineDefinitionRepository().deleteProject(projectId);
+          await new IndexedDBReportRepository().deleteProject(projectId);
+        },
       }),
     [],
   );
@@ -68,6 +79,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
   });
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cleanupPendingProjectIds, setCleanupPendingProjectIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
 
   const refresh = useCallback(async () => {
@@ -97,10 +109,20 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
           service.listProjects(),
           service.listFolders(),
         ]);
+        let cleanupProjectIds: string[] = [];
+        let cleanupErrors: string[] = [];
+        try {
+          const cleanup = await service.recoverPendingProjectArtifactsCleanup();
+          cleanupProjectIds = cleanup.projectIds;
+          cleanupErrors = cleanup.errors;
+        } catch (cause) {
+          cleanupErrors = [messageOf(cause)];
+        }
         if (!cancelled) {
           setProjects(p);
           setFolders(f);
-          setError(null);
+          setCleanupPendingProjectIds(cleanupProjectIds);
+          setError(cleanupErrors.length > 0 ? cleanupErrors.join(" ") : null);
         }
       } catch (cause) {
         if (!cancelled) setError(messageOf(cause));
@@ -130,6 +152,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
         await refresh();
         setError(null);
       } catch (cause) {
+        if (cause instanceof ProjectError && cause.code === "project-cleanup-failed") await refresh();
         setError(messageOf(cause));
         throw cause;
       }
@@ -160,8 +183,16 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
     moveProject: (id, folderId) =>
       mutate(() => service.moveProject(id, folderId)).then(() => {}),
     deleteProject: async (id) => {
-      await mutate(() => service.deleteProject(id));
-      if (activeId === id) select(null);
+      try {
+        await mutate(() => service.deleteProject(id));
+        if (activeId === id) select(null);
+      } catch (cause) {
+        if (cause instanceof ProjectError && cause.code === "project-cleanup-failed") {
+          setCleanupPendingProjectIds((ids) => ids.includes(id) ? ids : [...ids, id]);
+          if (activeId === id) select(null);
+        }
+        throw cause;
+      }
     },
     createFolder: async (name, parentId) => {
       let created!: Folder;
@@ -175,6 +206,18 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
       mutate(() => service.moveFolder(id, parentId)).then(() => {}),
     deleteFolder: (id) => mutate(() => service.deleteFolder(id)).then(() => {}),
     dismissError: () => setError(null),
+    cleanupPendingProjectIds,
+    retryProjectCleanup: async (projectId) => {
+      if (!cleanupPendingProjectIds.includes(projectId)) return;
+      try {
+        await service.retryProjectArtifactsCleanup(projectId);
+        setCleanupPendingProjectIds((ids) => ids.filter((id) => id !== projectId));
+        setError(cleanupPendingProjectIds.length > 1 ? "Todavía quedan limpiezas de snapshots pendientes." : null);
+      } catch (cause) {
+        setError(messageOf(cause));
+        throw cause;
+      }
+    },
   };
 
   return <Context.Provider value={value}>{children}</Context.Provider>;

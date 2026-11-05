@@ -33,6 +33,12 @@ for (const asset of ASSETS) {
   for (const file of asset.files) {
     const from = join(asset.source, file);
     const to = join(asset.destination, file);
+    if (!existsSync(from)) {
+      const setupHint = asset.source.startsWith(join(root, "node_modules"))
+        ? "La dependencia instalada puede faltar o corresponder a otra rama; ejecuta `npm ci` y vuelve a ejecutar `npm run dev`."
+        : "Comprueba que el checkout incluya los assets requeridos.";
+      throw new Error(`vendor-assets: falta el archivo requerido ${from}. ${setupHint}`);
+    }
     const fromStat = statSync(from);
     let fresh = false;
     if (existsSync(to)) {
