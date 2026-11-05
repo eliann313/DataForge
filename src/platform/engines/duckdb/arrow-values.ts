@@ -25,3 +25,12 @@ export function normalizeArrowValue(value: unknown, ancestors = new WeakSet<obje
   ancestors.delete(value);
   return normalized;
 }
+
+/** Serializa celdas estructuradas convirtiendo BigInt incluso tras toJSON(). */
+export function stringifyArrowValue(value: unknown): string | undefined {
+  return JSON.stringify(normalizeArrowValue(value), (_key, item: unknown) => {
+    if (typeof item !== "bigint") return item;
+    const number = Number(item);
+    return Number.isSafeInteger(number) ? number : String(item);
+  });
+}

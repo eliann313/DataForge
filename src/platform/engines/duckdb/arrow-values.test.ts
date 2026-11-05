@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeArrowValue } from "./arrow-values";
+import { normalizeArrowValue, stringifyArrowValue } from "./arrow-values";
 
 describe("normalizeArrowValue", () => {
   it("normaliza BigInt en structs y listas sin perder enteros grandes", () => {
@@ -31,5 +31,15 @@ describe("normalizeArrowValue", () => {
     expect(normalized.date).toBe(date);
     expect(normalized.bytes).toBe(bytes);
     expect(JSON.stringify(normalized)).toBe('{"date":"2024-01-02T03:04:05.000Z","bytes":{"0":1,"1":2,"2":3}}');
+  });
+
+  it("serializa BigInt devuelto por toJSON en objetos con prototipo", () => {
+    class ArrowLikeStruct {
+      toJSON() {
+        return { nested: [BigInt("9007199254740993")] };
+      }
+    }
+
+    expect(stringifyArrowValue(new ArrowLikeStruct())).toBe('{"nested":["9007199254740993"]}');
   });
 });
