@@ -18,6 +18,7 @@ import type {
 import { escapeIdentifier } from "./contract";
 import { arrowReaderToParquetStream, readBoundedStreamToBlob } from "./parquet-stream";
 import { isNumericMeasure, ROLES, suggestRole, type SemanticRole } from "./semantics";
+import { normalizeArrowValue } from "./arrow-values";
 import {
   MAX_CSV_BYTES,
   checkCSVFile,
@@ -2198,12 +2199,7 @@ function toJSONRows(table: { toArray(): Array<{ toJSON(): unknown }> }): ResultR
     const row = r.toJSON() as Record<string, unknown>;
     const out: ResultRow = {};
     for (const [k, v] of Object.entries(row)) {
-      out[k] =
-        typeof v === "bigint"
-          ? Number.isSafeInteger(Number(v))
-            ? Number(v)
-            : String(v)
-          : v;
+      out[k] = normalizeArrowValue(v);
     }
     return out;
   });
