@@ -59,6 +59,10 @@ Proteger frente a archivos malformados o hostiles (ZIP/XML), inyección SQL, iny
 2. Mantener README y documentos alineados con la implementación real.
 3. Seguir el estilo de commits existente (Conventional Commits: `docs:`, `feat:`, `fix:`, etc.).
 
+## 8. Trabajo temporal
+
+Usar `scratch/` en la raíz para pruebas y archivos temporales locales. No guardar allí documentación, fixtures ni otros archivos que deban versionarse.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
