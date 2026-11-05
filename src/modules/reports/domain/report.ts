@@ -86,9 +86,34 @@ export interface ReportSnapshotView {
   id: string;
   title: string;
   createdAt: string;
-  source: { sessionId?: string; datasetName: string; rowCount: number; versionId: string; columns: Array<{ name: string; type: string; nullable?: boolean }> };
+  source: {
+    sessionId?: string;
+    datasetName: string;
+    rowCount: number;
+    versionId: string;
+    columns: Array<{ name: string; type: string; nullable?: boolean }>;
+    lineage?: ReportSnapshotLineage;
+  };
   parameters: Record<string, unknown>;
   results: Record<string, unknown>;
+}
+
+export interface ReportSnapshotLineage {
+  rootVersionId: string;
+  nodes: Array<{
+    versionId: string;
+    projectId: string;
+    name: string;
+    operationType: "source" | "pipeline" | "append" | "join";
+    sourceIds: string[];
+    parentIds: string[];
+    pipelineId: string | null;
+    executedDefinition: unknown | null;
+    rowCount: number;
+    columns: Array<{ name: string; type: string; nullable: boolean }>;
+    stepCount: number;
+    createdAt: string;
+  }>;
 }
 
 function pretty(value: unknown): string {
@@ -201,6 +226,23 @@ function renderSnapshotResults(snapshot: ReportSnapshotView): string {
   return resultBlocks.length ? resultBlocks.join("") : "<p>Este snapshot no contiene resultados compatibles para mostrar.</p>";
 }
 
+function renderSnapshotLineage(lineage: ReportSnapshotLineage | undefined): string {
+  if (!lineage?.nodes.length) return "<p>Este snapshot no conserva datos de linaje.</p>";
+  const names = new Map(lineage.nodes.map((node) => [node.versionId, node.name]));
+  const nodes = lineage.nodes.map((node) => {
+    const operation = { source: "Fuente", pipeline: "Transformación", append: "APPEND", join: "JOIN" }[node.operationType];
+    const parents = node.parentIds.length
+      ? node.parentIds.map((id) => `${names.get(id) ?? id} (${id})`).join(", ")
+      : "Sin versiones predecesoras";
+    const columns = node.columns.map((column) => `<li>${escapeHtml(column.name)} · ${escapeHtml(column.type)} · ${column.nullable ? "admite nulos" : "sin nulos"}</li>`).join("");
+    const definition = node.executedDefinition === null
+      ? ""
+      : `<details><summary>Definición ejecutada</summary><pre>${escapeHtml(pretty(node.executedDefinition))}</pre></details>`;
+    return `<li><h4>${operation}: ${escapeHtml(node.name)}</h4><p><strong>Versión:</strong> ${escapeHtml(node.versionId)} · ${escapeHtml(displayValue(node.rowCount))} filas · ${node.stepCount} pasos</p><p><strong>Fuentes:</strong> ${node.sourceIds.map(escapeHtml).join(", ")}</p><p><strong>Deriva de:</strong> ${escapeHtml(parents)}</p>${node.pipelineId ? `<p><strong>Pipeline:</strong> ${escapeHtml(node.pipelineId)}</p>` : ""}<details><summary>Esquema de esta versión (${node.columns.length} columnas)</summary><ul>${columns}</ul></details>${definition}</li>`;
+  }).join("");
+  return `<p>Linaje completo en orden de dependencias; versión analizada: ${escapeHtml(lineage.rootVersionId)}.</p><ol>${nodes}</ol>`;
+}
+
 /** Renders standalone HTML. All user and dataset text is escaped as text, never interpreted as markup. */
 export function renderReportHtml(report: Report, snapshots: ReadonlyMap<string, ReportSnapshotView>): string {
   const sections = report.sections.map((section) => {
@@ -215,7 +257,7 @@ export function renderReportHtml(report: Report, snapshots: ReadonlyMap<string, 
     const nullableColumns = source.columns.filter((column) => column.nullable === true).length;
     const parameters = Object.entries(snapshot.parameters).map(([key, value]) => `<li><strong>${escapeHtml(key)}:</strong> ${escapeHtml(pretty(value))}</li>`).join("");
     const columns = source.columns.map((column) => `<tr><th scope="row">${escapeHtml(column.name)}</th><td>${escapeHtml(column.type)}</td><td>${column.nullable === undefined ? "No informado" : column.nullable ? "Admite nulos" : "No admite nulos"}</td></tr>`).join("");
-    return `<section><h2>${escapeHtml(section.title)}</h2><p><strong>Snapshot:</strong> ${escapeHtml(snapshot.title)} · ${escapeHtml(snapshot.createdAt)}</p><h3>Fuente y esquema</h3><p><strong>Dataset:</strong> ${escapeHtml(source.datasetName)} · ${escapeHtml(displayValue(source.rowCount))} filas · versión ${escapeHtml(source.versionId)}${source.sessionId ? ` · sesión ${escapeHtml(source.sessionId)}` : ""}</p><p>${source.columns.length} columnas; ${nullableColumns} marcadas como capaces de admitir nulos según el esquema.</p><table><thead><tr><th>Columna</th><th>Tipo</th><th>Admite nulos</th></tr></thead><tbody>${columns}</tbody></table><h3>Parámetros guardados</h3>${parameters ? `<ul>${parameters}</ul>` : `<p>Sin parámetros.</p>`}<h3>Resultados congelados</h3>${renderSnapshotResults(snapshot)}</section>`;
+    return `<section><h2>${escapeHtml(section.title)}</h2><p><strong>Snapshot:</strong> ${escapeHtml(snapshot.title)} · ${escapeHtml(snapshot.createdAt)}</p><h3>Fuente y esquema</h3><p><strong>Dataset:</strong> ${escapeHtml(source.datasetName)} · ${escapeHtml(displayValue(source.rowCount))} filas · versión ${escapeHtml(source.versionId)}${source.sessionId ? ` · sesión ${escapeHtml(source.sessionId)}` : ""}</p><p>${source.columns.length} columnas; ${nullableColumns} marcadas como capaces de admitir nulos según el esquema.</p><table><thead><tr><th>Columna</th><th>Tipo</th><th>Admite nulos</th></tr></thead><tbody>${columns}</tbody></table><h3>Linaje de fuentes y transformaciones</h3>${renderSnapshotLineage(source.lineage)}<h3>Parámetros guardados</h3>${parameters ? `<ul>${parameters}</ul>` : `<p>Sin parámetros.</p>`}<h3>Resultados congelados</h3>${renderSnapshotResults(snapshot)}</section>`;
   }).join("\n");
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(report.title)}</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;color:#172033}h1{border-bottom:1px solid #ddd;padding-bottom:.5rem}section{margin:2rem 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f5f8;padding:1rem;border-radius:.5rem}table{width:100%;border-collapse:collapse;margin:1rem 0}th,td{text-align:left;border:1px solid #d7dce5;padding:.45rem;overflow-wrap:anywhere}th{background:#f4f5f8}button{padding:.5rem 1rem}figure{margin:1rem 0}figcaption{font-weight:600}@media print{button{display:none}body{max-width:none;margin:0;padding:0}tr,figure{break-inside:avoid}}</style></head><body><button type="button" onclick="window.print()">Imprimir / Guardar como PDF</button><h1>${escapeHtml(report.title)}</h1><p>Informe local · actualizado ${escapeHtml(report.updatedAt)}</p>${sections}</body></html>`;
   if (new TextEncoder().encode(html).byteLength > MAX_REPORT_HTML_BYTES) {

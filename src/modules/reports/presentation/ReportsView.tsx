@@ -33,6 +33,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
+function SnapshotLineagePreview({ lineage }: { lineage: ReportSnapshotView["source"]["lineage"] }) {
+  if (!lineage?.nodes.length) return <p className="mt-2 text-xs text-gray-500">Este snapshot no conserva datos de linaje.</p>;
+  return <details className="mt-2">
+    <summary>Linaje de {lineage.nodes.length} versiones y todas sus fuentes</summary>
+    <ol className="mt-2 list-inside list-decimal space-y-2">{lineage.nodes.map((node) => <li key={node.versionId}>
+      <strong>{node.operationType}: {node.name}</strong> · {node.rowCount} filas · {node.stepCount} pasos
+      <p className="ml-5 text-xs">Versión {node.versionId}; fuentes: {node.sourceIds.join(", ") || "ninguna"}; deriva de: {node.parentIds.join(", ") || "origen"}</p>
+      {node.pipelineId ? <p className="ml-5 text-xs">Pipeline {node.pipelineId}</p> : null}
+      {node.executedDefinition !== null ? <details className="ml-5 text-xs"><summary>Definición ejecutada</summary><pre className="mt-1 max-h-40 overflow-auto rounded bg-gray-50 p-2">{JSON.stringify(node.executedDefinition, null, 2)}</pre></details> : null}
+    </li>)}</ol>
+  </details>;
+}
+
 function SnapshotResultsPreview({ results }: { results: Record<string, unknown> }) {
   const description = results.description;
   const frequencies = results.frequencies;
@@ -227,7 +240,7 @@ export default function ReportsView({
                 <button type="button" onClick={() => moveSection(index, 1)} disabled={index === draft.sections.length - 1} aria-label="Mover sección abajo" className="rounded border px-2 py-1 disabled:opacity-40">↓</button>
                 <button type="button" onClick={() => setDraft({ ...draft, sections: draft.sections.filter((item) => item.id !== section.id) })} aria-label="Quitar sección" className="rounded border px-2 py-1">Quitar</button>
               </div>
-              {section.kind === "snapshot" ? snapshot ? <div className="text-sm text-gray-700"><p>{snapshot.source.datasetName} · {snapshot.source.rowCount} filas · {snapshot.source.columns.length} columnas</p><SnapshotResultsPreview results={snapshot.results} /></div> : <p role="status" className="text-sm text-amber-800">El snapshot referenciado no está disponible en este proyecto; se conservará la referencia en el informe.</p> : <textarea aria-label={section.title} value={section.content ?? ""} onChange={(event) => replaceSection(section.id, { content: event.target.value })} rows={5} className="block w-full rounded border px-3 py-2" placeholder="Escriba texto plano para esta sección…" />}
+              {section.kind === "snapshot" ? snapshot ? <div className="text-sm text-gray-700"><p>{snapshot.source.datasetName} · {snapshot.source.rowCount} filas · {snapshot.source.columns.length} columnas</p><SnapshotLineagePreview lineage={snapshot.source.lineage} /><SnapshotResultsPreview results={snapshot.results} /></div> : <p role="status" className="text-sm text-amber-800">El snapshot referenciado no está disponible en este proyecto; se conservará la referencia en el informe.</p> : <textarea aria-label={section.title} value={section.content ?? ""} onChange={(event) => replaceSection(section.id, { content: event.target.value })} rows={5} className="block w-full rounded border px-3 py-2" placeholder="Escriba texto plano para esta sección…" />}
             </li>;
           })}</ol>}
         </div> : <div className="rounded border bg-white p-8 text-center text-sm text-gray-600">Cree o seleccione un informe para editarlo.</div>}

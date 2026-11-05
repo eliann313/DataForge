@@ -83,6 +83,34 @@ describe("reports", () => {
     expect(renderSnapshotChartSvg({ title: "bad", kind: "bar", points: [{ label: "NaN", value: Number.NaN }] })).toContain("no tiene valores numéricos");
   });
 
+  it("includes every source and executed transform from the frozen lineage with escaped values", () => {
+    const report = createReport("p1", "Linaje", "2026-11-04T12:00:00.000Z");
+    report.sections = [{ id: "a", kind: "snapshot", title: "Proceso", snapshotId: snapshot.id }];
+    const withLineage: ReportSnapshotView = {
+      ...snapshot,
+      source: {
+        ...snapshot.source,
+        versionId: "v-join",
+        lineage: {
+          rootVersionId: "v-join",
+          nodes: [
+            { versionId: "v-base-a", projectId: "p1", name: "Fuente A <ventas>", operationType: "source", sourceIds: ["src-a"], parentIds: [], pipelineId: null, executedDefinition: null, rowCount: 4, columns: [], stepCount: 0, createdAt: "2026-11-04T11:00:00.000Z" },
+            { versionId: "v-pipe", projectId: "p1", name: "Preparación", operationType: "pipeline", sourceIds: ["src-a"], parentIds: ["v-base-a"], pipelineId: "pipeline-<1>", executedDefinition: { steps: [{ operation: "rename", name: "<script>" }] }, rowCount: 4, columns: [], stepCount: 1, createdAt: "2026-11-04T11:01:00.000Z" },
+            { versionId: "v-base-b", projectId: "p1", name: "Fuente B & gastos", operationType: "source", sourceIds: ["src-b"], parentIds: [], pipelineId: null, executedDefinition: null, rowCount: 3, columns: [], stepCount: 0, createdAt: "2026-11-04T11:02:00.000Z" },
+            { versionId: "v-join", projectId: "p1", name: "Cruce final", operationType: "join", sourceIds: ["src-a", "src-b"], parentIds: ["v-pipe", "v-base-b"], pipelineId: null, executedDefinition: null, rowCount: 5, columns: [], stepCount: 0, createdAt: "2026-11-04T11:03:00.000Z" },
+          ],
+        },
+      },
+    };
+    const html = renderReportHtml(report, new Map([[snapshot.id, withLineage]]));
+    expect(html).toContain("Fuente A &lt;ventas&gt;");
+    expect(html).toContain("Fuente B &amp; gastos");
+    expect(html).toContain("JOIN: Cruce final");
+    expect(html).toContain("pipeline-&lt;1&gt;");
+    expect(html).toContain("&quot;name&quot;: &quot;&lt;script&gt;&quot;");
+    expect(html).not.toContain("<script>");
+  });
+
   it("limits HTML export size instead of creating an oversized local file", () => {
     const report = createReport("p1", "Grande");
     const largeSnapshot = (id: string): ReportSnapshotView => ({
