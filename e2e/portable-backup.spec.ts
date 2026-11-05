@@ -152,7 +152,7 @@ test("exporta e importa snapshots e informes sin incluir ni asociar la fuente", 
   expect((restored.snapshot as { source: { lineage: { nodes: Array<{ projectId: string }> } } }).source.lineage.nodes.every((node) => node.projectId === importedProjectId)).toBe(true);
   expect(restored.report).toMatchObject({ projectId: importedProjectId, sections: [{ snapshotId: "snapshot-portable-e2e" }] });
   await page.getByRole("button", { name: "Informes", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Informes" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Informes", exact: true })).toBeVisible();
   await expect(page.getByText("Linaje de 2 versiones y todas sus fuentes")).toBeVisible();
   await expect(page.getByText("Ventas por canal")).toBeVisible();
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Folder, FolderPlus, Search, Plus, Archive, Upload } from "lucide-react";
 import { IndexedDBPipelineDefinitionRepository } from "@/modules/pipelines";
 import { IndexedDBAnalysisSnapshotRepository } from "@/modules/analysis";
 import { IndexedDBReportRepository } from "@/modules/reports";
@@ -109,46 +110,51 @@ export default function ProjectsPanel() {
   if (!ctx.loaded) return <p role="status">Cargando proyectos…</p>;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {ctx.error || ctx.cleanupPendingProjectIds.length > 0 ? (
-        <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-sm">
+        <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
           {ctx.error ?? "Quedó pendiente la limpieza local de un proyecto eliminado."}{" "}
-          {ctx.cleanupPendingProjectIds.map((id) => <button key={id} type="button" onClick={() => run(ctx.retryProjectCleanup(id))} className="mr-2 font-semibold underline">Reintentar limpieza de datos ({id})</button>)}
-          {ctx.cleanupPendingProjectIds.length === 0 ? <button type="button" onClick={ctx.dismissError} className="underline">Descartar</button> : null}
+          {ctx.cleanupPendingProjectIds.map((id) => <button key={id} type="button" onClick={() => run(ctx.retryProjectCleanup(id))} className="mr-2 font-semibold underline underline-offset-2">Reintentar limpieza de datos ({id})</button>)}
+          {ctx.cleanupPendingProjectIds.length === 0 ? <button type="button" onClick={ctx.dismissError} className="underline underline-offset-2">Descartar</button> : null}
         </p>
       ) : null}
-      {backupError ? <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-sm">{backupError}</p> : null}
-      {datasetArchiveMessage ? <p role={datasetArchiveError ? "alert" : "status"} className={`rounded border p-2 text-sm ${datasetArchiveError ? "border-red-300 bg-red-50" : "border-green-300 bg-green-50"}`}>{datasetArchiveMessage}</p> : null}
-      <p className="text-sm text-gray-600">El respaldo portable v1 incluye metadatos, definiciones de pipelines, snapshots de resultados e informes. No incluye los bytes de datasets ni versiones DuckDB; para reanudar análisis, vuelva a importar las fuentes.</p>
-      <p className="text-sm text-gray-600">El archivo opcional <code>.dfdataset</code> guarda versiones Parquet materializadas, esquema y linaje de datasets que siguen en la sesión DuckDB. No incluye carpetas, definiciones guardadas de pipelines, snapshots ni informes. Al importarlo, elija el proyecto de destino; los datos restaurados viven en el Worker hasta cerrar o recargar la página. Máximo: 20 MiB por versión y 50 MiB por archivo.</p>
-      <label className="inline-flex cursor-pointer rounded border px-3 py-1 text-sm">
-        Importar respaldo de proyecto
+      {backupError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">{backupError}</p> : null}
+      {datasetArchiveMessage ? <p role={datasetArchiveError ? "alert" : "status"} className={`rounded-lg border p-3 text-sm ${datasetArchiveError ? "border-red-200 bg-red-50 text-red-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>{datasetArchiveMessage}</p> : null}
+      <details className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+        <summary className="cursor-pointer font-medium text-slate-700">Opciones de respaldo y almacenamiento</summary>
+        <div className="mt-3 space-y-3">
+        <p>El respaldo portable v1 incluye metadatos, definiciones de pipelines, snapshots de resultados e informes. No incluye los bytes de datasets ni versiones DuckDB; para reanudar análisis, vuelva a importar las fuentes.</p>
+        <p>El archivo opcional <code>.dfdataset</code> guarda versiones Parquet materializadas, esquema y linaje de datasets que siguen en la sesión DuckDB. No incluye carpetas, definiciones guardadas de pipelines, snapshots ni informes. Al importarlo, elija el proyecto de destino; los datos restaurados viven en el Worker hasta cerrar o recargar la página. Máximo: 20 MiB por versión y 50 MiB por archivo.</p>
+        <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 font-medium text-slate-700 hover:bg-slate-100">
+        <Upload size={15} aria-hidden="true" /> Importar respaldo de proyecto
         <input type="file" accept="application/json,.json" className="sr-only" onChange={(event) => { void importBackup(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
-      </label>
+        </label>
+        </div>
+      </details>
 
       <form
         className="flex flex-wrap items-center gap-2"
         onSubmit={(e) => e.preventDefault()}
       >
-        <label htmlFor="buscar" className="text-sm font-medium">
-          Buscar:
-        </label>
+        <label htmlFor="buscar" className="sr-only">Buscar proyectos y carpetas</label>
+        <Search size={17} aria-hidden="true" className="-mr-9 ml-3 text-slate-400" />
         <input
           id="buscar"
           type="search"
           value={ctx.search}
           onChange={(e) => ctx.setSearch(e.target.value)}
-          placeholder="proyectos y carpetas"
-          className="rounded border border-gray-300 px-2 py-1 text-sm"
+          placeholder="Buscar proyectos y carpetas"
+          className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-10 pr-3 text-sm outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-100 sm:ml-auto sm:max-w-sm"
         />
       </form>
 
-      <section aria-labelledby="carpetas">
-        <h3 id="carpetas" className="mb-1 font-semibold">
+      <section aria-labelledby="carpetas" className="rounded-xl border border-slate-200 p-4">
+        <h3 id="carpetas" className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
+          <Folder size={17} aria-hidden="true" className="text-violet-700" />
           Carpetas ({folders.length})
         </h3>
         <form
-          className="mb-2 flex gap-2"
+          className="mb-3 flex flex-wrap gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             if (newFolder.trim()) {
@@ -161,16 +167,16 @@ export default function ProjectsPanel() {
             value={newFolder}
             onChange={(e) => setNewFolder(e.target.value)}
             placeholder="Nueva carpeta en la raíz"
-            className="rounded border border-gray-300 px-2 py-1 text-sm"
+            className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 sm:max-w-xs"
           />
-          <button type="submit" className="rounded bg-violet-800 px-3 py-1 text-sm font-medium text-white">
-            Crear carpeta
+          <button type="submit" className="inline-flex items-center gap-2 rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
+            <FolderPlus size={15} aria-hidden="true" /> Crear carpeta
           </button>
         </form>
         <ul className="space-y-1">
           {folders.map((f) => (
-            <li key={f.id} className="flex flex-wrap items-center gap-2 text-sm">
-              <span aria-hidden>📁</span>
+          <li key={f.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-100 bg-slate-50/70 p-3 text-sm">
+              <Folder size={16} aria-hidden="true" className="text-violet-700" />
               {renaming?.id === f.id ? (
                 <form
                   className="flex gap-1"
@@ -183,15 +189,15 @@ export default function ProjectsPanel() {
                     aria-label="Nuevo nombre de carpeta"
                     value={renaming.name}
                     onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
-                    className="rounded border border-gray-300 px-1 py-0.5 text-sm"
+                    className="rounded-md border border-slate-300 px-2 py-1 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                   />
-                  <button type="submit" className="underline">Guardar</button>
+                  <button type="submit" className="rounded px-2 py-1 font-medium text-violet-700 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600">Guardar</button>
                 </form>
               ) : (
                 <>
                   <strong>{f.name}</strong>
                   <span className="text-gray-500">en {folderName(f.parentId)}</span>
-                  <button type="button" className="underline" onClick={() => setRenaming({ id: f.id, kind: "f", name: f.name })}>
+                  <button type="button" className="rounded px-2 py-1 font-medium text-violet-700 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600" onClick={() => setRenaming({ id: f.id, kind: "f", name: f.name })}>
                     Renombrar
                   </button>
                   <label className="text-gray-600">
@@ -201,7 +207,7 @@ export default function ProjectsPanel() {
                       onChange={(e) =>
                         run(ctx.moveFolder(f.id, e.target.value || null))
                       }
-                      className="rounded border border-gray-300 px-1 py-0.5 text-sm"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                     >
                       <option value="">Raíz</option>
                       {ctx.folders.filter((x) => x.id !== f.id).map((x) => (
@@ -211,7 +217,7 @@ export default function ProjectsPanel() {
                   </label>
                   <button
                     type="button"
-                    className="text-red-700 underline"
+                    className="rounded px-2 py-1 font-medium text-red-700 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600"
                     onClick={() =>
                       setConfirm({
                         title: "Eliminar carpeta",
@@ -231,12 +237,13 @@ export default function ProjectsPanel() {
         </ul>
       </section>
 
-      <section aria-labelledby="proyectos">
-        <h3 id="proyectos" className="mb-1 font-semibold">
+      <section aria-labelledby="proyectos" className="rounded-xl border border-slate-200 p-4">
+        <h3 id="proyectos" className="mb-3 flex items-center gap-2 font-semibold text-slate-900">
+          <Archive size={17} aria-hidden="true" className="text-violet-700" />
           Proyectos ({projects.length})
         </h3>
         <form
-          className="mb-2 flex gap-2"
+          className="mb-3 flex flex-wrap gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             if (newProject.trim()) {
@@ -249,10 +256,10 @@ export default function ProjectsPanel() {
             value={newProject}
             onChange={(e) => setNewProject(e.target.value)}
             placeholder="Nuevo proyecto"
-            className="rounded border border-gray-300 px-2 py-1 text-sm"
+            className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100 sm:max-w-xs"
           />
-          <button type="submit" className="rounded bg-violet-800 px-3 py-1 text-sm font-medium text-white">
-            Crear proyecto
+          <button type="submit" className="inline-flex items-center gap-2 rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
+            <Plus size={16} aria-hidden="true" /> Crear proyecto
           </button>
         </form>
         <ul className="space-y-1">
@@ -277,9 +284,9 @@ export default function ProjectsPanel() {
                     aria-label="Nuevo nombre de proyecto"
                     value={renaming.name}
                     onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
-                    className="rounded border border-gray-300 px-1 py-0.5 text-sm"
+                    className="rounded-md border border-slate-300 px-2 py-1 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                   />
-                  <button type="submit" className="underline">Guardar</button>
+                  <button type="submit" className="rounded px-2 py-1 font-medium text-violet-700 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600">Guardar</button>
                 </form>
               ) : (
                 <>
@@ -288,12 +295,12 @@ export default function ProjectsPanel() {
                   {ctx.activeId === p.id ? (
                     <span className="rounded bg-violet-100 px-1 text-xs text-violet-900">activo</span>
                   ) : null}
-                  <button type="button" className="underline" onClick={() => setRenaming({ id: p.id, kind: "p", name: p.name })}>
+                  <button type="button" className="rounded px-2 py-1 font-medium text-violet-700 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600" onClick={() => setRenaming({ id: p.id, kind: "p", name: p.name })}>
                     Renombrar
                   </button>
-                  <button type="button" className="underline" onClick={() => void exportBackup(p.id, p.name)}>Descargar respaldo</button>
-                  <button type="button" className="underline" onClick={() => void exportDatasetArchive(p.id, p.name)}>Descargar datasets (.dfdataset)</button>
-                  <label className="cursor-pointer underline">
+                  <button type="button" className="rounded px-2 py-1 font-medium text-violet-700 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600" onClick={() => void exportBackup(p.id, p.name)}>Descargar respaldo</button>
+                  <button type="button" className="rounded px-2 py-1 font-medium text-violet-700 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600" onClick={() => void exportDatasetArchive(p.id, p.name)}>Descargar datasets (.dfdataset)</button>
+                  <label className="cursor-pointer rounded px-2 py-1 font-medium text-violet-700 underline underline-offset-2 focus-within:outline focus-within:outline-2 focus-within:outline-violet-600">
                     Importar datasets aquí
                     <input type="file" accept=".dfdataset,application/vnd.dataforge.dataset-archive" className="sr-only" onChange={(event) => { askImportDatasetArchive(event.currentTarget.files?.[0], p.id, p.name); event.currentTarget.value = ""; }} />
                   </label>
@@ -304,7 +311,7 @@ export default function ProjectsPanel() {
                       onChange={(e) =>
                         run(ctx.moveProject(p.id, e.target.value || null))
                       }
-                      className="rounded border border-gray-300 px-1 py-0.5 text-sm"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
                     >
                       <option value="">Raíz</option>
                       {ctx.folders.map((x) => (
@@ -314,7 +321,7 @@ export default function ProjectsPanel() {
                   </label>
                   <button
                     type="button"
-                    className="text-red-700 underline"
+                    className="rounded px-2 py-1 font-medium text-red-700 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-600"
                     onClick={() =>
                       setConfirm({
                         title: "Eliminar proyecto",

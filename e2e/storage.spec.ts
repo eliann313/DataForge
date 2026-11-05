@@ -21,6 +21,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("muestra la cuota real del navegador", async ({ page }) => {
+  await page.locator("details").filter({ hasText: "Información del proyecto y almacenamiento" }).locator("summary").click();
   const inspector = page.locator('aside[aria-label="Inspector"]');
   await expect(inspector.getByText(/usados de/)).toBeVisible({ timeout: 15_000 });
   await expect(inspector.getByText(/MB/)).toBeVisible();
@@ -39,11 +40,12 @@ test("la navegación conserva el proyecto activo", async ({ page }) => {
 
   await page.getByRole("button", { name: /^datos$/i }).click();
   await expect(
-    page.getByText(`Proyecto activo: «${name}».`),
+    page.getByRole("navigation", { name: "Ubicación" }).getByText(`Proyecto: ${name}`),
   ).toBeVisible({ timeout: 15_000 });
 
   await page.getByRole("button", { name: /^inicio$/i }).click();
   await expect(page.getByText(`Proyecto: ${name}`)).toBeVisible();
+  await page.locator("details").filter({ hasText: "Información del proyecto y almacenamiento" }).locator("summary").click();
   const inspector = page.locator('aside[aria-label="Inspector"]');
   await expect(inspector.getByText(name, { exact: true })).toBeVisible();
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Layers3, Upload } from "lucide-react";
 import type { DatasetSource } from "../../../modules/datasets";
 import type { ResultRow } from "./contract";
 import { DEFAULT_PAGE_SIZE } from "./csv";
@@ -368,20 +369,87 @@ export default function ImportPanel({
   const activeVersionId = datasetSnapshot.projectId === projectId ? datasetSnapshot.activeVersionId : null;
 
   return (
-    <section aria-labelledby="importar">
-      <h2 id="importar">Importar y explorar (E3–E4)</h2>
-      <p>
+    <section aria-labelledby="importar" className="space-y-5">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)]">
+      <section aria-labelledby="importar" className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <h2 id="importar" className="mb-4 text-lg font-semibold text-slate-900">Importar archivo</h2>
+      <div
+        className="flex min-h-64 flex-col items-center justify-center rounded-xl border-2 border-dashed border-violet-300 bg-violet-50/40 px-4 py-8 text-center transition-colors hover:bg-violet-50"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (event.dataTransfer.files.length > 1) {
+            fail(new Error("Importa un archivo a la vez."));
+            return;
+          }
+          const dropped = event.dataTransfer.files[0];
+          if (dropped) {
+            setFile(dropped);
+            setSheets(null);
+            void doImport(dropped);
+          }
+        }}
+      >
+        <Upload aria-hidden="true" size={38} className="mb-2 text-violet-700" />
+        <h3 className="text-xl font-semibold text-slate-900">Arrastra tus archivos aquí</h3>
+        <p className="mt-1 text-sm text-slate-600">o selecciona un archivo desde tu equipo · uno por vez</p>
+        <label className="mt-4 inline-flex cursor-pointer items-center rounded-lg bg-violet-700 px-4 py-2.5 font-semibold text-white shadow-sm hover:bg-violet-800 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50">
+          Seleccionar archivo
+          <input
+            id="csv-file"
+            type="file"
+            accept=".csv,.xlsx,.json,.parquet,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream"
+            disabled={busy}
+            className="sr-only"
+            onChange={(e) => {
+              const selected = e.target.files?.[0] ?? null;
+              setFile(selected);
+              setSheets(null);
+            }}
+          />
+        </label>
+        {file ? <div className="mt-3 flex flex-wrap items-center justify-center gap-3"><p className="text-sm text-slate-700">{file.name}</p><button type="button" disabled={busy} onClick={() => void doImport(file)} className="rounded-lg bg-violet-700 px-4 py-2 font-semibold text-white hover:bg-violet-800 disabled:opacity-50">Importar archivo</button></div> : null}
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2 text-xs font-semibold text-violet-900">
+          <span className="mr-1 text-slate-600">Formatos admitidos:</span>
+          {(["CSV", "XLSX", "JSON", "Parquet"]).map((format) => <span key={format} className="rounded-full bg-violet-100 px-3 py-1">{format}</span>)}
+        </div>
+      </div>
+      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-center text-sm text-slate-600">Los archivos se procesan en tu navegador. Los datos importados permanecen en memoria durante esta sesión.</p>
+      <details className="mt-3 text-sm text-slate-600">
+        <summary className="cursor-pointer font-medium text-violet-800">Opciones de importación y límites</summary>
+        <p className="mt-2">
         CSV (UTF-8, delimitador coma/punto y coma, con o sin encabezados),
         XLSX (hojas tabulares vía Worker), JSON tabular (arreglo de objetos) y
         Parquet. Límites orientativos: 20 MB para CSV/JSON/Parquet; 10 MB comprimidos y 64 MiB de expansión para XLSX. Sin
         codificaciones alternativas ni corrección silenciosa: lo no soportado se
         informa. Selección de columnas y cambio de tipos son transformaciones (R2).
-      </p>
-      <section className="my-4 space-y-2 rounded border border-gray-200 bg-white p-3" aria-labelledby="datasets-sesion">
-        <h3 id="datasets-sesion" className="font-semibold">Datasets de este proyecto en la sesión</h3>
+        </p>
+      </details>
+      </section>
+      <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm" aria-label="Cómo usar tus datos">
+        <ol className="space-y-6">
+          {[["Importa", "Carga archivos CSV, XLSX, JSON o Parquet desde tu equipo."], ["Explora", "Revisa columnas, tipos de datos y una vista previa."], ["Analiza", "Aplica filtros y consulta perfiles y resúmenes numéricos."]].map(([title, description], index) => (
+            <li key={title} className="flex gap-3">
+              <span className="grid size-8 shrink-0 place-items-center rounded-full bg-violet-100 font-semibold text-violet-800">{index + 1}</span>
+              <div><h3 className="font-semibold text-slate-900">{title}</h3><p className="mt-1 text-sm text-slate-600">{description}</p></div>
+            </li>
+          ))}
+        </ol>
+      </aside>
+      </div>
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="datasets-sesion">
+        <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4">
+          <h2 id="datasets-sesion" className="text-lg font-semibold text-slate-900">Datasets de la sesión</h2>
+          <span className="rounded-full bg-violet-100 px-2.5 py-1 text-sm font-semibold text-violet-800">{visibleSources.length}</span>
+        </div>
+        <div className="space-y-3 p-5">
         <p className="text-sm text-gray-600">Las fuentes se mantienen en memoria hasta cerrar o recargar. Puede importar más de una; quitar una fuente también elimina sus versiones derivadas.</p>
         {visibleSources.length === 0 ? (
-          <p className="text-sm text-gray-600">No hay fuentes cargadas en este proyecto durante la sesión.</p>
+          <div role="status" className="flex min-h-40 flex-col items-center justify-center px-4 py-8 text-center">
+            <span className="mb-3 grid size-14 place-items-center rounded-xl bg-violet-50 text-violet-700"><Layers3 aria-hidden="true" size={28} /></span>
+            <h3 className="font-semibold text-slate-900">Todavía no hay datos cargados</h3>
+            <p className="mt-1 text-sm text-slate-600">Importa un archivo para ver sus columnas, tipos y vista previa.</p>
+          </div>
         ) : (
           <ul className="space-y-1">
             {visibleSources.map((source) => (
@@ -410,27 +478,8 @@ export default function ImportPanel({
             ))}
           </ul>
         )}
+        </div>
       </section>
-      <p>
-        <label htmlFor="csv-file">Elegir archivo: </label>
-        <input
-          id="csv-file"
-          type="file"
-          accept=".csv,.xlsx,.json,.parquet,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream"
-          disabled={busy}
-          onChange={(e) => {
-            setFile(e.target.files?.[0] ?? null);
-            setSheets(null);
-          }}
-        />{" "}
-        <button
-          type="button"
-          disabled={busy || !file}
-          onClick={() => file && void doImport(file)}
-        >
-          Importar archivo
-        </button>
-      </p>
       {isCSV ? (
         <p className="flex flex-wrap gap-3 text-sm">
           <label>
@@ -483,16 +532,14 @@ export default function ImportPanel({
         </p>
       ) : null}
 
-      <p>
-        <button type="button" disabled={busy} onClick={() => void doProbe()}>
+      <details className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+        <summary className="cursor-pointer font-medium text-violet-800">Herramientas avanzadas</summary>
+        <button type="button" disabled={busy} onClick={() => void doProbe()} className="mt-3 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50">
           Probar lectura nativa XLSX
         </button>
-      </p>
-      {probe ? <p role="status">{probe}</p> : null}
+        {probe ? <p role="status" className="mt-2">{probe}</p> : null}
+      </details>
 
-      {st.phase === "empty" && !sheets ? (
-        <p role="status">Sin dataset: elija un archivo e impórtelo.</p>
-      ) : null}
       {st.phase === "importing" ? <p role="status">Importando y consultando…</p> : null}
       {st.phase === "error" && st.message ? (
         <p role="alert">

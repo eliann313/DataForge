@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Activity, BarChart3, ChartNoAxesColumn, CircleHelp, FileChartColumn, Layers3, LockKeyhole, RefreshCw, ShieldCheck, Sigma, Sparkles, Table2, Upload } from "lucide-react";
 import { captureSnapshotLineage, createAnalysisSnapshot, evaluateFindings, IndexedDBAnalysisSnapshotRepository, type AnalysisSnapshot, type Finding, type SnapshotValue } from "@/modules/analysis";
 import { isNumericMeasure, type SemanticRole } from "@/platform/engines/duckdb/semantics";
 import {
@@ -44,7 +45,13 @@ const ANALYSIS_SESSION_ID =
 
 // Vista Análisis (E5): descriptivos verificables, frecuencias, gráficos sobre
 // agregados, correlación justificada y hallazgos por reglas transparentes.
-export default function AnalysisView() {
+export default function AnalysisView({
+  onNavigateToData,
+  onTryExample,
+}: {
+  onNavigateToData?: () => void;
+  onTryExample?: () => void;
+}) {
   const snapshotsRepo = useRef(new IndexedDBAnalysisSnapshotRepository());
   const [columns, setColumns] = useState<ColumnInfo[]>([]);
   const [roles, setRoles] = useState<Record<string, SemanticRole>>({});
@@ -175,12 +182,14 @@ export default function AnalysisView() {
     try {
       const schema = await engine.getSchema();
       if (request === revision.current && versionId === engine.getActiveDatasetVersionId()) applySchema(schema);
-    } catch {
+    } catch (cause: unknown) {
       // Se conserva el esquema anterior (si había): el error se muestra
       // junto a los últimos datos, nunca reemplazándolos.
       if (request === revision.current) {
         setColumns([]);
-        setMessage("Sin dataset: importe un archivo en Datos primero.");
+        // Un proyecto sin dataset es el estado vacío normal. Si había una
+        // versión activa, el fallo sí corresponde a un error de carga real.
+        setMessage(versionId === null ? null : cause instanceof Error ? cause.message : "No se pudo cargar el esquema del dataset activo.");
       }
     } finally {
       if (request === revision.current) setBusy(false);
@@ -319,23 +328,47 @@ export default function AnalysisView() {
 
   if (columns.length === 0) {
     return (
-      <div className="space-y-4">
-        <p role="status">
-          {message ?? "Cargando dataset…"}
-        </p>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void load()}
-          className="rounded bg-violet-800 px-3 py-1 text-sm font-medium text-white"
-        >
-          Actualizar
-        </button>
-        <section aria-labelledby="snapshots-empty">
-          <h2 id="snapshots-empty" className="text-lg font-bold">Snapshots guardados</h2>
-          <p className="text-sm text-gray-600">Los resultados guardados sobreviven al recargar; los archivos y versiones del motor no. Reimporte el archivo para volver a analizarlo. La reimportación no se vincula automáticamente con snapshots anteriores.</p>
+      <main className="mx-auto w-full max-w-[1500px] space-y-6">
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-violet-700">Workspace / Análisis</p>
+            <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">Análisis exploratorio</h1>
+            <p className="mt-1 text-slate-600">Explora métricas, distribuciones y relaciones de tus datos.</p>
+          </div>
+          <button type="button" disabled={busy} onClick={() => void load()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-violet-800 shadow-sm hover:bg-violet-50 disabled:opacity-50">
+            <RefreshCw size={16} aria-hidden="true" /> Actualizar
+          </button>
+        </header>
+        {message ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{message}</p> : null}
+        <div className="grid gap-4 md:grid-cols-3" aria-label="Resumen del dataset">
+          <SummaryCard icon={<Table2 size={21} />} title="Filas" value="—" detail={busy ? "Consultando dataset…" : "Inactivo: importa un dataset para comenzar."} />
+          <SummaryCard icon={<ChartNoAxesColumn size={21} />} title="Columnas" value="—" detail={busy ? "Consultando dataset…" : "Inactivo: importa un dataset para comenzar."} />
+          <SummaryCard icon={<ShieldCheck size={21} />} title="Calidad de datos" value="—" detail={busy ? "Consultando dataset…" : "Se mostrará al cargar un dataset."} />
+        </div>
+        <section className="grid min-h-[330px] items-center gap-8 rounded-2xl border border-slate-200 bg-white p-7 shadow-sm md:grid-cols-[minmax(220px,0.8fr)_1.2fr] md:p-10" aria-labelledby="analysis-empty-title">
+          <div className="mx-auto flex h-48 w-48 items-center justify-center rounded-[2rem] bg-violet-50 text-violet-700 md:h-56 md:w-56">
+            <div className="relative"><BarChart3 size={112} strokeWidth={1.5} aria-hidden="true" /><Sparkles className="absolute -right-5 -top-4" size={30} aria-hidden="true" /></div>
+          </div>
+          <div className="max-w-xl">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-800"><LockKeyhole size={14} aria-hidden="true" /> Procesamiento local y privado</div>
+            <h2 id="analysis-empty-title" className="text-2xl font-bold tracking-tight text-slate-900 md:text-3xl">Tu análisis comienza con un dataset</h2>
+            <p className="mt-3 text-base leading-7 text-slate-600">Importa un archivo CSV, XLSX, JSON o Parquet desde Datos para explorar estadísticas, distribuciones y relaciones reales.</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button type="button" onClick={onNavigateToData} disabled={!onNavigateToData} className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-violet-800 disabled:cursor-default disabled:opacity-60"><Upload size={17} aria-hidden="true" /> Ir a Datos</button>
+              <button type="button" onClick={onTryExample} disabled={!onTryExample} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:cursor-default disabled:opacity-60"><Sparkles size={17} aria-hidden="true" /> Probar un ejemplo</button>
+            </div>
+          </div>
+        </section>
+        <div className="grid gap-4 md:grid-cols-3">
+          <FeatureCard icon={<Sigma size={21} />} title="Resumen estadístico" text="Consulta métricas numéricas y frecuencias categóricas del dataset." />
+          <FeatureCard icon={<Activity size={21} />} title="Distribuciones" text="Explora histogramas y gráficos agrupados con tus columnas." />
+          <FeatureCard icon={<Layers3 size={21} />} title="Valores faltantes" text="Revisa perfiles y hallazgos calculados sobre los datos importados." />
+        </div>
+        <section aria-labelledby="snapshots-empty" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 id="snapshots-empty" className="text-lg font-bold text-slate-900">Snapshots guardados</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">Los resultados guardados sobreviven al recargar; los archivos y versiones del motor no. Reimporte el archivo para volver a analizarlo. La reimportación no se vincula automáticamente con snapshots anteriores.</p>
           {visibleSnapshotMessage ? <p role="status">{visibleSnapshotMessage}</p> : null}
-          {projectSnapshots.length === 0 ? <p className="text-sm">{projectId ? "Todavía no hay snapshots en este proyecto." : "Abra un proyecto para consultar sus snapshots."}</p> : (
+          {projectSnapshots.length === 0 ? <p className="mt-3 text-sm text-slate-500">{projectId ? "Todavía no hay snapshots en este proyecto." : "Abre un proyecto para consultar sus snapshots."}</p> : (
             <ul className="space-y-2">
               {projectSnapshots.map((snapshot) => <li key={snapshot.id} className="rounded border p-2 text-sm">
                 <button type="button" onClick={() => setSelectedSnapshot(snapshot)} className="font-semibold underline">{snapshot.title}</button>
@@ -352,23 +385,34 @@ export default function AnalysisView() {
             <button type="button" onClick={() => setSelectedSnapshot(null)} className="underline">Cerrar</button>
           </div> : null}
         </section>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <p className="text-sm text-gray-600">
-        Cálculos sobre el dataset activo ({columns.length} columnas). Varianza y
-        desvío muestrales (n−1); cuantiles continuos; nulos excluidos. Las medias, cuantiles, varianzas y correlaciones usan coma flotante y son aproximadas.{" "}
-        <button type="button" disabled={busy} onClick={() => void load()} className="underline">
-          Actualizar dataset
+    <main className="mx-auto w-full max-w-[1500px] space-y-6">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-violet-700">Workspace / Análisis</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight text-slate-900">Análisis exploratorio</h1>
+          <p className="mt-1 text-slate-600">Patrones y métricas calculados sobre los datos de esta sesión.</p>
+        </div>
+        <button type="button" disabled={busy} onClick={() => void load()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-violet-800 shadow-sm hover:bg-violet-50 disabled:opacity-50">
+          <RefreshCw size={16} aria-hidden="true" /> Actualizar
         </button>
+      </header>
+      <div className="grid gap-4 md:grid-cols-3" aria-label="Resumen del dataset">
+        <SummaryCard icon={<Table2 size={21} />} title="Filas" value={activeSummary?.rows.toLocaleString("es-AR") ?? "—"} detail={activeSummary?.fileName ?? "Dataset activo"} />
+        <SummaryCard icon={<ChartNoAxesColumn size={21} />} title="Columnas" value={String(columns.length)} detail={`${measureColumns.length} medidas numéricas`} />
+        <SummaryCard icon={<ShieldCheck size={21} />} title="Calidad de datos" value={findings === null ? "Pendiente" : `${findings.length} hallazgos`} detail={findings === null ? "Evalúa reglas para revisar el perfil." : "Resultado de reglas transparentes"} />
+      </div>
+      <p className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+        Dataset: <strong className="text-slate-800">{activeSummary?.fileName ?? "activo"}</strong> · Cálculos sobre {columns.length} columnas. Varianza y desvío muestrales (n−1); cuantiles continuos; nulos excluidos. Las medias, cuantiles, varianzas y correlaciones usan coma flotante y son aproximadas.
       </p>
-      {message ? <p role="alert" className="text-sm text-red-700">{message}</p> : null}
+      {message ? <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{message}</p> : null}
 
-      <section aria-labelledby="desc">
-        <h2 id="desc" className="mb-1 text-lg font-bold">Estadística descriptiva</h2>
+      <section aria-labelledby="desc" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 id="desc" className="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900"><Sigma size={20} className="text-violet-700" aria-hidden="true" /> Estadística descriptiva</h2>
         {measureColumns.length === 0 ? <p>No hay medidas numéricas. Puede cambiar los roles en Datos.</p> : null}
         <p className="text-sm">
           <label htmlFor="desc-col">Columna numérica: </label>
@@ -405,8 +449,8 @@ export default function AnalysisView() {
         ) : null}
       </section>
 
-      <section aria-labelledby="freq">
-        <h2 id="freq" className="mb-1 text-lg font-bold">Frecuencias</h2>
+      <section aria-labelledby="freq" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 id="freq" className="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900"><Table2 size={20} className="text-violet-700" aria-hidden="true" /> Frecuencias</h2>
         <p className="text-sm">
           <label htmlFor="freq-col">Columna: </label>
           <select id="freq-col" value={freqCol} disabled={busy} onChange={(e) => setFreqCol(e.target.value)}
@@ -434,8 +478,8 @@ export default function AnalysisView() {
         ) : null}
       </section>
 
-      <section aria-labelledby="charts">
-        <h2 id="charts" className="mb-1 text-lg font-bold">Gráficos</h2>
+      <section aria-labelledby="charts" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 id="charts" className="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900"><BarChart3 size={20} className="text-violet-700" aria-hidden="true" /> Gráficos</h2>
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <label>Tipo:{" "}
             <select id="chart-kind" value={chartKind} disabled={busy}
@@ -502,8 +546,8 @@ export default function AnalysisView() {
         ) : null}
       </section>
 
-      <section aria-labelledby="corr">
-        <h2 id="corr" className="mb-1 text-lg font-bold">Correlación</h2>
+      <section aria-labelledby="corr" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 id="corr" className="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900"><Activity size={20} className="text-violet-700" aria-hidden="true" /> Correlación</h2>
         <p className="text-sm">
           <label htmlFor="corr-a">Columna A: </label>
           <select id="corr-a" value={corrA} disabled={busy} onChange={(e) => setCorrA(e.target.value)}
@@ -534,8 +578,8 @@ export default function AnalysisView() {
         ) : null}
       </section>
 
-      <section aria-labelledby="findings">
-        <h2 id="findings" className="mb-1 text-lg font-bold">Hallazgos</h2>
+      <section aria-labelledby="findings" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 id="findings" className="mb-3 flex items-center gap-2 text-lg font-bold text-slate-900"><CircleHelp size={20} className="text-violet-700" aria-hidden="true" /> Hallazgos</h2>
         <p>
           <button type="button" disabled={busy} onClick={() => void computeFindings()}
             className="rounded bg-violet-800 px-3 py-1 text-sm font-medium text-white">
@@ -553,8 +597,8 @@ export default function AnalysisView() {
         )}
       </section>
 
-      <section aria-labelledby="snapshots" className="border-t pt-4">
-        <h2 id="snapshots" className="mb-1 text-lg font-bold">Snapshots del análisis</h2>
+      <section aria-labelledby="snapshots" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 id="snapshots" className="mb-1 flex items-center gap-2 text-lg font-bold text-slate-900"><FileChartColumn size={20} className="text-violet-700" aria-hidden="true" /> Snapshots del análisis</h2>
         <p className="mb-2 text-sm text-gray-600">Guarda los resultados calculados y su referencia a la versión activa. Los archivos y las versiones del motor siguen disponibles solo durante esta sesión.</p>
         <div className="flex flex-wrap gap-2">
           <label htmlFor="snapshot-title">Nombre: </label>
@@ -589,10 +633,36 @@ export default function AnalysisView() {
           }} className="mt-2 text-red-700 underline">Eliminar snapshot</button>
         </div> : null}
       </section>
-    </div>
+    </main>
   );
 }
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function SummaryCard({ icon, title, value, detail }: { icon: React.ReactNode; title: string; value: string; detail: string }) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700" aria-hidden="true">{icon}</span>
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
+          <p className="mt-1 truncate text-2xl font-bold tracking-tight text-slate-900" title={value}>{value}</p>
+          <p className="mt-1 truncate text-xs text-slate-500" title={detail}>{detail}</p>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function FeatureCard({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700" aria-hidden="true">{icon}</span>
+        <div><h2 className="font-semibold text-slate-900">{title}</h2><p className="mt-1 text-sm leading-5 text-slate-600">{text}</p></div>
+      </div>
+    </article>
+  );
 }

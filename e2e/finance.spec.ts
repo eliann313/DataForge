@@ -32,9 +32,9 @@ async function addMovement(
   await view(page).getByLabel(/tipo/i).selectOption(fields.kind === "Ingreso" ? "ingreso" : "gasto");
   await view(page).getByLabel(/importe/i).fill(fields.amount);
   await view(page).getByLabel(/moneda/i).selectOption(fields.currency);
-  await view(page).getByLabel("Categoría:", { exact: true }).fill(fields.category);
-  await view(page).getByRole("button", { name: /^agregar$/i }).click();
-  await expect(view(page).getByText("Guardado.")).toBeVisible({ timeout: 15_000 });
+  await view(page).getByLabel(/^categoría$/i).fill(fields.category);
+  await view(page).getByRole("button", { name: /guardar movimiento/i }).click();
+  await expect(view(page).getByRole("status").filter({ hasText: "Movimiento guardado correctamente." })).toBeVisible({ timeout: 15_000 });
 }
 
 test("resume el mes por moneda con centavos exactos", async ({ page }) => {
@@ -44,19 +44,27 @@ test("resume el mes por moneda con centavos exactos", async ({ page }) => {
 
   const v = view(page);
   const resumen = v.locator('section[aria-labelledby="resumen"]');
-  await expect(resumen.getByText(/ARS \(sin conversión\)/)).toBeVisible();
+  await expect(resumen.getByText(/Pesos argentinos/)).toBeVisible();
   await expect(resumen.getByText(/1\.000,00/)).toBeVisible();
   await expect(resumen.getByText(/250,50/)).toBeVisible();
   await expect(resumen.getByText(/749,50/)).toBeVisible();
-  await expect(resumen.getByText(/USD \(sin conversión\)/)).toBeVisible();
-  await expect(resumen.getByText(/Ingresos: US\$.*200,00/)).toBeVisible();
-  await expect(resumen.getByText(/Saldo: US\$.*200,00/)).toBeVisible();
+  await expect(resumen.getByText(/Dólares/)).toBeVisible();
+  const usdRows = resumen.locator("article").filter({ hasText: "Dólares" }).locator("dl > div");
+  const ingresoUSD = usdRows.nth(0);
+  const saldoUSD = usdRows.nth(2);
+  await expect(ingresoUSD.getByText("Ingresos", { exact: true })).toBeVisible();
+  await expect(ingresoUSD.getByText(/200,00/)).toBeVisible();
+  await expect(saldoUSD.getByText("Saldo", { exact: true })).toBeVisible();
+  await expect(saldoUSD.getByText(/200,00/)).toBeVisible();
 });
 
 test("0,10 + 0,20 = 0,30 (sin flotantes)", async ({ page }) => {
   await addMovement(page, { description: "A", kind: "Ingreso", amount: "0,10", currency: "ARS", category: "c" });
   await addMovement(page, { description: "B", kind: "Ingreso", amount: "0,20", currency: "ARS", category: "c" });
-  await expect(view(page).getByText(/Saldo:.*0,30/)).toBeVisible();
+  const resumen = view(page).locator('section[aria-labelledby="resumen"]');
+  const saldoARS = resumen.locator("article").filter({ hasText: "Pesos argentinos" }).locator("dl > div").nth(2);
+  await expect(saldoARS.getByText("Saldo", { exact: true })).toBeVisible();
+  await expect(saldoARS.getByText(/0,30/)).toBeVisible();
 });
 
 test("edita y elimina con confirmación", async ({ page }) => {
@@ -65,7 +73,7 @@ test("edita y elimina con confirmación", async ({ page }) => {
   await row.getByRole("button", { name: /editar/i }).click();
   await view(page).getByLabel(/importe/i).fill("150,25");
   await view(page).getByRole("button", { name: /guardar cambios/i }).click();
-  await expect(view(page).getByText("Guardado.")).toBeVisible({ timeout: 15_000 });
+  await expect(view(page).getByRole("status").filter({ hasText: "Movimiento guardado correctamente." })).toBeVisible({ timeout: 15_000 });
   const movs = view(page).locator('section[aria-labelledby="movimientos"]');
   await expect(movs.getByText(/150,25/)).toBeVisible();
 
@@ -78,11 +86,11 @@ test("edita y elimina con confirmación", async ({ page }) => {
 test("rechaza importes inválidos con mensaje", async ({ page }) => {
   await view(page).getByLabel(/descripción/i).fill("Malo");
   await view(page).getByLabel(/importe/i).fill("abc");
-  await view(page).getByLabel("Categoría:", { exact: true }).fill("c");
-  await view(page).getByRole("button", { name: /^agregar$/i }).click();
+  await view(page).getByLabel(/^categoría$/i).fill("c");
+  await view(page).getByRole("button", { name: /guardar movimiento/i }).click();
   await expect(view(page).getByRole("alert")).toContainText(/inválido/i, { timeout: 15_000 });
   await view(page).getByLabel(/importe/i).fill("0");
-  await view(page).getByRole("button", { name: /^agregar$/i }).click();
+  await view(page).getByRole("button", { name: /guardar movimiento/i }).click();
   await expect(view(page).getByRole("alert")).toContainText(/mayor que cero/i, { timeout: 15_000 });
 });
 

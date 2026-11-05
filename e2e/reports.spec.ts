@@ -101,19 +101,22 @@ test("permite crear un informe local y exportar HTML imprimible", async ({ page 
   expect(seededCount).toBe(1);
 
   await page.getByRole("button", { name: /^informes$/i }).click();
-  await expect(page.getByText("Todavía no hay informes.")).toBeVisible();
-  await page.getByRole("button", { name: /nuevo informe/i }).click();
+  await expect(page.getByText(/Aún no hay informes guardados/)).toBeVisible();
+  await page.getByRole("button", { name: "Nuevo informe", exact: true }).first().click();
   await page.getByLabel(/título del informe/i).fill("Resumen de prueba");
-  await page.getByRole("button", { name: /^actualizar$/i }).click();
-  await expect(page.getByLabel(/agregar snapshot guardado/i).locator('option[value="snapshot-e2e"]')).toHaveCount(1);
+  await page.getByRole("button", { name: /actualizar lista de informes/i }).click();
+  await expect(page.getByLabel(/añadir resultados guardados/i).locator('option[value="snapshot-e2e"]')).toHaveCount(1);
   await expect(page.getByLabel(/título del informe/i)).toHaveValue("Resumen de prueba");
-  await page.getByLabel(/agregar snapshot guardado/i).selectOption("snapshot-e2e");
+  await page.getByLabel(/añadir resultados guardados/i).selectOption("snapshot-e2e");
   await expect(page.getByText("Ventas por canal")).toBeVisible();
+  await expect(page.getByText("Media", { exact: true })).toBeVisible();
+  await expect(page.getByRole("img", { name: "Gráfico de barras: Ventas por canal" })).toBeVisible();
+  await expect(page.locator('figure[aria-label="Gráfico: Ventas por canal"] table tbody tr').filter({ hasText: "web" })).toContainText("20");
   await expect(page.getByText(/Linaje de 1 versiones/)).toBeVisible();
-  await page.getByRole("button", { name: /\+ observaciones/i }).click();
-  await page.getByRole("textbox", { name: "Observaciones" }).fill("Revisar el comportamiento del trimestre.");
-  await page.getByRole("button", { name: /^guardar$/i }).click();
-  await expect(page.getByRole("status")).toContainText("guardado en este dispositivo");
+  await page.getByLabel(/añadir sección editorial/i).selectOption("observations");
+  await page.getByRole("textbox", { name: "Contenido editorial" }).fill("Revisar el comportamiento del trimestre.");
+  await page.getByRole("button", { name: /guardar cambios/i }).click();
+  await expect(page.getByText("Informe guardado en este dispositivo.", { exact: true })).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: /exportar html/i }).click();
@@ -149,7 +152,7 @@ test("permite crear un informe local y exportar HTML imprimible", async ({ page 
     const pending = (window as typeof window & { __delayedReportCallbacks?: Array<{ projectId: unknown }> }).__delayedReportCallbacks ?? [];
     return pending.filter((item) => item.projectId === targetProjectId).length === 2;
   }, otherProjectId);
-  await expect(page.getByRole("button", { name: /^guardar$/i })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /guardar cambios/i })).toBeDisabled();
   await expect(page.getByRole("button", { name: /exportar html/i })).toBeDisabled();
   await expect(page.getByText("Resumen de prueba", { exact: true })).toHaveCount(0);
   await page.evaluate((sourceProjectId) => (window as typeof window & { __releaseReportQueries?: (id?: string) => void }).__releaseReportQueries?.(sourceProjectId!), projectId);
@@ -157,10 +160,10 @@ test("permite crear un informe local y exportar HTML imprimible", async ({ page 
     const pending = (window as typeof window & { __delayedReportCallbacks?: Array<{ projectId: unknown }> }).__delayedReportCallbacks ?? [];
     return pending.length === 2 && pending.every((item) => item.projectId === targetProjectId);
   }, otherProjectId);
-  await expect(page.getByRole("button", { name: /^guardar$/i })).toBeDisabled();
+  await expect(page.getByRole("button", { name: /guardar cambios/i })).toBeDisabled();
   await expect(page.getByText("Resumen de prueba", { exact: true })).toHaveCount(0);
   await page.evaluate(() => (window as typeof window & { __releaseReportQueries?: (id?: string) => void }).__releaseReportQueries?.());
-  await expect(page.getByText("Todavía no hay informes.")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/Aún no hay informes guardados/)).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole("button", { name: /^inicio$/i }).click();
   await page.getByRole("radio", { name: `Abrir ${project}`, exact: true }).check();
