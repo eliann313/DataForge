@@ -12,6 +12,7 @@ Cada ADR documenta una decisión técnica con su contexto, alternativas y criter
 | [0006](./0006-multiples-datasets-en-sesion.md) | Varias fuentes por proyecto dentro de la sesión DuckDB | Aceptado — R2/fase 4 |
 | [0007](./0007-combinaciones-append-y-join.md) | Semántica y validación de APPEND/JOIN con linaje múltiple | Aceptado — R2/fase 4 |
 | [0008](./0008-comparacion-de-periodos.md) | Rangos de fechas, medidas y cambios por clave entre períodos | Aceptado — R2/fase 4 |
+| [0009](./0009-snapshots-de-analisis.md) | Snapshots locales de resultados de análisis y vínculo a versiones de sesión | Aceptado — primer corte de fase 5 |
 
 ## Estados
 

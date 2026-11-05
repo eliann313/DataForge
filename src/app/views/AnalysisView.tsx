@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { evaluateFindings, type Finding } from "@/modules/analysis";
+import { createAnalysisSnapshot, evaluateFindings, IndexedDBAnalysisSnapshotRepository, type AnalysisSnapshot, type Finding, type SnapshotValue } from "@/modules/analysis";
 import { isNumericMeasure, type SemanticRole } from "@/platform/engines/duckdb/semantics";
 import {
   engine,
@@ -29,9 +29,12 @@ function fmtCell(v: unknown): string {
   return String(v);
 }
 
+const ANALYSIS_SESSION_ID = globalThis.crypto?.randomUUID?.() ?? `session-${Math.random().toString(36).slice(2)}`;
+
 // Vista Análisis (E5): descriptivos verificables, frecuencias, gráficos sobre
 // agregados, correlación justificada y hallazgos por reglas transparentes.
 export default function AnalysisView() {
+  const snapshotsRepo = useRef(new IndexedDBAnalysisSnapshotRepository());
   const [columns, setColumns] = useState<ColumnInfo[]>([]);
   const [roles, setRoles] = useState<Record<string, SemanticRole>>({});
   const revision = useRef(0);
@@ -55,8 +58,67 @@ export default function AnalysisView() {
   const [corr, setCorr] = useState<Correlation | null>(null);
 
   const [findings, setFindings] = useState<Finding[] | null>(null);
+  const [resultParameters, setResultParameters] = useState<Record<string, SnapshotValue>>({});
+  const [analyzedVersionId, setAnalyzedVersionId] = useState<string | null>(null);
+  const [snapshotTitle, setSnapshotTitle] = useState("");
+  const [snapshots, setSnapshots] = useState<AnalysisSnapshot[]>([]);
+  const [snapshotMessage, setSnapshotMessage] = useState<{ projectId: string | null; text: string } | null>(null);
+  const [selectedSnapshot, setSelectedSnapshot] = useState<AnalysisSnapshot | null>(null);
 
   const measureColumns = columns.filter((column) => isNumericMeasure(column, roles));
+
+  const projectId = engine.getCurrentProjectId();
+  const projectSnapshots = projectId ? snapshots.filter((snapshot) => snapshot.projectId === projectId) : [];
+  const activeSummary = engine.getActiveDatasetSummary();
+  const visibleSnapshotMessage = snapshotMessage?.projectId === projectId ? snapshotMessage.text : null;
+  const visibleSelectedSnapshot = selectedSnapshot?.projectId === projectId ? selectedSnapshot : null;
+
+  const analysisSessionId = ANALYSIS_SESSION_ID;
+
+  useEffect(() => {
+    let current = true;
+    if (!projectId) return () => { current = false; };
+    void snapshotsRepo.current.list(projectId).then((items) => {
+      if (current && engine.getCurrentProjectId() === projectId) setSnapshots(items);
+    }).catch((cause: unknown) => {
+      if (current && engine.getCurrentProjectId() === projectId) setSnapshotMessage({ projectId, text: cause instanceof Error ? cause.message : "No se pudieron leer los snapshots." });
+    });
+    return () => { current = false; };
+  }, [projectId]);
+
+  async function saveSnapshot() {
+    if (!projectId || !activeSummary) return;
+    if (analyzedVersionId !== activeSummary.versionId) {
+      setSnapshotMessage({ projectId, text: "Los resultados no corresponden a la versión activa; vuelva a calcularlos antes de guardar." });
+      return;
+    }
+    const results: Record<string, SnapshotValue> = {};
+    const parameters: Record<string, SnapshotValue> = {};
+    if (desc) { results.description = desc as unknown as SnapshotValue; parameters.description = resultParameters.description; }
+    if (freq) { results.frequencies = freq as unknown as SnapshotValue; parameters.frequencies = resultParameters.frequencies; }
+    if (chart) { results.chart = chart as unknown as SnapshotValue; parameters.chart = resultParameters.chart; }
+    if (corr) { results.correlation = corr as unknown as SnapshotValue; parameters.correlation = resultParameters.correlation; }
+    if (findings !== null) { results.findings = findings as unknown as SnapshotValue; parameters.findings = resultParameters.findings; }
+    try {
+      const snapshot = createAnalysisSnapshot({
+        projectId, title: snapshotTitle.trim(),
+        source: {
+          sessionId: analysisSessionId,
+          versionId: activeSummary.versionId,
+          sourceId: engine.getActiveSourceId() ?? activeSummary.datasetId,
+          datasetName: activeSummary.fileName, rowCount: activeSummary.rows,
+          columns: activeSummary.columns.map(({ name, type, nullable }) => ({ name, type, nullable })),
+        },
+        parameters, results,
+      });
+      await snapshotsRepo.current.save(snapshot);
+      if (engine.getCurrentProjectId() === projectId) setSnapshots((items) => [snapshot, ...items]);
+      setSnapshotTitle("");
+      setSnapshotMessage({ projectId, text: "Snapshot guardado en este dispositivo." });
+    } catch (cause) {
+      setSnapshotMessage({ projectId, text: cause instanceof Error ? cause.message : "No se pudo guardar el snapshot." });
+    }
+  }
 
   const applySchema = useCallback((schema: ColumnInfo[]) => {
     const nextRoles = engine.getSemanticRoles();
@@ -68,6 +130,8 @@ export default function AnalysisView() {
     setChart(null);
     setFindings(null);
     setFreq(null);
+    setResultParameters({});
+    setAnalyzedVersionId(null);
     setYCol((c) => measures.some((item) => item.name === c) ? c : "");
     setCorrA((c) => measures.some((item) => item.name === c) ? c : "");
     setCorrB((c) => measures.some((item) => item.name === c) ? c : "");
@@ -111,11 +175,15 @@ export default function AnalysisView() {
 
   async function run<T>(task: () => Promise<T>, apply: (v: T) => void) {
     const request = revision.current;
+    const versionId = engine.getActiveDatasetVersionId();
     setBusy(true);
     setMessage(null);
     try {
       const result = await task();
-      if (request === revision.current) apply(result);
+      if (request === revision.current && versionId === engine.getActiveDatasetVersionId()) {
+        apply(result);
+        setAnalyzedVersionId(versionId);
+      }
     } catch (cause) {
       if (request === revision.current) setMessage(cause instanceof Error ? cause.message : "Error de análisis");
     } finally {
@@ -125,6 +193,7 @@ export default function AnalysisView() {
 
   async function computeFindings() {
     const request = revision.current;
+    const versionId = engine.getActiveDatasetVersionId();
     setBusy(true);
     setMessage(null);
     try {
@@ -165,7 +234,11 @@ export default function AnalysisView() {
           topShare,
         });
       }
-      if (request === revision.current) setFindings(evaluateFindings(list));
+      if (request === revision.current && versionId === engine.getActiveDatasetVersionId()) {
+        setFindings(evaluateFindings(list));
+        setAnalyzedVersionId(versionId);
+        setResultParameters((current) => ({ ...current, findings: { rulesVersion: 1, columns: columns.map((column) => column.name) } }));
+      }
     } catch (cause) {
       if (request === revision.current) setMessage(cause instanceof Error ? cause.message : "Error de análisis");
     } finally {
@@ -175,6 +248,7 @@ export default function AnalysisView() {
 
   async function renderChart() {
     const request = revision.current;
+    const versionId = engine.getActiveDatasetVersionId();
     setBusy(true);
     setMessage(null);
     setChart(null);
@@ -182,7 +256,9 @@ export default function AnalysisView() {
       if (chartKind === "hist") {
         if (!yCol) throw new Error("Elija la columna numérica del histograma.");
         const h: Histogram = await engine.histogram(yCol, bins);
-        if (request !== revision.current) return;
+        if (request !== revision.current || versionId !== engine.getActiveDatasetVersionId()) return;
+        setAnalyzedVersionId(versionId);
+        setResultParameters((current) => ({ ...current, chart: { kind: "hist", column: yCol, bins } }));
         setChart({
           title: `Histograma de ${yCol} (${h.bins} bines)`,
           kind: "bar",
@@ -199,7 +275,9 @@ export default function AnalysisView() {
           agg === "count" ? null : yCol || null,
           agg,
         );
-        if (request !== revision.current) return;
+        if (request !== revision.current || versionId !== engine.getActiveDatasetVersionId()) return;
+        setAnalyzedVersionId(versionId);
+        setResultParameters((current) => ({ ...current, chart: { kind: chartKind, xColumn: xCol, yColumn: yCol, aggregation: agg } }));
         const aggLabel = agg === "count" ? "conteo" : agg === "sum" ? `suma de ${yCol}` : `media de ${yCol}`;
         setChart({
           title: `${chartKind === "bar" ? "Barras" : "Líneas"}: ${aggLabel} por ${xCol} (${grouped.rows.length} grupos${grouped.truncated ? "; se muestran los primeros 500, hay más" : ""})`,
@@ -216,7 +294,7 @@ export default function AnalysisView() {
 
   if (columns.length === 0) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-4">
         <p role="status">
           {message ?? "Cargando dataset…"}
         </p>
@@ -228,6 +306,26 @@ export default function AnalysisView() {
         >
           Actualizar
         </button>
+        <section aria-labelledby="snapshots-empty">
+          <h2 id="snapshots-empty" className="text-lg font-bold">Snapshots guardados</h2>
+          <p className="text-sm text-gray-600">Los resultados guardados sobreviven al recargar; los archivos y versiones del motor no. Reimporte el archivo para volver a analizarlo. La reimportación no se vincula automáticamente con snapshots anteriores.</p>
+          {visibleSnapshotMessage ? <p role="status">{visibleSnapshotMessage}</p> : null}
+          {projectSnapshots.length === 0 ? <p className="text-sm">{projectId ? "Todavía no hay snapshots en este proyecto." : "Abra un proyecto para consultar sus snapshots."}</p> : (
+            <ul className="space-y-2">
+              {projectSnapshots.map((snapshot) => <li key={snapshot.id} className="rounded border p-2 text-sm">
+                <button type="button" onClick={() => setSelectedSnapshot(snapshot)} className="font-semibold underline">{snapshot.title}</button>
+                <span> · {snapshot.createdAt} · {snapshot.source.datasetName} · fuente no disponible en esta sesión</span>
+              </li>)}
+            </ul>
+          )}
+          {visibleSelectedSnapshot ? <div className="rounded bg-gray-50 p-3" aria-label="Resultado guardado">
+            <h3 className="font-semibold">{visibleSelectedSnapshot.title}</h3>
+            <p>{visibleSelectedSnapshot.source.datasetName}; {visibleSelectedSnapshot.source.rowCount} filas; versión {visibleSelectedSnapshot.source.versionId} (sesión anterior).</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs">Parámetros: {JSON.stringify(visibleSelectedSnapshot.parameters, null, 2)}</pre>
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(visibleSelectedSnapshot.results, null, 2)}</pre>
+            <button type="button" onClick={() => setSelectedSnapshot(null)} className="underline">Cerrar</button>
+          </div> : null}
+        </section>
       </div>
     );
   }
@@ -254,7 +352,10 @@ export default function AnalysisView() {
             {measureColumns.map((c) => <option key={c.name} value={c.name}>{c.name} ({c.type})</option>)}
           </select>{" "}
           <button type="button" disabled={busy || !descCol}
-            onClick={() => void run(() => engine.describeNumeric(descCol), setDesc)}
+            onClick={() => void run(() => engine.describeNumeric(descCol), (value) => {
+              setDesc(value);
+              setResultParameters((current) => ({ ...current, description: { column: descCol } }));
+            })}
             className="rounded bg-violet-800 px-3 py-1 text-sm font-medium text-white">
             Calcular
           </button>
@@ -287,7 +388,10 @@ export default function AnalysisView() {
             {columns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
           </select>{" "}
           <button type="button" disabled={busy || !freqCol}
-            onClick={() => void run(() => engine.frequencies(freqCol), setFreq)}
+            onClick={() => void run(() => engine.frequencies(freqCol), (value) => {
+              setFreq(value);
+              setResultParameters((current) => ({ ...current, frequencies: { column: freqCol } }));
+            })}
             className="rounded bg-violet-800 px-3 py-1 text-sm font-medium text-white">
             Calcular
           </button>
@@ -388,7 +492,10 @@ export default function AnalysisView() {
             {measureColumns.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
           </select>{" "}
           <button type="button" disabled={busy || !corrA || !corrB}
-            onClick={() => void run(() => engine.correlation(corrA, corrB), setCorr)}
+            onClick={() => void run(() => engine.correlation(corrA, corrB), (value) => {
+              setCorr(value);
+              setResultParameters((current) => ({ ...current, correlation: { columnA: corrA, columnB: corrB, method: "pearson" } }));
+            })}
             className="rounded bg-violet-800 px-3 py-1 text-sm font-medium text-white">
             Calcular r
           </button>
@@ -418,6 +525,42 @@ export default function AnalysisView() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section aria-labelledby="snapshots" className="border-t pt-4">
+        <h2 id="snapshots" className="mb-1 text-lg font-bold">Snapshots del análisis</h2>
+        <p className="mb-2 text-sm text-gray-600">Guarda los resultados calculados y su referencia a la versión activa. Los archivos y las versiones del motor siguen disponibles solo durante esta sesión.</p>
+        <div className="flex flex-wrap gap-2">
+          <label htmlFor="snapshot-title">Nombre: </label>
+          <input id="snapshot-title" value={snapshotTitle} maxLength={120} onChange={(event) => setSnapshotTitle(event.target.value)} className="rounded border px-2 py-1" placeholder="Análisis de ventas" />
+          <button type="button" disabled={!projectId || !activeSummary || analyzedVersionId !== activeSummary.versionId || !snapshotTitle.trim() || ![desc, freq, chart, corr, findings].some((result) => result !== null)} onClick={() => void saveSnapshot()} className="rounded bg-violet-800 px-3 py-1 text-sm font-medium text-white">Guardar snapshot</button>
+        </div>
+        {!projectId ? <p className="text-sm">Abra un proyecto para guardar snapshots.</p> : null}
+        {visibleSnapshotMessage ? <p role="status" className="text-sm">{visibleSnapshotMessage}</p> : null}
+        {projectSnapshots.length === 0 ? <p className="text-sm">Todavía no hay snapshots en este proyecto.</p> : (
+          <ul className="mt-2 space-y-2">
+            {projectSnapshots.map((snapshot) => {
+              const sourceAvailable = Boolean(analysisSessionId) && snapshot.source.sessionId === analysisSessionId && engine.getDatasetVersions().some((version) => version.id === snapshot.source.versionId && version.projectId === snapshot.projectId && version.sourceId === snapshot.source.sourceId);
+              return <li key={snapshot.id} className="rounded border p-2 text-sm">
+                <button type="button" onClick={() => setSelectedSnapshot(snapshot)} className="font-semibold underline">{snapshot.title}</button>
+                <span> · {snapshot.createdAt} · {snapshot.source.datasetName} · {sourceAvailable ? "fuente disponible en esta sesión" : "fuente no disponible; reimportar no la vincula automáticamente"}</span>
+              </li>;
+            })}
+          </ul>
+        )}
+        {visibleSelectedSnapshot ? <div className="mt-3 rounded bg-gray-50 p-3" aria-label="Resultado guardado">
+          <div className="flex justify-between"><h3 className="font-semibold">{visibleSelectedSnapshot.title}</h3><button type="button" onClick={() => setSelectedSnapshot(null)} className="underline">Cerrar</button></div>
+          <p>Dataset: {visibleSelectedSnapshot.source.datasetName}; {visibleSelectedSnapshot.source.rowCount} filas; versión {visibleSelectedSnapshot.source.versionId}.</p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs">Parámetros: {JSON.stringify(visibleSelectedSnapshot.parameters, null, 2)}</pre>
+          <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(visibleSelectedSnapshot.results, null, 2)}</pre>
+          <button type="button" onClick={() => {
+            if (!projectId) return;
+            void snapshotsRepo.current.delete(projectId, visibleSelectedSnapshot.id).then(() => {
+              if (engine.getCurrentProjectId() === projectId) setSnapshots((items) => items.filter((item) => item.id !== visibleSelectedSnapshot.id));
+              setSelectedSnapshot(null);
+            }).catch((cause: unknown) => setSnapshotMessage({ projectId, text: cause instanceof Error ? cause.message : "No se pudo eliminar." }));
+          }} className="mt-2 text-red-700 underline">Eliminar snapshot</button>
+        </div> : null}
       </section>
     </div>
   );

@@ -38,6 +38,47 @@ test("descriptivos exactos con definiciones visibles", async ({ page }) => {
   await expect(v.getByText(/muestrales \(n−1\)/)).toBeVisible();
 });
 
+test("guarda un snapshot por proyecto y muestra resultados históricos tras recargar sin vincular la fuente", async ({ page }) => {
+  const project = `Snapshots-${Date.now()}`;
+  await page.getByRole("button", { name: /^inicio$/i }).click();
+  await page.getByLabel(/nombre de proyecto nuevo/i).fill(project);
+  await page.getByRole("button", { name: /^crear proyecto$/i }).click();
+  await expect(page.getByText(project, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByLabel(`Abrir ${project}`).check();
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await page.locator("#csv-file").setInputFiles(path.resolve("public/demo-data/promo.csv"));
+  await page.getByRole("button", { name: /importar archivo/i }).click();
+  await expect(page.getByText("promo.csv: 5 filas, 4 columnas")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  const v = view(page);
+  await v.getByLabel(/columna numérica/i).selectOption("importe");
+  await v.getByRole("button", { name: /^calcular$/i }).first().click();
+  await expect(v.getByText("404.25", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await v.locator("#desc-col").selectOption("");
+  await v.locator("#snapshot-title").fill("Resumen de ventas");
+  await v.getByRole("button", { name: /guardar snapshot/i }).click();
+  await expect(v.getByRole("status")).toContainText(/snapshot guardado/i);
+
+  await page.reload();
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  await expect(view(page).getByRole("button", { name: "Resumen de ventas" })).toBeVisible({ timeout: 15_000 });
+  await expect(view(page).getByText(/fuente no disponible en esta sesión/)).toBeVisible();
+  await view(page).getByRole("button", { name: "Resumen de ventas" }).click();
+  await expect(view(page).getByLabel("Resultado guardado")).toContainText("404.25");
+  await expect(view(page).getByLabel("Resultado guardado")).toContainText('"column": "importe"');
+  await expect(view(page).getByText(/no se vincula automáticamente/)).toBeVisible();
+
+  const otherProject = `Snapshots-otro-${Date.now()}`;
+  await page.getByRole("button", { name: /^inicio$/i }).click();
+  await page.getByLabel(/nombre de proyecto nuevo/i).fill(otherProject);
+  await page.getByRole("button", { name: /^crear proyecto$/i }).click();
+  await expect(page.getByText(otherProject, { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  await page.getByLabel(`Abrir ${otherProject}`).check();
+  await page.getByRole("button", { name: /^análisis$/i }).click();
+  await expect(view(page).getByLabel("Resultado guardado")).toHaveCount(0);
+  await expect(view(page).getByRole("button", { name: "Resumen de ventas" })).toHaveCount(0);
+});
+
 test("frecuencias con denominadores visibles", async ({ page }) => {
   await view(page).locator("#freq-col").selectOption("producto");
   await view(page).getByRole("button", { name: /^calcular$/i }).nth(1).click();

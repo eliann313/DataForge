@@ -1,6 +1,6 @@
 # DataForge — Roadmap maestro
 
-> **Estado al 2026-11-04:** R1 (0A–3B; E1–E6) y R2/fase 4 están cerrados. `main` incorpora pipelines tipados, varias fuentes aisladas por proyecto durante la sesión, APPEND/JOIN validados, expresiones, agregaciones y comparación de períodos. CSV/Parquet procesado inicia fase 5. Los datos y versiones continúan en memoria del Worker; snapshots, informes y respaldo portable siguen pendientes. La evidencia de este cierre corresponde al commit integrado y al build estático local.
+> **Estado al 2026-11-04:** R1 (0A–3B; E1–E6) y R2/fase 4 están cerrados. `main` incorpora pipelines tipados, varias fuentes aisladas por proyecto durante la sesión, APPEND/JOIN validados, expresiones, agregaciones y comparación de períodos. CSV/Parquet procesado inicia fase 5. El primer corte de snapshots conserva resultados, parámetros y linaje de versiones por proyecto en IndexedDB; archivos y versiones continúan en memoria del Worker. Report Builder y respaldo portable siguen pendientes. La evidencia del cierre de fase 4 corresponde al commit integrado y al build estático local.
 
 **Objetivo:** construir una plataforma de análisis de datos autoservicio, en español, con procesamiento local en el navegador, proyectos persistentes, visualizaciones, pipelines reproducibles e instrumentos científicos especializados.  
 **Alcance:** proyecto educativo y de portfolio; objetivo de infraestructura sin servicios pagos.  
@@ -201,7 +201,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Objetivo:** generar entregables útiles y auditables.
 
-**Avance:** `main` permite exportar cualquier versión de sesión a CSV y Parquet. CSV neutraliza encabezados y textos que podrían ejecutarse como fórmulas; la versión DuckDB permanece intacta. El Report Builder, snapshots y respaldo/importación portable siguen pendientes.
+**Avance:** `main` permite exportar cualquier versión de sesión a CSV y Parquet. CSV neutraliza encabezados y textos que podrían ejecutarse como fórmulas; la versión DuckDB permanece intacta. El primer corte de snapshots conserva parámetros, resultados calculados y linaje en IndexedDB por proyecto, sin bytes fuente. El Report Builder y respaldo/importación portable siguen pendientes.
 
 **Alcance**
 - Constructor de informes con secciones reordenables: resumen, fuentes, calidad, métricas, gráficos, observaciones, conclusiones propias, metodología y límites.

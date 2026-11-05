@@ -6,3 +6,11 @@ export {
   type FindingInput,
   type FindingRule,
 } from "./findings";
+export {
+  createAnalysisSnapshot,
+  validateAnalysisSnapshot,
+  type AnalysisSnapshot,
+  type AnalysisSnapshotRepository,
+  type SnapshotValue,
+} from "./snapshots";
+export { IndexedDBAnalysisSnapshotRepository } from "./snapshot-repository";
