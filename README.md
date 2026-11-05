@@ -10,6 +10,10 @@ DataForge busca que cualquier persona pueda **importar, explorar, limpiar, combi
 
 **Ejecución:** [Plan de primeras entregas](docs/primeras-entregas.md), con E1–E6 y R2/fase 4 cerradas; fase 5 activa.
 
+## Desarrollo local
+
+Requiere Node.js `>=20.12 <25` y npm. Desde la raíz del repositorio, ejecuta `npm ci` y luego `npm run dev`. `npm ci` instala las dependencias fijadas y ejecuta los scripts de instalación que copian los archivos WASM locales. Después de cambiar de rama o cuando cambie `package-lock.json`, vuelve a ejecutar `npm ci` antes de iniciar el servidor; no uses `--ignore-scripts` para este flujo.
+
 ## ¿Para quién es?
 
 Personas que desean respuestas simples de sus archivos, estudiantes e investigadores, profesionales, analistas de datos y desarrolladores. La complejidad de la interfaz crece según la tarea: análisis rápido para principiantes y workspace avanzado para usuarios técnicos.
