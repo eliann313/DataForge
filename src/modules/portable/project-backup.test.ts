@@ -180,6 +180,13 @@ describe("respaldo portable v1 de proyecto", () => {
     expect(saveReport).not.toHaveBeenCalled();
   });
 
+  it("no exporta un informe local cuyo snapshot ya no existe", async () => {
+    const repos = repositories();
+    await repos.projects.save({ id: "p1", name: "Muestra", folderId: null, kind: "general", createdAt: "old", updatedAt: "old" });
+    await repos.reports.save({ ...report, sections: [{ ...report.sections[0], snapshotId: "deleted-snapshot" }] });
+    await expect(new ProjectBackupService(repos).exportProject("p1")).rejects.toThrow("no está incluido");
+  });
+
   it("revierte todos los stores si falla publicar el proyecto y sigue aunque falle una eliminación", async () => {
     const repos = repositories();
     const projectSave = vi.spyOn(repos.projects, "save").mockRejectedValueOnce(new Error("cuota"));
