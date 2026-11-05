@@ -4,11 +4,11 @@
 
 DataForge busca que cualquier persona pueda **importar, explorar, limpiar, combinar, analizar, visualizar y exportar datos** sin configurar un entorno científico ni subir sus archivos a un backend de procesamiento. Un usuario puede analizar una planilla; otro puede construir pipelines reproducibles, trabajar con varios datasets y aplicar análisis estadístico avanzado.
 
-> **Estado:** R1 (E1–E6) y R2/fase 4 están cerrados. `main` incluye pipelines tipados, versiones de sesión, APPEND/JOIN validados, agregaciones y comparación de períodos; la exportación CSV/Parquet inicia fase 5. Esta pila local añade snapshots con linaje, informes locales y respaldo portable de artefactos JSON. El respaldo no lleva bytes de fuentes ni versiones DuckDB, que continúan en memoria; para reanudar análisis se vuelven a importar las fuentes. Estos cambios aún esperan revisión e integración en `main`. Ver [alcance, límites y evidencia](docs/primeras-entregas.md). La demo pública `https://data-forge-analysis.vercel.app/` sigue los despliegues de `main`; la verificación de esta entrega se realizó sobre el build estático local. Los umbrales de capacidad siguen sin acreditarse como garantía.
+> **Estado:** R1 (E1–E6), R2/fase 4 y fase 5 están cerrados en esta rama. Fase 5 incluye snapshots con linaje, informes locales, respaldo JSON v1 de metadatos y `.dfdataset` opcional para versiones Parquet materializadas. Son dos respaldos separados: el JSON excluye datasets; `.dfdataset` importa versiones solo a la sesión activa y no las asocia automáticamente a snapshots/informes. Fuentes y versiones no persisten al cerrar o recargar. Ver [alcance, límites y evidencia](docs/primeras-entregas.md). La demo pública `https://data-forge-analysis.vercel.app/` sigue los despliegues de `main`; la verificación de este corte se realizó localmente. Los topes de archivo no garantizan memoria total y no hay capacidad medida como garantía.
 
 **Documentación:** [MVP y prioridades](docs/MVP.md) · [Roadmap completo](docs/roadmap.md) · [Roadmap técnico maestro](docs/roadmap-tecnico.md) · [Arquitectura de software](docs/architecture.md) · [Decisiones (ADR)](docs/adr/README.md) · [Reglas para agentes](AGENTS.md)
 
-**Ejecución:** [Plan de primeras entregas](docs/primeras-entregas.md), con E1–E6 y R2/fase 4 cerradas; fase 5 activa.
+**Ejecución:** [Plan de primeras entregas](docs/primeras-entregas.md), con E1–E6, R2/fase 4 y fase 5 cerradas en este corte.
 
 ## Desarrollo local
 
@@ -246,7 +246,7 @@ Las reglas de trabajo con agentes de IA están en [AGENTS.md](AGENTS.md).
 - [ ] Fases 0B y 0C: spikes de Pyodide bajo demanda y de Rust/Wasm (no bloquean R1).
 - [x] R2 / fase 4 — implementación base en `main`: pipeline con filtros tipados, selección/renombre, descarte y reemplazo de nulos, normalización de texto/fechas, conversiones explícitas a tipos comunes, deduplicación exacta, orden y combinaciones APPEND/JOIN validadas.
 - [x] R2 / fase 4: columnas calculadas, agregaciones, comparación de versiones y períodos y combinaciones validadas. CSV/Parquet procesado inicia fase 5; la fuente permanece intacta.
-- [ ] R2 / fase 5: snapshots, informes y respaldo portable.
+- [x] R2 / fase 5: snapshots, informes y dos respaldos portables con límites documentados; ver [ADR-0009 a ADR-0012](docs/adr/README.md).
 
 ## Documentación y referencias
 

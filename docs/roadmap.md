@@ -1,6 +1,6 @@
 # DataForge — Roadmap maestro
 
-> **Estado al 2026-11-05:** R1 (0A–3B; E1–E6) y R2/fase 4 están cerrados. `main` incorpora pipelines tipados, varias fuentes aisladas por proyecto durante la sesión, APPEND/JOIN validados, expresiones, agregaciones y comparación de períodos. El stack local de fase 5 añade exportación CSV/Parquet, snapshots de resultados con linaje, informes locales y respaldo portable de artefactos JSON. Archivos y versiones de sesión siguen en memoria del Worker y quedan fuera del respaldo; la fuente se debe volver a importar. La evidencia del cierre de fase 4 corresponde al commit integrado y al build estático local.
+> **Estado al 2026-11-05:** R1 (0A–3B; E1–E6) y R2/fases 4 y 5 están cerrados en `codex/r2-phase5-close`. El corte incluye pipelines tipados, fuentes aisladas durante la sesión, APPEND/JOIN validados, expresiones, agregaciones, comparación de períodos, snapshots, informes locales y dos respaldos separados: JSON para artefactos y `.dfdataset` opcional para versiones Parquet materializadas. Fuentes y versiones de sesión permanecen en memoria del Worker; no se recupera una sesión durable ni se reconectan snapshots/informes. Los topes de archivo no garantizan memoria total. La fase 5 se cierra con estos límites explícitos.
 
 **Objetivo:** construir una plataforma de análisis de datos autoservicio, en español, con procesamiento local en el navegador, proyectos persistentes, visualizaciones, pipelines reproducibles e instrumentos científicos especializados.  
 **Alcance:** proyecto educativo y de portfolio; objetivo de infraestructura sin servicios pagos.  
@@ -201,7 +201,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Objetivo:** generar entregables útiles y auditables.
 
-**Avance:** las versiones se exportan a CSV y Parquet; los snapshots persisten parámetros, resultados y linaje completo en IndexedDB; los informes locales conservan referencias verificables a snapshots. El respaldo/importación JSON v1 incluye metadatos del proyecto, definiciones, snapshots e informes y valida sus referencias antes de escribir. Excluye los bytes de datasets y las versiones DuckDB, por lo que la fuente debe volver a importarse para reanudar análisis. Ver [ADR-0009](adr/0009-snapshots-de-analisis.md), [ADR-0010](adr/0010-informes-locales-basados-en-snapshots.md) y [ADR-0011](adr/0011-respaldo-portable-v1-metadatos.md).
+**Avance:** las versiones se exportan a CSV y Parquet; los snapshots persisten parámetros, resultados y linaje completo en IndexedDB; los informes locales conservan referencias verificables a snapshots. El respaldo/importación JSON v1 incluye metadatos del proyecto, definiciones, snapshots e informes y valida sus referencias antes de escribir. Excluye los bytes de datasets y las versiones DuckDB, por lo que conserva resultados históricos, pero no permite reanudar análisis sin volver a importar las fuentes. Como formato separado, `.dfdataset` respalda versiones Parquet materializadas de la sesión, con límites de 20 MiB por versión y 50 MiB totales; la cobertura Chromium restaura fuentes y combinaciones `APPEND`/`JOIN` multifuente. Tampoco persiste al cerrar la sesión ni se asocia automáticamente con snapshots/informes. No hay medición de memoria total ni garantía global de memoria. Ver [ADR-0009](adr/0009-snapshots-de-analisis.md), [ADR-0010](adr/0010-informes-locales-basados-en-snapshots.md), [ADR-0011](adr/0011-respaldo-portable-v1-metadatos.md) y [ADR-0012](adr/0012-respaldo-portable-de-datasets.md).
 
 **Alcance**
 - Constructor de informes con secciones reordenables: resumen, fuentes, calidad, métricas, gráficos, observaciones, conclusiones propias, metodología y límites.
@@ -211,7 +211,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 - Exportar/importar proyecto portable versionado (datos incluidos opcionalmente).
 - Trazar versión de datos y pasos del pipeline que produjeron el informe.
 
-**Criterios de aceptación:** informes reproducibles; los datos no se modifican por exportación; textos/HTML se sanitizan; proyectos se recuperan desde respaldo.
+**Criterios de aceptación:** informes reproducibles frente a snapshots congelados; los datos no se modifican por exportación; textos/HTML se sanitizan; JSON v1 recupera los metadatos y artefactos incluidos con IDs internos remapeados; `.dfdataset` importa versiones materializadas dentro de los límites declarados. Se aceptan dos respaldos separados: JSON v1 excluye datasets y `.dfdataset` recupera versiones solo en la sesión activa; no se reconectan automáticamente snapshots/informes con esas versiones. No se requiere persistencia durable ni OPFS para cerrar esta fase. La documentación debe declarar topes de archivo/tamaño, ausencia de una garantía de memoria total y límites de compatibilidad/cobertura de grafos.
 
 **Hito R2:** entorno analítico general, con pipelines, múltiples datos e informes.
 
@@ -405,12 +405,12 @@ Fase 10 no bloquea R5.
 - [x] Integrar en `main` pipelines locales, múltiples datasets, APPEND/UNION y JOIN validados, con linaje y control de fanout; ver [primeras entregas](primeras-entregas.md) y ADR-0004 a ADR-0007.
 - [x] Cerrar fase 4: expresiones aritméticas, agregaciones, comparación de períodos y validaciones integradas.
 - [x] Iniciar fase 5 con exportación de versiones procesadas a CSV/Parquet.
-- [ ] Continuar fase 5 con snapshots, informes reproducibles y respaldo/importación portable.
+- [x] Cerrar fase 5 con snapshots, informes reproducibles y respaldos JSON/`.dfdataset` separados, con límites de sesión y capacidad documentados.
 - [ ] Completar spikes 0B y 0C cuando aporten valor; actualizar ADR-0002 sin bloquear R2.
 
 **Regla rectora:** primero una plataforma que resuelva correctamente análisis comunes; después profundizar con plantillas y ciencia de datos especializada.
 
-**Regla de ejecución:** 0A, R1 y R2/fase 4 están cerradas. Continuar por R2/fase 5 con cortes demostrables, manteniendo los datos locales y las fuentes inmutables.
+**Regla de ejecución:** 0A, R1 y R2/fases 4 y 5 están cerradas en este corte. Continuar según el roadmap, manteniendo los datos locales y las fuentes inmutables.
 
 ## 11. Extensiones aprobadas para planificación (sin bloquear el MVP)
 
