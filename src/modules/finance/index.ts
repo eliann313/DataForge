@@ -20,3 +20,4 @@ export { MemoryTransactionRepository } from "./infrastructure/memory";
 export { IndexedDBTransactionRepository } from "./infrastructure/indexeddb";
 export { FinanceImportService, type ImportField, type ImportMapping, type ImportRow, type ImportPreview } from "./application/import-service";
 export { readFinanceFile, parseCsv, type TabularFile } from "./application/import-file";
+export { buildFinanceReport, financeReportHtml, type FinanceReport } from "./application/report";

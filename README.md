@@ -149,6 +149,10 @@ Más información: [Arquitectura](docs/architecture.md).
 
 La aplicación usa **Next.js con exportación estática**, decisión aceptada al cerrar 0A ([ADR-0001](docs/adr/0001-framework-y-exportacion-estatica.md)). Una futura autenticación dinámica obligará a revisar el modo de despliegue; no forma parte del MVP.
 
+### Informes financieros locales
+
+En la sección Finanzas, el informe se genera desde los movimientos y cuentas persistidos en IndexedDB en el dispositivo. El rango de fechas incluye ambos extremos. ARS y USD aparecen separados, sin conversión. Las transferencias propias se listan con sus cuentas de origen y destino y quedan fuera de ingresos y gastos. El desglose por cuenta muestra ingresos, gastos, reintegros, transferencias entrantes y salientes, y una variación neta coherente con el tipo de cuenta bancaria o tarjeta. La salida HTML se abre para imprimir o guardar como PDF; no se sincroniza ni altera los movimientos. Ver [ADR-0017](docs/adr/0017-local-finance-reports.md).
+
 ## Objetivos de capacidad (no garantías)
 
 | Escenario | Objetivo provisional |
