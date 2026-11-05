@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProjects } from "@/modules/projects";
 import {
   createReport,
@@ -19,6 +19,17 @@ const EDITORIAL_SECTIONS = [
   ["methodology", "Metodología"],
   ["limitations", "Límites"],
 ] as const;
+
+interface ReportsWorkspace {
+  projectId: string;
+  loaded: boolean;
+  reports: Report[];
+  snapshots: ReportSnapshotView[];
+  selectedId: string;
+  draft: Report | null;
+  busy: boolean;
+  message: string | null;
+}
 
 function sectionId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -69,139 +80,157 @@ function SnapshotResultsPreview({ results }: { results: Record<string, unknown> 
 export default function ReportsView({
   reports: reportRepository,
   snapshots: snapshotRepository,
+  active: viewIsActive,
 }: {
   reports: ReportRepository;
   snapshots: ReportSnapshotReader<ReportSnapshotView>;
+  active: boolean;
 }) {
   const { active } = useProjects();
   const projectId = active?.id ?? "";
-  const [reports, setReports] = useState<Report[]>([]);
-  const [snapshots, setSnapshots] = useState<ReportSnapshotView[]>([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [draft, setDraft] = useState<Report | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const selectedSnapshots = useMemo(() => new Map(snapshots.map((item) => [item.id, item])), [snapshots]);
+  const operationRevision = useRef(0);
+  const [workspace, setWorkspace] = useState<ReportsWorkspace>({
+    projectId: "", loaded: false, reports: [], snapshots: [], selectedId: "", draft: null, busy: false, message: null,
+  });
+  const projectReady = Boolean(projectId) && workspace.projectId === projectId && workspace.loaded;
+  const visibleReports = projectReady ? workspace.reports : [];
+  const visibleSnapshots = projectReady ? workspace.snapshots : [];
+  const visibleDraft = projectReady ? workspace.draft : null;
+  const visibleMessage = projectReady ? workspace.message : null;
+  const projectBusy = !projectReady || workspace.busy;
+  const selectedSnapshots = useMemo(() => new Map((projectReady ? workspace.snapshots : []).map((item) => [item.id, item])), [projectReady, workspace.snapshots]);
 
-  async function load() {
-    if (!projectId) return;
-    setBusy(true);
-    setMessage(null);
+  const loadProject = useCallback(async (targetProjectId: string, revision: number) => {
+    const isCurrent = () => operationRevision.current === revision;
+    if (!targetProjectId || !isCurrent()) return;
     try {
       const [savedReports, savedSnapshots] = await Promise.all([
-        reportRepository.list(projectId), snapshotRepository.list(projectId),
+        reportRepository.list(targetProjectId), snapshotRepository.list(targetProjectId),
       ]);
-      setReports(savedReports);
-      setSnapshots(savedSnapshots);
-      const selected = savedReports.find((item) => item.id === selectedId) ?? savedReports[0] ?? null;
-      setSelectedId(selected?.id ?? "");
-      setDraft(selected);
+      if (!isCurrent()) return;
+      setWorkspace((current) => {
+        const selected = current.projectId === targetProjectId && current.draft
+          ? savedReports.find((item) => item.id === current.draft?.id) ?? current.draft
+          : savedReports[0] ?? null;
+        return {
+          projectId: targetProjectId, loaded: true, reports: savedReports, snapshots: savedSnapshots,
+          selectedId: selected?.id ?? "", draft: selected, busy: false, message: null,
+        };
+      });
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "No se pudieron cargar los informes locales.");
+      if (!isCurrent()) return;
+      setWorkspace((current) => {
+        const belongsToProject = current.projectId === targetProjectId;
+        return {
+          projectId: targetProjectId, loaded: true,
+          reports: belongsToProject ? current.reports : [],
+          snapshots: belongsToProject ? current.snapshots : [],
+          selectedId: belongsToProject ? current.selectedId : "",
+          draft: belongsToProject ? current.draft : null,
+          busy: false,
+          message: cause instanceof Error ? cause.message : "No se pudieron cargar los informes locales.",
+        };
+      });
     } finally {
-      setBusy(false);
+      if (isCurrent()) setWorkspace((current) => current.projectId === targetProjectId ? { ...current, busy: false } : current);
     }
+  }, [reportRepository, snapshotRepository]);
+
+  async function load() {
+    if (!projectReady || !viewIsActive) return;
+    const revision = ++operationRevision.current;
+    setWorkspace((current) => current.projectId === projectId ? { ...current, busy: true, message: null } : current);
+    await loadProject(projectId, revision);
   }
 
   useEffect(() => {
-    // IndexedDB access runs asynchronously and is cancelled when the project changes.
-    let cancelled = false;
-    (async () => {
-      if (!projectId) return;
-      setBusy(true);
-      try {
-        const [savedReports, savedSnapshots] = await Promise.all([
-          reportRepository.list(projectId), snapshotRepository.list(projectId),
-        ]);
-        if (cancelled) return;
-        setReports(savedReports);
-        setSnapshots(savedSnapshots);
-        const selected = savedReports[0] ?? null;
-        setSelectedId(selected?.id ?? "");
-        setDraft(selected);
-      } catch (cause) {
-        if (!cancelled) setMessage(cause instanceof Error ? cause.message : "No se pudieron cargar los informes locales.");
-      } finally {
-        if (!cancelled) setBusy(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [projectId, reportRepository, snapshotRepository]);
+    const targetProjectId = projectId;
+    const revision = ++operationRevision.current;
+    if (viewIsActive && targetProjectId) void loadProject(targetProjectId, revision);
+    return () => {
+      operationRevision.current += 1;
+    };
+  }, [projectId, loadProject, viewIsActive]);
 
   function replaceSection(sectionIdToChange: string, changes: Partial<ReportSection>) {
-    setDraft((current) => current ? {
+    setWorkspace((current) => current.projectId === projectId && current.draft ? {
       ...current,
-      sections: current.sections.map((section) => section.id === sectionIdToChange ? { ...section, ...changes } : section),
+      draft: { ...current.draft, sections: current.draft.sections.map((section) => section.id === sectionIdToChange ? { ...section, ...changes } : section) },
     } : current);
   }
 
   function addEditorialSection(kind: typeof EDITORIAL_SECTIONS[number][0], title: string) {
-    setDraft((current) => current ? {
-      ...current,
-      sections: [...current.sections, { id: sectionId(), kind, title, content: "" }],
+    setWorkspace((current) => current.projectId === projectId && current.draft ? {
+      ...current, draft: { ...current.draft, sections: [...current.draft.sections, { id: sectionId(), kind, title, content: "" }] },
     } : current);
   }
 
   function addSnapshot(snapshot: ReportSnapshotView) {
-    setDraft((current) => current ? {
-      ...current,
-      sections: [...current.sections, { id: sectionId(), kind: "snapshot", title: snapshot.title, snapshotId: snapshot.id }],
+    setWorkspace((current) => current.projectId === projectId && current.draft ? {
+      ...current, draft: { ...current.draft, sections: [...current.draft.sections, { id: sectionId(), kind: "snapshot", title: snapshot.title, snapshotId: snapshot.id }] },
     } : current);
   }
 
   function moveSection(index: number, delta: number) {
-    setDraft((current) => {
-      if (!current) return current;
+    setWorkspace((current) => {
+      if (current.projectId !== projectId || !current.draft) return current;
       const target = index + delta;
-      if (target < 0 || target >= current.sections.length) return current;
-      const sections = [...current.sections];
+      if (target < 0 || target >= current.draft.sections.length) return current;
+      const sections = [...current.draft.sections];
       [sections[index], sections[target]] = [sections[target], sections[index]];
-      return { ...current, sections };
+      return { ...current, draft: { ...current.draft, sections } };
     });
   }
 
   async function save() {
-    if (!draft || !projectId) return;
-    setBusy(true);
-    setMessage(null);
+    const targetProjectId = projectId;
+    const report = visibleDraft;
+    if (!report || !targetProjectId || !projectReady || !viewIsActive || report.projectId !== targetProjectId) return;
+    const revision = ++operationRevision.current;
+    setWorkspace((current) => current.projectId === targetProjectId ? { ...current, busy: true, message: null } : current);
     try {
-      const saved = updateReport(draft, { title: draft.title, sections: draft.sections });
+      const saved = updateReport(report, { title: report.title, sections: report.sections });
       await reportRepository.save(saved);
-      setDraft(saved);
-      setReports(await reportRepository.list(projectId));
-      setSelectedId(saved.id);
-      setMessage("Informe guardado en este dispositivo.");
+      if (operationRevision.current !== revision) return;
+      const savedReports = await reportRepository.list(targetProjectId);
+      if (operationRevision.current !== revision) return;
+      setWorkspace((current) => current.projectId === targetProjectId ? {
+        ...current, draft: saved, reports: savedReports, selectedId: saved.id, message: "Informe guardado en este dispositivo.",
+      } : current);
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : "No se pudo guardar el informe.");
+      if (operationRevision.current === revision) setWorkspace((current) => current.projectId === targetProjectId ? {
+        ...current, message: cause instanceof Error ? cause.message : "No se pudo guardar el informe.",
+      } : current);
     } finally {
-      setBusy(false);
+      if (operationRevision.current === revision) setWorkspace((current) => current.projectId === targetProjectId ? { ...current, busy: false } : current);
     }
   }
 
   function exportHtml() {
-    if (!draft) return;
+    const targetProjectId = projectId;
+    const report = visibleDraft;
+    if (!report || !projectReady || !viewIsActive || report.projectId !== targetProjectId) return;
     let blobUrl: string | null = null;
     try {
-      const html = renderReportHtml(draft, selectedSnapshots);
+      const html = renderReportHtml(report, selectedSnapshots);
       blobUrl = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = `${draft.title.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-|-$/g, "") || "informe"}.html`;
+      link.download = `${report.title.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-|-$/g, "") || "informe"}.html`;
       link.click();
       const createdUrl = blobUrl;
       window.setTimeout(() => URL.revokeObjectURL(createdUrl), 1000);
-      setMessage("HTML exportado. Puede abrirlo e imprimirlo o guardarlo como PDF desde el navegador.");
+      setWorkspace((current) => current.projectId === targetProjectId ? { ...current, message: "HTML exportado. Puede abrirlo e imprimirlo o guardarlo como PDF desde el navegador." } : current);
     } catch (cause) {
       if (blobUrl) URL.revokeObjectURL(blobUrl);
-      setMessage(cause instanceof Error ? cause.message : "No se pudo exportar el informe HTML.");
+      setWorkspace((current) => current.projectId === targetProjectId ? { ...current, message: cause instanceof Error ? cause.message : "No se pudo exportar el informe HTML." } : current);
     }
   }
 
   function createNew() {
-    if (!projectId) return;
+    if (!projectId || !projectReady || !viewIsActive) return;
     const created = createReport(projectId, "Nuevo informe");
-    setDraft(created);
-    setSelectedId(created.id);
+    setWorkspace((current) => current.projectId === projectId ? { ...current, draft: created, selectedId: created.id } : current);
   }
 
   if (!projectId) return <p role="status">Abra un proyecto para crear informes locales.</p>;
@@ -211,34 +240,34 @@ export default function ReportsView({
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div><h1 id="reports-heading" className="text-2xl font-semibold">Informes</h1><p className="text-sm text-gray-600">Construya un informe con resultados guardados y texto propio.</p></div>
         <div className="flex gap-2">
-          <button type="button" onClick={createNew} className="rounded border px-3 py-2 text-sm">Nuevo informe</button>
-          <button type="button" onClick={() => void save()} disabled={!draft || busy} className="rounded bg-violet-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Guardar</button>
-          <button type="button" onClick={exportHtml} disabled={!draft} className="rounded border px-3 py-2 text-sm disabled:opacity-50">Exportar HTML</button>
+          <button type="button" onClick={createNew} disabled={!projectReady} className="rounded border px-3 py-2 text-sm disabled:opacity-50">Nuevo informe</button>
+          <button type="button" onClick={() => void save()} disabled={!visibleDraft || projectBusy} className="rounded bg-violet-800 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">Guardar</button>
+          <button type="button" onClick={exportHtml} disabled={!visibleDraft || projectBusy} className="rounded border px-3 py-2 text-sm disabled:opacity-50">Exportar HTML</button>
         </div>
       </header>
-      {message ? <p role="status" className="text-sm text-gray-700">{message}</p> : null}
+      {visibleMessage ? <p role="status" className="text-sm text-gray-700">{visibleMessage}</p> : null}
       <div className="grid gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <aside className="space-y-2 rounded border bg-white p-3" aria-label="Informes guardados">
           <h2 className="font-medium">Guardados en este proyecto</h2>
-          {reports.length === 0 ? <p className="text-sm text-gray-600">Todavía no hay informes.</p> : reports.map((report) => (
-            <button key={report.id} type="button" onClick={() => { setSelectedId(report.id); setDraft(report); }} aria-pressed={draft?.id === report.id} className="block w-full rounded border px-2 py-2 text-left text-sm aria-pressed:border-violet-700 aria-pressed:bg-violet-50">{report.title}</button>
+          {!projectReady ? <p role="status" className="text-sm text-gray-600">Cargando informes de este proyecto…</p> : visibleReports.length === 0 ? <p className="text-sm text-gray-600">Todavía no hay informes.</p> : visibleReports.map((report) => (
+            <button key={report.id} type="button" onClick={() => setWorkspace((current) => current.projectId === projectId ? { ...current, selectedId: report.id, draft: report } : current)} aria-pressed={visibleDraft?.id === report.id} className="block w-full rounded border px-2 py-2 text-left text-sm aria-pressed:border-violet-700 aria-pressed:bg-violet-50">{report.title}</button>
           ))}
-          <button type="button" onClick={() => void load()} disabled={busy} className="text-sm text-violet-800 underline">Actualizar</button>
+          <button type="button" onClick={() => void load()} disabled={!projectReady || projectBusy} className="text-sm text-violet-800 underline">Actualizar</button>
         </aside>
-        {draft ? <div className="space-y-4 rounded border bg-white p-4">
-          <label className="block text-sm font-medium">Título del informe<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} className="mt-1 block w-full rounded border px-3 py-2 font-normal" /></label>
+        {visibleDraft ? <div className="space-y-4 rounded border bg-white p-4">
+          <label className="block text-sm font-medium">Título del informe<input value={visibleDraft.title} onChange={(event) => setWorkspace((current) => current.projectId === projectId && current.draft ? { ...current, draft: { ...current.draft, title: event.target.value } } : current)} className="mt-1 block w-full rounded border px-3 py-2 font-normal" /></label>
           <div className="flex flex-wrap items-end gap-2 border-y py-3">
-            <label className="min-w-56 flex-1 text-sm">Agregar snapshot guardado<select defaultValue="" onChange={(event) => { const snapshot = snapshots.find((item) => item.id === event.target.value); if (snapshot) addSnapshot(snapshot); event.currentTarget.value = ""; }} className="mt-1 block w-full rounded border px-2 py-2"><option value="">Seleccionar snapshot…</option>{snapshots.map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{snapshot.title} · {snapshot.source.datasetName}</option>)}</select></label>
+            <label className="min-w-56 flex-1 text-sm">Agregar snapshot guardado<select defaultValue="" disabled={!projectReady} onChange={(event) => { const snapshot = visibleSnapshots.find((item) => item.id === event.target.value); if (snapshot) addSnapshot(snapshot); event.currentTarget.value = ""; }} className="mt-1 block w-full rounded border px-2 py-2"><option value="">Seleccionar snapshot…</option>{visibleSnapshots.map((snapshot) => <option key={snapshot.id} value={snapshot.id}>{snapshot.title} · {snapshot.source.datasetName}</option>)}</select></label>
             {EDITORIAL_SECTIONS.map(([kind, title]) => <button key={kind} type="button" onClick={() => addEditorialSection(kind, title)} className="rounded border px-2 py-2 text-sm">+ {title}</button>)}
           </div>
-          {draft.sections.length === 0 ? <p className="text-sm text-gray-600">Agregue un snapshot o una sección de texto para empezar.</p> : <ol className="space-y-3">{draft.sections.map((section, index) => {
+          {visibleDraft.sections.length === 0 ? <p className="text-sm text-gray-600">Agregue un snapshot o una sección de texto para empezar.</p> : <ol className="space-y-3">{visibleDraft.sections.map((section, index) => {
             const snapshot = section.kind === "snapshot" ? selectedSnapshots.get(section.snapshotId ?? "") : undefined;
             return <li key={section.id} className="rounded border p-3">
               <div className="mb-2 flex items-center gap-2">
                 <input aria-label="Título de sección" value={section.title} onChange={(event) => replaceSection(section.id, { title: event.target.value })} className="min-w-0 flex-1 rounded border px-2 py-1 font-medium" />
                 <button type="button" onClick={() => moveSection(index, -1)} disabled={index === 0} aria-label="Mover sección arriba" className="rounded border px-2 py-1 disabled:opacity-40">↑</button>
-                <button type="button" onClick={() => moveSection(index, 1)} disabled={index === draft.sections.length - 1} aria-label="Mover sección abajo" className="rounded border px-2 py-1 disabled:opacity-40">↓</button>
-                <button type="button" onClick={() => setDraft({ ...draft, sections: draft.sections.filter((item) => item.id !== section.id) })} aria-label="Quitar sección" className="rounded border px-2 py-1">Quitar</button>
+                <button type="button" onClick={() => moveSection(index, 1)} disabled={index === visibleDraft.sections.length - 1} aria-label="Mover sección abajo" className="rounded border px-2 py-1 disabled:opacity-40">↓</button>
+                <button type="button" onClick={() => setWorkspace((current) => current.projectId === projectId && current.draft ? { ...current, draft: { ...current.draft, sections: current.draft.sections.filter((item) => item.id !== section.id) } } : current)} aria-label="Quitar sección" className="rounded border px-2 py-1">Quitar</button>
               </div>
               {section.kind === "snapshot" ? snapshot ? <div className="text-sm text-gray-700"><p>{snapshot.source.datasetName} · {snapshot.source.rowCount} filas · {snapshot.source.columns.length} columnas</p><SnapshotLineagePreview lineage={snapshot.source.lineage} /><SnapshotResultsPreview results={snapshot.results} /></div> : <p role="status" className="text-sm text-amber-800">El snapshot referenciado no está disponible en este proyecto; se conservará la referencia en el informe.</p> : <textarea aria-label={section.title} value={section.content ?? ""} onChange={(event) => replaceSection(section.id, { content: event.target.value })} rows={5} className="block w-full rounded border px-3 py-2" placeholder="Escriba texto plano para esta sección…" />}
             </li>;

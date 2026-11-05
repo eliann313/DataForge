@@ -88,9 +88,10 @@ function WorkspaceHome() {
                 <FinanceView />
               ) : view === "transformaciones" ? (
                 <TransformationsView onImportData={() => navigate("datos")} />
-              ) : view === "informes" ? (
-                <ReportsView reports={reportRepository} snapshots={snapshotRepository} />
               ) : null}
+              <div hidden={view !== "informes"}>
+                <ReportsView reports={reportRepository} snapshots={snapshotRepository} active={view === "informes"} />
+              </div>
             </main>
             <Inspector />
           </div>
