@@ -111,7 +111,7 @@ test("permite crear un informe local y exportar HTML imprimible", async ({ page 
   await expect(page.getByText("Ventas por canal")).toBeVisible();
   await expect(page.getByText("Media", { exact: true })).toBeVisible();
   await expect(page.getByRole("img", { name: "Gráfico de barras: Ventas por canal" })).toBeVisible();
-  await expect(page.getByText("web", { exact: true })).toHaveCount(1);
+  await expect(page.locator('figure[aria-label="Gráfico: Ventas por canal"] table tbody tr').filter({ hasText: "web" })).toContainText("20");
   await expect(page.getByText(/Linaje de 1 versiones/)).toBeVisible();
   await page.getByLabel(/añadir sección editorial/i).selectOption("observations");
   await page.getByRole("textbox", { name: "Contenido editorial" }).fill("Revisar el comportamiento del trimestre.");
