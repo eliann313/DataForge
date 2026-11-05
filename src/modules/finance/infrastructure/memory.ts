@@ -11,6 +11,13 @@ export class MemoryTransactionRepository implements TransactionRepository {
     this.store.set(tx.id, { ...tx });
   }
 
+  async saveMany(transactions: FinancialTransaction[]): Promise<void> {
+    const next = new Map(this.store);
+    for (const tx of transactions) next.set(tx.id, { ...tx });
+    this.store.clear();
+    for (const [id, tx] of next) this.store.set(id, tx);
+  }
+
   async findById(id: string): Promise<FinancialTransaction | null> {
     const found = this.store.get(id);
     return found ? { ...found } : null;

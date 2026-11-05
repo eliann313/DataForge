@@ -17,3 +17,5 @@ export type {
 export { FinanceService, type FinanceDeps } from "./application/service";
 export { MemoryTransactionRepository } from "./infrastructure/memory";
 export { IndexedDBTransactionRepository } from "./infrastructure/indexeddb";
+export { FinanceImportService, type ImportField, type ImportMapping, type ImportRow, type ImportPreview } from "./application/import-service";
+export { readFinanceFile, parseCsv, type TabularFile } from "./application/import-file";

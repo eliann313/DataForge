@@ -219,12 +219,12 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 
 **Objetivo:** ampliar [Finanzas Lite](#fase-3b--finanzas-lite-primer-caso-real) con cuentas, transferencias, importación por archivo, detección de duplicados y dashboard completo.
 
-**Avance verificado (primer corte):** alta de cuentas ARS/USD, movimientos manuales asociados a una cuenta, saldos por cuenta y transferencias propias entre cuentas de igual moneda. Las transferencias no se contabilizan como ingreso/egreso. La migración IndexedDB v1→v2 agrega cuentas iniciales por moneda y asocia los movimientos previos sin borrar ni reescribir sus importes. Pendiente: edición/baja de cuentas, pagos de tarjeta/reintegros, importación CSV/XLSX con mapeo y duplicados, y ampliaciones del dashboard.
+**Avance verificado (rama `codex/r3-finance-import`, apilada sobre cuentas/transferencias):** alta de cuentas ARS/USD, movimientos manuales asociados a una cuenta, saldos por cuenta y transferencias propias entre cuentas de igual moneda. La migración IndexedDB v1→v2 agrega cuentas iniciales y asocia movimientos previos. Se añade importación local de CSV y XLSX (primera hoja), mapeo explícito de fecha, descripción, tipo, importe y categoría, selección de moneda/cuenta, vista previa, errores por fila, detección de duplicados y confirmación. Solo se guardan lotes sin errores y en una única transacción IndexedDB. Los importes se validan y persisten en centavos enteros. Límites: UTF-8, máximo 10 MiB, 100.000 filas y 100 columnas; no se admiten XLS/XLSB/ODS, archivos protegidos, libros con varias hojas seleccionables ni autodetección de esquemas; los duplicados son candidatos exactos por fecha, tipo, centavos, moneda, cuenta y descripción normalizada.
 
 **Alcance**
 - Entidades de cuentas, categorías, ingresos, gastos, transferencias, reintegros, presupuestos y movimientos.
 - Formulario manual: fecha, descripción, importe, moneda, categoría, cuenta, notas; alta, edición, duplicación y baja.
-- Importar CSV/XLSX y mapear columnas al modelo financiero con confirmación.
+- Importar CSV/XLSX y mapear columnas al modelo financiero con confirmación. El primer corte no cubre movimientos de transferencia bancaria, deduplicación aproximada, otras hojas/formatos, ni cuentas/categorías distintas por fila.
 - Detección de duplicados al combinar importación y carga manual.
 - Dashboard: ingresos, egresos, saldo por período, categoría, evolución, movimientos destacados.
 - Informes financieros y almacenamiento local.

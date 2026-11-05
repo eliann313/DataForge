@@ -7,6 +7,8 @@ import type { FinancialAccount } from "../domain/account";
 
 export interface TransactionRepository {
   save(tx: FinancialTransaction): Promise<void>;
+  /** Persiste el lote completo en una sola operación atómica. */
+  saveMany(transactions: FinancialTransaction[]): Promise<void>;
   findById(id: string): Promise<FinancialTransaction | null>;
   list(): Promise<FinancialTransaction[]>;
   delete(id: string): Promise<void>;

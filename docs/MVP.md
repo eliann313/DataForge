@@ -56,7 +56,7 @@ Primer caso de uso real, para demostrar temprano que DataForge no es solo una in
 
 **Después:** [Finanzas completas](./roadmap.md) (fases 6–7) extienden esta base. El ajuste por inflación mediante IPC corresponde a Finanzas avanzadas; debe indicar fuente del IPC, período base y metodología, y distinguir valores nominales de ajustados.
 
-**Primer incremento de fase 6:** ahora se pueden crear cuentas ARS/USD, asociar movimientos y registrar transferencias entre cuentas propias de igual moneda. Las transferencias modifican los saldos de las cuentas, pero no los totales de ingresos y gastos. Los datos de Finanzas Lite se conservan al migrar su almacenamiento local.
+**Incrementos de fase 6:** se pueden crear cuentas ARS/USD, asociar movimientos y registrar transferencias entre cuentas propias de igual moneda. También se importan CSV UTF-8 y XLSX (primera hoja) con mapeo explícito, vista previa, errores, detección de duplicados y confirmación de lote. Las transferencias no alteran los totales de ingreso/gasto; la migración local conserva los datos previos. Las limitaciones de importación están en [ADR-0014](./adr/0014-finance-local-file-import.md).
 
 ## 4. Fuera del MVP
 

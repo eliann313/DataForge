@@ -15,6 +15,7 @@ import {
   type FinancialAccount,
 } from "@/modules/finance";
 import { IndexedDBTransactionRepository } from "@/modules/finance";
+import FinanceImportPanel from "@/app/components/FinanceImportPanel";
 import { WalletCards, Plus, Tag } from "lucide-react";
 
 const ChartView = dynamic(() => import("@/app/components/ChartView"), {
@@ -251,6 +252,7 @@ export default function FinanceView() {
               <button disabled={busy} className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white">Agregar</button>
             </form>
           </section>
+          <FinanceImportPanel accounts={accounts} onImported={() => refresh()} />
           <section aria-labelledby="evolucion" className={card}>
             <h2 id="evolucion" className="text-lg font-bold">Evolución del saldo</h2>
             <p className="mb-3 text-sm text-slate-500">Últimos seis meses · ARS y USD por separado</p>

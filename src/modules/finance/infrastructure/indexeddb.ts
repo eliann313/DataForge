@@ -64,6 +64,18 @@ export class IndexedDBTransactionRepository implements TransactionRepository {
     }
   }
 
+  async saveMany(transactions: FinancialTransaction[]): Promise<void> {
+    try {
+      const db = await this.open();
+      const idbTx = db.transaction(STORE, "readwrite");
+      const store = idbTx.objectStore(STORE);
+      for (const tx of transactions) store.add({ ...tx });
+      await transactionDone(idbTx);
+    } catch (cause) {
+      throw failed("importación de movimientos", cause);
+    }
+  }
+
   async findById(id: string): Promise<FinancialTransaction | null> {
     try {
       const db = await this.open();

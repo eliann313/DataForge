@@ -136,6 +136,7 @@ describe("FinanceService", () => {
     const svc = new FinanceService({
       transactions: {
         save: () => Promise.reject(new Error("cuota excedida")),
+        saveMany: () => Promise.reject(new Error("cuota excedida")),
         findById: () => Promise.resolve(null),
         list: () => Promise.resolve([]),
         delete: () => Promise.resolve(),

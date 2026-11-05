@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FinanceService } from "./service";
 import { IndexedDBTransactionRepository } from "../infrastructure/indexeddb";
+import { FinanceImportService } from "./import-service";
 
 async function reset(): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -55,5 +56,28 @@ describe("adaptador IndexedDB de finanzas", () => {
       expect(rows[0].accountId).toBe("account-default-usd");
       expect(accounts.map((account) => account.currency).sort()).toEqual(["ARS", "USD"]);
     } finally { repo.close(); }
+  });
+
+  it("guarda un lote completo en una transacción y conserva centavos tras reabrir", async () => {
+    const repo = new IndexedDBTransactionRepository();
+    const service = new FinanceImportService(repo, (() => { let i = 0; return () => `batch-${++i}`; })(), () => "2024-03-01T00:00:00Z");
+    const preview = await service.preview([["2024-03-01", "A", "ingreso", "0,10", "Trabajo"], ["2024-03-02", "B", "gasto", "0,20", "Comida"]], { date: 0, description: 1, kind: 2, amount: 3, category: 4 }, "ARS", { id: "account-default", name: "Cuenta principal", currency: "ARS", createdAt: "2024-01-01" });
+    await expect(service.confirm(preview)).resolves.toBe(2);
+    repo.close();
+    const reopened = new IndexedDBTransactionRepository();
+    try { expect((await reopened.list()).map((tx) => tx.amountMinor).sort((a, b) => a - b)).toEqual([10, 20]); }
+    finally { reopened.close(); }
+  });
+
+  it("revierte el lote entero si una inserción falla", async () => {
+    const repo = new IndexedDBTransactionRepository();
+    const service = new FinanceImportService(repo, (() => { let i = 0; return () => `same-${i++}`; })(), () => "2024-03-01T00:00:00Z");
+    const preview = await service.preview([["2024-03-01", "A", "ingreso", "1", "Trabajo"], ["2024-03-02", "B", "gasto", "2", "Comida"]], { date: 0, description: 1, kind: 2, amount: 3, category: 4 }, "ARS", { id: "account-default", name: "Cuenta principal", currency: "ARS", createdAt: "2024-01-01" });
+    const first = preview.rows[0].transaction!;
+    const second = { ...preview.rows[1].transaction!, id: first.id };
+    preview.rows[1].transaction = second;
+    await expect(service.confirm(preview)).rejects.toThrow(/almacenamiento|importación/i);
+    try { expect(await repo.list()).toEqual([]); }
+    finally { repo.close(); }
   });
 });
