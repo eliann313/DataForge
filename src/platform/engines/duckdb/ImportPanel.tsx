@@ -16,6 +16,7 @@ import {
 import ProfileView from "./ProfileView";
 import { tryNumericSummary } from "./numeric-summary";
 import { isNumericMeasure, ROLES, type SemanticRole } from "./semantics";
+import { stringifyArrowValue } from "./arrow-values";
 import { XLSXBridge, type SheetInfo } from "./xlsx-bridge";
 
 export interface ExampleRequest {
@@ -66,7 +67,7 @@ function firstNumeric(columns: ColumnInfo[], roles: Record<string, SemanticRole>
 
 function formatCell(value: unknown): string {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "object") return JSON.stringify(value);
+  if (typeof value === "object") return stringifyArrowValue(value) ?? "—";
   if (typeof value === "number") return String(value);
   return String(value);
 }
