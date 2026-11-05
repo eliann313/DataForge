@@ -2,6 +2,7 @@
 export type ProjectErrorCode =
   | "validation"
   | "project-not-found"
+  | "project-cleanup-failed"
   | "folder-not-found"
   | "folder-not-empty"
   | "storage-unavailable"

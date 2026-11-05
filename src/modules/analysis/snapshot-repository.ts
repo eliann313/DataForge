@@ -45,6 +45,23 @@ export class IndexedDBAnalysisSnapshotRepository implements AnalysisSnapshotRepo
     await this.withStore("readwrite", (store) => store.delete([projectId, snapshotId]));
   }
 
+  async deleteProject(projectId: string): Promise<void> {
+    if (!projectId.trim()) return;
+    const db = await this.open();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const request = store.index("by-project").getAllKeys(IDBKeyRange.only(projectId));
+      request.onsuccess = () => {
+        for (const key of request.result) store.delete(key);
+      };
+      request.onerror = () => reject(request.error ?? new Error("No se pudieron buscar snapshots del proyecto."));
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error ?? new Error("Se canceló la limpieza de snapshots del proyecto."));
+      tx.onerror = () => reject(tx.error ?? new Error("Falló la limpieza de snapshots del proyecto."));
+    });
+  }
+
   private async withStore<T = IDBValidKey>(mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
     const db = await this.open();
     return new Promise<T>((resolve, reject) => {

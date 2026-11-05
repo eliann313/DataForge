@@ -20,7 +20,7 @@ El orden ejecutado fue **E1 → E2 → E3 → E4 → E5 → E6**. Las condicione
 
 El módulo Análisis guarda por proyecto un snapshot inmutable con parámetros, resultados ya calculados y referencia explícita a `versionId`, `sourceId`, nombre y esquema. El linaje copia de forma validada todos los padres y fuentes y los pasos ejecutados de pipelines, con un límite de 256 nodos. Metadatos y resultados se guardan en IndexedDB con límite de 2 MiB por snapshot; no persisten bytes del dataset ni versiones DuckDB.
 
-Después de recargar se puede consultar el resultado histórico, pero no repetir el cálculo. Reimportar el mismo archivo no lo vincula automáticamente. El respaldo portable conserva snapshots e informes y remapea sus IDs de proyecto; no contiene bytes fuente ni versiones DuckDB, así que la fuente debe importarse de nuevo para reanudar análisis. Borrar un proyecto tampoco borra snapshots de la base separada: quedan huérfanos locales, aislados por UUID, invisibles y sin gestión desde la interfaz (ADR-0009). Ver también [ADR-0011](adr/0011-respaldo-portable-v1-metadatos.md).
+Después de recargar se puede consultar el resultado histórico, pero no repetir el cálculo. Reimportar el mismo archivo no lo vincula automáticamente. El respaldo portable conserva snapshots e informes y remapea sus IDs de proyecto; no contiene bytes fuente ni versiones DuckDB, así que la fuente debe importarse de nuevo para reanudar análisis. Al borrar un proyecto se limpian sus snapshots por ID exacto y se informa si la operación falla (ADR-0009). Ver también [ADR-0011](adr/0011-respaldo-portable-v1-metadatos.md).
 
 ## Entregas y condiciones de cierre
 

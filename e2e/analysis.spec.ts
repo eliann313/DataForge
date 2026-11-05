@@ -98,6 +98,26 @@ test("guarda un snapshot por proyecto y muestra resultados históricos tras reca
   await page.getByRole("button", { name: /^análisis$/i }).click();
   await expect(view(page).getByLabel("Resultado guardado")).toHaveCount(0);
   await expect(view(page).getByRole("button", { name: "Resumen de ventas" })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /^inicio$/i }).click();
+  const deletedProjectRow = page.getByRole("listitem").filter({ hasText: project });
+  await deletedProjectRow.getByRole("button", { name: "Eliminar" }).click();
+  const confirmDelete = page.getByRole("dialog", { name: "Eliminar proyecto" });
+  await expect(confirmDelete).toContainText(/sus snapshots locales se eliminarán/);
+  await confirmDelete.getByRole("button", { name: "Eliminar" }).click();
+  await expect(page.getByText(project, { exact: true })).toHaveCount(0);
+  const remainingSnapshots = await page.evaluate(async () => new Promise<number>((resolve, reject) => {
+    const request = indexedDB.open("dataforge-analysis-snapshots", 1);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction("snapshots", "readonly");
+      const keys = tx.objectStore("snapshots").getAllKeys();
+      keys.onsuccess = () => { resolve(keys.result.length); db.close(); };
+      keys.onerror = () => reject(keys.error);
+    };
+  }));
+  expect(remainingSnapshots).toBe(0);
 });
 
 test("frecuencias con denominadores visibles", async ({ page }) => {

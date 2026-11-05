@@ -48,6 +48,9 @@ describe("IndexedDB analysis snapshots", () => {
     expect(await reopened.findById("p2", one.id)).toEqual(sameIdOtherProject);
     await reopened.delete("p2", one.id);
     expect(await reopened.list("p1")).toEqual([one]);
+    await reopened.deleteProject("p1");
+    expect(await reopened.list("p1")).toEqual([]);
+    expect(await reopened.list("p2")).toEqual([other]);
     reopened.close();
   });
 

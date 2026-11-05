@@ -13,6 +13,8 @@ import type { FolderRepository, ProjectRepository } from "./ports";
 export interface ServiceDeps {
   projects: ProjectRepository;
   folders: FolderRepository;
+  /** Limpieza de registros pertenecientes al proyecto en almacenes separados. */
+  deleteProjectArtifacts?: (projectId: string) => Promise<void>;
   now?: () => string;
   generateId?: () => string;
 }
@@ -20,12 +22,15 @@ export interface ServiceDeps {
 export class ProjectsService {
   private readonly projects: ProjectRepository;
   private readonly folders: FolderRepository;
+  private readonly deleteProjectArtifacts?: (projectId: string) => Promise<void>;
+  private readonly pendingArtifactCleanupIds = new Set<string>();
   private readonly now: () => string;
   private readonly generateId: () => string;
 
   constructor(deps: ServiceDeps) {
     this.projects = deps.projects;
     this.folders = deps.folders;
+    this.deleteProjectArtifacts = deps.deleteProjectArtifacts;
     this.now = deps.now ?? (() => new Date().toISOString());
     this.generateId = deps.generateId ?? (() => crypto.randomUUID());
   }
@@ -75,6 +80,28 @@ export class ProjectsService {
   async deleteProject(id: string): Promise<void> {
     await this.requireProject(id);
     await this.projects.delete(id);
+    if (this.deleteProjectArtifacts) {
+      try {
+        await this.deleteProjectArtifacts(id);
+        this.pendingArtifactCleanupIds.delete(id);
+      } catch (cause) {
+        this.pendingArtifactCleanupIds.add(id);
+        throw this.cleanupError(cause);
+      }
+    }
+  }
+
+  async retryProjectArtifactsCleanup(id: string): Promise<void> {
+    if (!this.deleteProjectArtifacts) throw new ProjectError("project-cleanup-failed", "La limpieza de datos locales no está configurada.");
+    if (!this.pendingArtifactCleanupIds.has(id)) {
+      throw new ProjectError("project-cleanup-failed", "No hay una limpieza de proyecto pendiente para este ID en esta sesión.");
+    }
+    try {
+      await this.deleteProjectArtifacts(id);
+      this.pendingArtifactCleanupIds.delete(id);
+    } catch (cause) {
+      throw this.cleanupError(cause);
+    }
   }
 
   getProject(id: string): Promise<Project> {
@@ -197,6 +224,14 @@ export class ProjectsService {
       current = folder ? folder.parentId : null;
     }
     return false;
+  }
+
+  private cleanupError(cause: unknown): ProjectError {
+    const detail = cause instanceof Error && cause.message ? `: ${cause.message}` : ".";
+    return new ProjectError(
+      "project-cleanup-failed",
+      `El proyecto fue eliminado, pero no se pudieron limpiar sus snapshots locales${detail} Los snapshots restantes siguen aislados bajo el ID eliminado; use la acción de reintento para limpiarlos.`,
+    );
   }
 }
 

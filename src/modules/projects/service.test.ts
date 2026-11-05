@@ -53,6 +53,26 @@ describe("proyectos", () => {
     });
   });
 
+  it("elimina metadatos primero, informa fallos de limpieza y permite reintentar por ID exacto", async () => {
+    let failCleanup = true;
+    const projects = new MemoryProjectRepository();
+    const svcWithCleanup = new ProjectsService({
+      projects,
+      folders: new MemoryFolderRepository(),
+      generateId: () => "project-target",
+      deleteProjectArtifacts: async (id) => {
+        expect(id).toBe("project-target");
+        if (failCleanup) throw new Error("IndexedDB bloqueado");
+      },
+    });
+    const project = await svcWithCleanup.createProject({ name: "Con snapshots" });
+    await expect(svcWithCleanup.deleteProject(project.id)).rejects.toMatchObject({ code: "project-cleanup-failed" });
+    await expect(svcWithCleanup.getProject(project.id)).rejects.toMatchObject({ code: "project-not-found" });
+    failCleanup = false;
+    await svcWithCleanup.retryProjectArtifactsCleanup(project.id);
+    await expect(svcWithCleanup.retryProjectArtifactsCleanup("otro-proyecto")).rejects.toMatchObject({ code: "project-cleanup-failed" });
+  });
+
   it("busca por subcadena insensible a mayúsculas", async () => {
     await svc.createProject({ name: "Ventas Q1" });
     await svc.createProject({ name: "ventas q2" });

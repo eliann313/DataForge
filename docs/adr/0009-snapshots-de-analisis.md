@@ -18,11 +18,11 @@ Se aceptan únicamente datos JSON finitos, hasta 32 niveles, arreglos de hasta 1
 ## Consecuencias
 
 - Los snapshots sobreviven la recarga dentro del mismo almacenamiento local, sujetos a cuotas y políticas del navegador.
-- El borrado de un proyecto no limpia esta base de datos separada. Como los IDs de proyecto son UUID y cada consulta exige la clave exacta del proyecto, los snapshots huérfanos no se muestran ni se atribuyen a otro proyecto; permanecen ocupando almacenamiento y ya no se pueden gestionar desde la interfaz. La limpieza coordinada queda pendiente hasta disponer de una operación de borrado que abarque ambos almacenes y gestione fallos entre ellos.
+- Al borrar un proyecto, la aplicación elimina primero sus metadatos y luego ejecuta una transacción IndexedDB que borra snapshots por la clave exacta de proyecto. Las dos bases no comparten transacción: si falla la segunda operación, se informa que el proyecto ya se eliminó y se ofrecen reintentos en la sesión activa. Un cierre/crash en la ventana entre ambas operaciones puede dejar snapshots huérfanos; los IDs UUID y el borrado indexado exacto evitan mostrar o eliminar snapshots de otros proyectos. Al recargar se pierde el estado del reintento y no se hace barrido automático.
 - Reportes y respaldo pueden referenciarlos por DTO/ID sin crear un modelo de resultados duplicado.
 - El vínculo a los datos documenta procedencia, pero no certifica que los bytes originales sigan disponibles ni que se pueda repetir el cálculo.
 - Un snapshot demasiado grande falla con error visible en lugar de indicar éxito.
 
 ## Revisión
 
-Al incorporar respaldo portable, verificar importación y validación de snapshots; al decidir persistencia de datasets, definir hashes/identidad de contenido y reglas explícitas de relink antes de ofrecer reproducibilidad.
+Al incorporar respaldo portable, verificar importación y validación de snapshots; al decidir persistencia de datasets, definir hashes/identidad de contenido y reglas explícitas de relink antes de ofrecer reproducibilidad. Para eliminar la ventana de huérfanos tras un cierre abrupto, mover los registros de proyecto/snapshots a una transacción común o añadir un journal/outbox persistente que registre la eliminación y permita reintentar tras recargar, procesándolo solo después de leer correctamente ambos almacenes.

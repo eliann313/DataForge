@@ -48,6 +48,7 @@ export interface AnalysisSnapshotRepository {
   list(projectId: string): Promise<AnalysisSnapshot[]>;
   findById(projectId: string, snapshotId: string): Promise<AnalysisSnapshot | null>;
   delete(projectId: string, snapshotId: string): Promise<void>;
+  deleteProject(projectId: string): Promise<void>;
 }
 
 export function validateAnalysisSnapshot(value: unknown): value is AnalysisSnapshot {
