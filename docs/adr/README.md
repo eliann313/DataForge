@@ -16,6 +16,7 @@ Cada ADR documenta una decisión técnica con su contexto, alternativas y criter
 | [0010](./0010-informes-locales-basados-en-snapshots.md) | Informes locales basados en resultados congelados | Aceptado — informes referidos a snapshots históricos |
 | [0011](./0011-respaldo-portable-v1-metadatos.md) | Formato portable v1 para metadatos y artefactos locales del proyecto | Aceptado — JSON solo de metadatos y artefactos, sin archivos ni OPFS |
 | [0012](./0012-respaldo-portable-de-datasets.md) | Respaldo opcional de datasets materializados en Parquet | Aceptado — archivo portable de versiones de sesión; sin persistencia durable |
+| [0013](./0013-finance-accounts-and-transfer-migration.md) | Cuentas financieras locales, transferencias propias y migración v2 | Aceptado — primer corte de fase 6 |
 
 ## Estados
 

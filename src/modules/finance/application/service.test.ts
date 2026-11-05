@@ -99,6 +99,28 @@ describe("FinanceService", () => {
     await expect(svc.get(tx.id)).rejects.toThrow(/inexistente/);
   });
 
+  it("transfiere entre cuentas propias sin registrarlo como ingreso ni gasto", async () => {
+    const svc = service();
+    const origin = await svc.createAccount("Billetera", "ARS");
+    const target = await svc.createAccount("Banco", "ARS");
+    await svc.create({ date: "2024-03-01", description: "Acreditación", kind: "ingreso", amount: "100", currency: "ARS", category: "Trabajo", accountId: origin.id });
+    await svc.create({ date: "2024-03-02", description: "Traspaso", kind: "transferencia", amount: "25,50", currency: "ARS", category: "Transferencia", accountId: origin.id, destinationAccountId: target.id });
+    const [ars] = await svc.monthlySummary(2024, 3);
+    expect(ars).toEqual({ currency: "ARS", income: 10000, expense: 0, balance: 10000 });
+    expect((await svc.accountBalances()).filter((account) => account.currency === "ARS").map(({ name, balanceMinor }) => [name, balanceMinor])).toEqual([["Billetera", 7450], ["Banco", 2550]]);
+  });
+
+  it("asigna una cuenta USD inicial y al editar una transferencia como gasto limpia el destino", async () => {
+    const svc = service();
+    const usd = await svc.create({ date: "2024-03-01", description: "USD", kind: "ingreso", amount: "10", currency: "USD", category: "Trabajo" });
+    expect((await svc.get(usd.id)).currency).toBe("USD");
+    const a = await svc.createAccount("A", "ARS");
+    const b = await svc.createAccount("B", "ARS");
+    const transfer = await svc.create({ date: "2024-03-02", description: "Pase", kind: "transferencia", amount: "2", currency: "ARS", category: "Transferencias", accountId: a.id, destinationAccountId: b.id });
+    const edited = await svc.update({ id: transfer.id, date: "2024-03-02", description: "Gasto", kind: "gasto", amount: "2", currency: "ARS", category: "Varios", accountId: a.id });
+    expect(edited.destinationAccountId).toBeUndefined();
+  });
+
   it("propaga fallos de escritura sin estado parcial", async () => {
     const svc = new FinanceService({
       transactions: {
@@ -106,6 +128,9 @@ describe("FinanceService", () => {
         findById: () => Promise.resolve(null),
         list: () => Promise.resolve([]),
         delete: () => Promise.resolve(),
+        saveAccount: () => Promise.resolve(),
+        listAccounts: () => Promise.resolve([]),
+        findAccountById: () => Promise.resolve(null),
       },
       now: () => "2024-03-15T12:00:00.000Z",
     });

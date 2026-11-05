@@ -12,6 +12,7 @@ import {
   type FinancialTransaction,
   type MonthPoint,
   type MovementKind,
+  type FinancialAccount,
 } from "@/modules/finance";
 import { IndexedDBTransactionRepository } from "@/modules/finance";
 import { WalletCards, Plus, Tag } from "lucide-react";
@@ -45,6 +46,8 @@ interface FormState {
   currency: Currency;
   category: string;
   notes: string;
+  accountId: string;
+  destinationAccountId: string;
 }
 
 const emptyForm = (): FormState => ({
@@ -55,16 +58,22 @@ const emptyForm = (): FormState => ({
   currency: "ARS",
   category: "",
   notes: "",
+  accountId: "",
+  destinationAccountId: "",
 });
 
-// Finanzas Lite (E6 / 3B): registro manual, resumen mensual por moneda
-// (ARS y USD por separado, sin conversión) y gráficos básicos.
+// Finanzas: registro local de movimientos, cuentas propias y resumen mensual
+// por moneda (ARS y USD por separado, sin conversión) y gráficos básicos.
 export default function FinanceView() {
   const service = useMemo(
     () => new FinanceService({ transactions: new IndexedDBTransactionRepository() }),
     [],
   );
   const [list, setList] = useState<FinancialTransaction[]>([]);
+  const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
+  const [accountBalances, setAccountBalances] = useState<Array<FinancialAccount & { balanceMinor: number }>>([]);
+  const [accountName, setAccountName] = useState("");
+  const [accountCurrency, setAccountCurrency] = useState<Currency>("ARS");
   const [month, setMonth] = useState(currentMonth);
   const [summary, setSummary] = useState<CurrencyTotal[]>([]);
   const [breakdown, setBreakdown] = useState<CategoryTotal[]>([]);
@@ -78,13 +87,17 @@ export default function FinanceView() {
 
   async function refresh(y = month.y, m = month.m) {
     // Nunca "Guardado" antes de confirmar: todo pasa por await + refresh.
-    const [l, s, b, e] = await Promise.all([
+    const [l, a, ab, s, b, e] = await Promise.all([
       service.list(),
+      service.accounts(),
+      service.accountBalances(),
       service.monthlySummary(y, m),
       service.categoryBreakdown(y, m),
       service.evolution(y, m, 6),
     ]);
     setList(l);
+    setAccounts(a);
+    setAccountBalances(ab);
     setSummary(s);
     setBreakdown(b);
     setEvolution(e);
@@ -142,6 +155,8 @@ export default function FinanceView() {
       currency: tx.currency,
       category: tx.category,
       notes: tx.notes,
+      accountId: tx.accountId ?? "",
+      destinationAccountId: tx.destinationAccountId ?? "",
     });
     setSaved(false);
     setError(null);
@@ -160,6 +175,7 @@ export default function FinanceView() {
   }
 
   const categories = [...new Set(list.map((t) => t.category))].sort();
+  const eligibleAccounts = accounts.filter((account) => account.currency === form.currency);
   const gastosARS = breakdown.filter((b) => b.kind === "gasto" && b.currency === "ARS");
   const gastosUSD = breakdown.filter((b) => b.kind === "gasto" && b.currency === "USD");
   const evoARS = evolution.filter((p) => p.currency === "ARS");
@@ -176,7 +192,7 @@ export default function FinanceView() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-sm font-medium text-violet-700">Finanzas personales</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight">Finanzas</h1>
-          <p className="mt-1 text-sm text-slate-600">Registra y consulta tus ingresos y gastos en este dispositivo.</p></div>
+          <p className="mt-1 text-sm text-slate-600">Registra movimientos y consulta tus cuentas en este dispositivo.</p></div>
         <label className="text-sm font-medium text-slate-600">Mes
           <input id="mes" type="month" disabled={busy} value={`${month.y}-${String(month.m).padStart(2, "0")}`}
             onChange={(e) => void changeMonth(e.target.value)} className={`${input} mt-1 w-auto`} />
@@ -196,8 +212,8 @@ export default function FinanceView() {
               <label className="text-sm font-medium">Fecha<input type="date" required value={form.date} disabled={busy}
                 onChange={(e) => setForm({ ...form, date: e.target.value })} className={input} /></label>
               <label className="text-sm font-medium">Tipo<select value={form.kind} disabled={busy}
-                onChange={(e) => setForm({ ...form, kind: e.target.value as MovementKind })} className={input}>
-                <option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></label>
+                onChange={(e) => { const kind = e.target.value as MovementKind; setForm({ ...form, kind, category: kind === "transferencia" && !form.category ? "Transferencias" : form.category }); }} className={input}>
+                <option value="gasto">Gasto</option><option value="ingreso">Ingreso</option><option value="transferencia">Transferencia propia</option></select></label>
               <label className="text-sm font-medium sm:col-span-2">Descripción<input type="text" required maxLength={200}
                 value={form.description} disabled={busy} onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="Ej.: Supermercado" className={input} /></label>
@@ -205,11 +221,17 @@ export default function FinanceView() {
                 disabled={busy} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="1.234,56"
                 aria-describedby="formato-importe" className={input} /><span id="formato-importe" className="mt-1 block text-xs font-normal text-slate-500">Formato es-AR: 1234,56 o 1.234,56.</span></label>
               <label className="text-sm font-medium">Moneda<select value={form.currency} disabled={busy}
-                onChange={(e) => setForm({ ...form, currency: e.target.value as Currency })} className={input}>
+                onChange={(e) => setForm({ ...form, currency: e.target.value as Currency, accountId: "", destinationAccountId: "" })} className={input}>
                 <option value="ARS">ARS · Peso argentino</option><option value="USD">USD · Dólar estadounidense</option></select></label>
-              <label className="text-sm font-medium sm:col-span-2">Categoría<input type="text" required maxLength={60} list="categorias"
+              <label className="text-sm font-medium">Cuenta<select required value={form.accountId || eligibleAccounts[0]?.id || ""} disabled={busy}
+                onChange={(e) => setForm({ ...form, accountId: e.target.value })} className={input}>
+                {eligibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+              {form.kind === "transferencia" ? <label className="text-sm font-medium">Cuenta destino<select required value={form.destinationAccountId} disabled={busy}
+                onChange={(e) => setForm({ ...form, destinationAccountId: e.target.value })} className={input}>
+                <option value="">Selecciona una cuenta</option>{eligibleAccounts.filter((account) => account.id !== (form.accountId || eligibleAccounts[0]?.id)).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label> : null}
+              {form.kind !== "transferencia" ? <label className="text-sm font-medium sm:col-span-2">Categoría<input type="text" required maxLength={60} list="categorias"
                 value={form.category} disabled={busy} onChange={(e) => setForm({ ...form, category: e.target.value })}
-                placeholder="Ej.: Alimentos" className={input} /><datalist id="categorias">{categories.map((c) => <option key={c} value={c} />)}</datalist></label>
+                placeholder="Ej.: Alimentos" className={input} /><datalist id="categorias">{categories.map((c) => <option key={c} value={c} />)}</datalist></label> : null}
               <label className="text-sm font-medium sm:col-span-2">Notas <span className="font-normal text-slate-500">(opcional)</span>
                 <textarea maxLength={500} rows={2} value={form.notes} disabled={busy} onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   placeholder="Agrega una nota" className={input} /></label>
@@ -218,6 +240,15 @@ export default function FinanceView() {
                 {busy ? "Guardando…" : editingId ? "Guardar cambios" : <><Plus aria-hidden="true" className="mr-1 inline size-4" />Guardar movimiento</>}</button>
                 {editingId ? <button type="button" disabled={busy} onClick={() => { setEditingId(null); setForm(emptyForm()); }}
                   className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium">Cancelar</button> : null}</div>
+            </form>
+          </section>
+          <section aria-labelledby="cuentas" className={card}>
+            <h2 id="cuentas" className="text-lg font-bold">Cuentas</h2>
+            <ul className="my-3 space-y-2 text-sm">{accountBalances.map((account) => <li key={account.id} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>{account.name} · {account.currency}</span><span className="font-semibold">{formatMoney(account.balanceMinor, account.currency)}</span></li>)}</ul>
+            <form className="grid gap-2 sm:grid-cols-[1fr_auto_auto]" onSubmit={(event) => { event.preventDefault(); setBusy(true); service.createAccount(accountName, accountCurrency).then(() => { setAccountName(""); return refresh(); }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "No se pudo crear la cuenta")).finally(() => setBusy(false)); }}>
+              <label className="sr-only" htmlFor="nueva-cuenta">Nombre de la cuenta</label><input id="nueva-cuenta" required maxLength={80} value={accountName} onChange={(event) => setAccountName(event.target.value)} placeholder="Nombre de la cuenta" className={input} />
+              <label className="sr-only" htmlFor="moneda-cuenta">Divisa de la cuenta</label><select id="moneda-cuenta" value={accountCurrency} onChange={(event) => setAccountCurrency(event.target.value as Currency)} className={input}><option value="ARS">ARS</option><option value="USD">USD</option></select>
+              <button disabled={busy} className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white">Agregar</button>
             </form>
           </section>
           <section aria-labelledby="evolucion" className={card}>
@@ -265,7 +296,7 @@ export default function FinanceView() {
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <th scope="col" className="px-3 py-3">Fecha</th><th scope="col" className="px-3 py-3">Descripción</th>
-                <th scope="col" className="px-3 py-3">Tipo</th><th scope="col" className="px-3 py-3 text-right">Importe</th>
+                <th scope="col" className="px-3 py-3">Tipo</th><th scope="col" className="px-3 py-3">Cuenta</th><th scope="col" className="px-3 py-3 text-right">Importe</th>
                 <th scope="col" className="px-3 py-3">Categoría</th><th scope="col" className="px-3 py-3">Acciones</th>
               </tr>
             </thead>
@@ -274,7 +305,8 @@ export default function FinanceView() {
                 <tr key={t.id} className="border-b border-slate-100 last:border-0">
                   <td className="whitespace-nowrap px-3 py-3 text-slate-600"><time dateTime={t.date}>{formatDate(t.date)}</time></td>
                   <td className="px-3 py-3 font-medium">{t.description}</td>
-                  <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${t.kind === "ingreso" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{t.kind === "ingreso" ? "Ingreso" : "Gasto"}</span></td>
+                  <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${t.kind === "ingreso" ? "bg-emerald-50 text-emerald-800" : t.kind === "transferencia" ? "bg-sky-50 text-sky-800" : "bg-amber-50 text-amber-800"}`}>{t.kind === "ingreso" ? "Ingreso" : t.kind === "transferencia" ? "Transferencia propia" : "Gasto"}</span></td>
+                  <td className="px-3 py-3 text-slate-600">{accounts.find((account) => account.id === t.accountId)?.name ?? "Cuenta principal"}{t.kind === "transferencia" ? ` → ${accounts.find((account) => account.id === t.destinationAccountId)?.name ?? "Cuenta destino"}` : ""}</td>
                   <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums">{formatMoney(t.amountMinor, t.currency)}</td>
                   <td className="px-3 py-3 text-slate-600">{t.category}</td>
                   <td className="whitespace-nowrap px-3 py-3">

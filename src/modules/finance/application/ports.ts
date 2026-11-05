@@ -3,12 +3,16 @@ import type {
   FinancialTransaction,
   MovementKind,
 } from "../domain/transaction";
+import type { FinancialAccount } from "../domain/account";
 
 export interface TransactionRepository {
   save(tx: FinancialTransaction): Promise<void>;
   findById(id: string): Promise<FinancialTransaction | null>;
   list(): Promise<FinancialTransaction[]>;
   delete(id: string): Promise<void>;
+  saveAccount(account: FinancialAccount): Promise<void>;
+  listAccounts(): Promise<FinancialAccount[]>;
+  findAccountById(id: string): Promise<FinancialAccount | null>;
 }
 
 export interface CreateInput {
@@ -20,6 +24,8 @@ export interface CreateInput {
   currency: Currency;
   category: string;
   notes?: string;
+  accountId?: string;
+  destinationAccountId?: string;
 }
 
 export interface UpdateInput extends CreateInput {

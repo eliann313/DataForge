@@ -56,6 +56,8 @@ Primer caso de uso real, para demostrar temprano que DataForge no es solo una in
 
 **Después:** [Finanzas completas](./roadmap.md) (fases 6–7) extienden esta base. El ajuste por inflación mediante IPC corresponde a Finanzas avanzadas; debe indicar fuente del IPC, período base y metodología, y distinguir valores nominales de ajustados.
 
+**Primer incremento de fase 6:** ahora se pueden crear cuentas ARS/USD, asociar movimientos y registrar transferencias entre cuentas propias de igual moneda. Las transferencias modifican los saldos de las cuentas, pero no los totales de ingresos y gastos. Los datos de Finanzas Lite se conservan al migrar su almacenamiento local.
+
 ## 4. Fuera del MVP
 
 - Pipelines visuales, múltiples fuentes, JOIN/UNION e informes exportables.

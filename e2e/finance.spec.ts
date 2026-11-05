@@ -67,6 +67,31 @@ test("0,10 + 0,20 = 0,30 (sin flotantes)", async ({ page }) => {
   await expect(saldoARS.getByText(/0,30/)).toBeVisible();
 });
 
+test("transfiere entre cuentas propias sin alterar ingresos ni gastos", async ({ page }) => {
+  const cuentas = view(page).locator('section[aria-labelledby="cuentas"]');
+  for (const nombre of ["Billetera", "Banco"]) {
+    await cuentas.getByLabel("Nombre de la cuenta").fill(nombre);
+    await cuentas.getByRole("button", { name: "Agregar" }).click();
+    await expect(cuentas.getByText(nombre)).toBeVisible();
+  }
+  await view(page).getByLabel(/descripción/i).fill("Traspaso propio");
+  await view(page).getByLabel(/tipo/i).selectOption("transferencia");
+  await view(page).getByLabel(/importe/i).fill("25,50");
+  await view(page).getByLabel(/moneda/i).selectOption("ARS");
+  await view(page).getByRole("combobox", { name: "Cuenta", exact: true }).selectOption({ label: "Billetera" });
+  await view(page).getByRole("combobox", { name: "Cuenta destino" }).selectOption({ label: "Banco" });
+  await view(page).getByRole("button", { name: /guardar movimiento/i }).click();
+  await expect(view(page).getByRole("status").filter({ hasText: "Movimiento guardado correctamente." })).toBeVisible({ timeout: 15_000 });
+
+  const resumen = view(page).locator('section[aria-labelledby="resumen"]');
+  const filasARS = resumen.locator("article").filter({ hasText: "Pesos argentinos" }).locator("dl > div");
+  await expect(filasARS.nth(0)).toContainText("0,00");
+  await expect(filasARS.nth(1)).toContainText("0,00");
+  const cuentasTexto = await cuentas.innerText();
+  expect(cuentasTexto).toMatch(/Billetera[\s\S]*-\$[\s\S]*25,50/);
+  expect(cuentasTexto).toMatch(/Banco[\s\S]*25,50/);
+});
+
 test("edita y elimina con confirmación", async ({ page }) => {
   await addMovement(page, { description: "Viejo", kind: "Gasto", amount: "100", currency: "ARS", category: "c" });
   const row = view(page).locator("tr", { hasText: "Viejo" });

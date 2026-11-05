@@ -4,10 +4,14 @@
 import { FinanceError } from "../domain/money";
 import type { FinancialTransaction } from "../domain/transaction";
 import type { TransactionRepository } from "../application/ports";
+import type { FinancialAccount } from "../domain/account";
 
 const DB_NAME = "dataforge-finance";
-const VERSION = 1;
+const VERSION = 2;
 const STORE = "transactions";
+const ACCOUNTS = "accounts";
+const DEFAULT_ACCOUNT: FinancialAccount = { id: "account-default", name: "Cuenta principal", currency: "ARS", createdAt: "2026-01-01T00:00:00.000Z" };
+const DEFAULT_USD_ACCOUNT: FinancialAccount = { id: "account-default-usd", name: "Cuenta en dólares", currency: "USD", createdAt: "2026-01-01T00:00:00.000Z" };
 
 function failed(operation: string, cause: unknown): FinanceError {
   if (cause instanceof FinanceError) return cause;
@@ -99,6 +103,21 @@ export class IndexedDBTransactionRepository implements TransactionRepository {
     }
   }
 
+  async saveAccount(account: FinancialAccount): Promise<void> {
+    try { const db = await this.open(); const tx = db.transaction(ACCOUNTS, "readwrite"); tx.objectStore(ACCOUNTS).put({ ...account }); await transactionDone(tx); }
+    catch (cause) { throw failed("escritura de cuenta", cause); }
+  }
+
+  async listAccounts(): Promise<FinancialAccount[]> {
+    try { const db = await this.open(); const tx = db.transaction(ACCOUNTS, "readonly"); const rows = await request<FinancialAccount[]>(tx.objectStore(ACCOUNTS).getAll()); await transactionDone(tx); return clone(rows); }
+    catch (cause) { throw failed("listado de cuentas", cause); }
+  }
+
+  async findAccountById(id: string): Promise<FinancialAccount | null> {
+    try { const db = await this.open(); const tx = db.transaction(ACCOUNTS, "readonly"); const row = await request<FinancialAccount | undefined>(tx.objectStore(ACCOUNTS).get(id)); await transactionDone(tx); return row ? clone(row) : null; }
+    catch (cause) { throw failed("lectura de cuenta", cause); }
+  }
+
   private async open(): Promise<IDBDatabase> {
     if (this.db) return this.db;
     if (typeof indexedDB === "undefined") {
@@ -110,11 +129,26 @@ export class IndexedDBTransactionRepository implements TransactionRepository {
     if (!this.opening) {
       this.opening = new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, VERSION);
-        req.onupgradeneeded = () => {
+        req.onupgradeneeded = (event) => {
           const db = req.result;
           if (!db.objectStoreNames.contains(STORE)) {
             const store = db.createObjectStore(STORE, { keyPath: "id" });
             store.createIndex("by-date", "date", { unique: false });
+          }
+          if (!db.objectStoreNames.contains(ACCOUNTS)) db.createObjectStore(ACCOUNTS, { keyPath: "id" });
+          const upgrade = req.transaction;
+          if (upgrade && (event as IDBVersionChangeEvent).oldVersion < 2) {
+            upgrade.objectStore(ACCOUNTS).put(DEFAULT_ACCOUNT);
+            upgrade.objectStore(ACCOUNTS).put(DEFAULT_USD_ACCOUNT);
+            const transactions = upgrade.objectStore(STORE);
+            const cursor = transactions.openCursor();
+            cursor.onsuccess = () => {
+              const current = cursor.result;
+              if (!current) return;
+              const row = current.value as FinancialTransaction;
+              if (!row.accountId) current.update({ ...row, accountId: row.currency === "USD" ? DEFAULT_USD_ACCOUNT.id : DEFAULT_ACCOUNT.id });
+              current.continue();
+            };
           }
         };
         req.onsuccess = () => resolve(req.result);

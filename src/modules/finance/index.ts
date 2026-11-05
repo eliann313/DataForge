@@ -3,6 +3,8 @@
 export type { Currency, Money } from "./domain/money";
 export { parseAmount, formatMoney, FinanceError, MAX_MINOR } from "./domain/money";
 export type { FinancialTransaction, MovementKind } from "./domain/transaction";
+export type { FinancialAccount } from "./domain/account";
+export { validateAccountName } from "./domain/account";
 export { validateDate, validateText, monthOf, MAX_TEXT } from "./domain/transaction";
 export type {
   TransactionRepository,
