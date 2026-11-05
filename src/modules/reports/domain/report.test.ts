@@ -5,7 +5,14 @@ const snapshot: ReportSnapshotView = {
   id: "snapshot-1",
   title: "Resumen <ventas>",
   createdAt: "2026-11-04T12:00:00.000Z",
-  source: { datasetName: "<script>alert(1)</script>", rowCount: 2, versionId: "v1", columns: [{ name: "<img>", type: "VARCHAR" }] },
+  source: {
+    datasetName: "<script>alert(1)</script>", rowCount: 2, versionId: "v1", columns: [{ name: "<img>", type: "VARCHAR" }],
+    lineage: { rootVersionId: "v1", nodes: [{
+      versionId: "v1", projectId: "p1", name: "Fuente", operationType: "source", sourceIds: ["source-1"], parentIds: [],
+      pipelineId: null, executedDefinition: null, rowCount: 2, columns: [{ name: "<img>", type: "VARCHAR", nullable: false }],
+      stepCount: 0, createdAt: "2026-11-04T12:00:00.000Z",
+    }] },
+  },
   parameters: { column: "<svg onload=alert(1)>" },
   results: { description: { mean: 3 }, findings: ["dato & texto"] },
 };

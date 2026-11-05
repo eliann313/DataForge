@@ -92,7 +92,7 @@ export interface ReportSnapshotView {
     rowCount: number;
     versionId: string;
     columns: Array<{ name: string; type: string; nullable?: boolean }>;
-    lineage?: ReportSnapshotLineage;
+    lineage: ReportSnapshotLineage;
   };
   parameters: Record<string, unknown>;
   results: Record<string, unknown>;

@@ -7,6 +7,8 @@ test("permite crear un informe local y exportar HTML imprimible", async ({ page 
   await page.getByLabel(/nombre de proyecto nuevo/i).fill(project);
   await page.getByRole("button", { name: /^crear proyecto$/i }).click();
   await expect(page.getByText(`Proyecto: ${project}`)).toBeVisible({ timeout: 15_000 });
+  const projectId = await page.evaluate(() => localStorage.getItem("df-active-project"));
+  expect(projectId).toBeTruthy();
   await page.evaluate(async (projectId) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("dataforge-analysis-snapshots", 1);
@@ -40,7 +42,7 @@ test("permite crear un informe local y exportar HTML imprimible", async ({ page 
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-  }, project);
+  }, projectId!);
 
   await page.getByRole("button", { name: /^informes$/i }).click();
   await page.getByRole("button", { name: /nuevo informe/i }).click();
