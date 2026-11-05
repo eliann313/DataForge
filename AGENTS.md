@@ -61,7 +61,7 @@ Proteger frente a archivos malformados o hostiles (ZIP/XML), inyección SQL, iny
 
 ## 8. Trabajo temporal
 
-Usar `scratch/` en la raíz para pruebas y archivos temporales locales. No guardar allí documentación, fixtures ni otros archivos que deban versionarse.
+Usar `scratch/` en la raíz para pruebas y archivos temporales locales. Al terminar, eliminar solo los temporales generados por la tarea cuando ya no sean necesarios; preservar los archivos ajenos. No guardar allí documentación, fixtures ni otros archivos que deban versionarse.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
