@@ -1,6 +1,6 @@
 # DataForge — Roadmap maestro
 
-> **Estado al 2026-11-05:** R1 (0A–3B; E1–E6) y R2/fases 4 y 5 están cerrados en `codex/r2-phase5-close`. El corte incluye pipelines tipados, fuentes aisladas durante la sesión, APPEND/JOIN validados, expresiones, agregaciones, comparación de períodos, snapshots, informes locales y dos respaldos separados: JSON para artefactos y `.dfdataset` opcional para versiones Parquet materializadas. Fuentes y versiones de sesión permanecen en memoria del Worker; no se recupera una sesión durable ni se reconectan snapshots/informes. Los topes de archivo no garantizan memoria total. La fase 5 se cierra con estos límites explícitos.
+> **Estado al 2026-11-05:** R1 (0A–3B; E1–E6) y R2/fases 4 y 5 están cerrados en este corte. Incluye pipelines tipados, fuentes aisladas durante la sesión, APPEND/JOIN validados, expresiones, agregaciones, comparación de períodos, snapshots, informes locales y dos respaldos separados: JSON para artefactos y `.dfdataset` opcional para versiones Parquet materializadas. Fuentes y versiones de sesión permanecen en memoria del Worker; no se recupera una sesión durable ni se reconectan snapshots/informes. Los topes de archivo no garantizan memoria total. La fase 5 se cierra con estos límites explícitos.
 
 **Objetivo:** construir una plataforma de análisis de datos autoservicio, en español, con procesamiento local en el navegador, proyectos persistentes, visualizaciones, pipelines reproducibles e instrumentos científicos especializados.  
 **Alcance:** proyecto educativo y de portfolio; objetivo de infraestructura sin servicios pagos.  
@@ -208,7 +208,7 @@ El código de dominio no dependerá directamente de estos proveedores. La intero
 - Hallazgos verificables con fuente y parámetros.
 - Exportar HTML, imprimir/guardar como PDF, CSV/Parquet procesado y gráficos.
 - Guardar AnalysisSnapshot y visualizaciones.
-- Exportar/importar proyecto portable versionado (datos incluidos opcionalmente).
+- Exportar/importar JSON versionado de metadatos y artefactos; ofrecer por separado respaldo `.dfdataset` opcional de versiones materializadas de sesión.
 - Trazar versión de datos y pasos del pipeline que produjeron el informe.
 
 **Criterios de aceptación:** informes reproducibles frente a snapshots congelados; los datos no se modifican por exportación; textos/HTML se sanitizan; JSON v1 recupera los metadatos y artefactos incluidos con IDs internos remapeados; `.dfdataset` importa versiones materializadas dentro de los límites declarados. Se aceptan dos respaldos separados: JSON v1 excluye datasets y `.dfdataset` recupera versiones solo en la sesión activa; no se reconectan automáticamente snapshots/informes con esas versiones. No se requiere persistencia durable ni OPFS para cerrar esta fase. La documentación debe declarar topes de archivo/tamaño, ausencia de una garantía de memoria total y límites de compatibilidad/cobertura de grafos.

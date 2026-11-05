@@ -1,6 +1,6 @@
 # ADR-0011 — Respaldo portable v1 de artefactos de proyecto
 
-- **Estado:** Propuesto — fase 5.
+- **Estado:** Aceptado — cierre de fase 5 (2026-11-05).
 - **Fecha:** 2026-11-05
 - **Relacionado:** [ADR-0003](./0003-persistencia-opfs-diferido.md), [ADR-0009](./0009-snapshots-de-analisis.md), [ADR-0010](./0010-informes-locales-basados-en-snapshots.md) y fase 5 del [roadmap](../roadmap.md).
 
@@ -23,7 +23,9 @@ El formato JSON `dataforge-project-backup`, versión 1, incluye el nombre y el
 identificador de origen del proyecto, definiciones de pipeline, snapshots e
 informes. El manifiesto declara explícitamente que no incluye ubicación de
 carpeta, bytes de datasets ni versiones DuckDB. Los datos fuente se excluyen en
-la exportación y deben volver a seleccionarse para reanudar análisis.
+la exportación. Por separado, ADR-0012 define el archivo opcional `.dfdataset`
+para versiones Parquet materializadas de una sesión; importar ese archivo no
+reconecta snapshots ni informes a las nuevas identidades de dataset.
 
 Antes de exportar o escribir, se valida el esquema y tamaño de cada artefacto,
 la pertenencia al proyecto de origen, la unicidad de IDs y que cada sección de
@@ -60,5 +62,9 @@ huérfanos bajo el UUID nuevo; un rollback intentado no garantiza recuperación.
   pestañas; no se promete seguridad multi-pestaña.
 - El respaldo no cubre bytes de origen, versiones DuckDB, archivos temporales
   ni una garantía transaccional entre bases locales.
-- La fase 5 no se cierra con este formato; la persistencia durable de fuentes y
-  restauración/re-ejecución siguen sujetas a ADR-0003.
+- La recuperación del JSON es histórica: restaura metadatos, resultados
+  congelados, linaje y referencias en un proyecto nuevo; no permite recalcular
+  análisis ni reanudar una sesión sin volver a importar fuentes.
+- Este formato no usa OPFS ni agrega persistencia durable. La decisión de
+  mantener datasets y versiones en memoria de sesión y ofrecer respaldos
+  separados está en ADR-0003. No se afirma capacidad global de memoria.

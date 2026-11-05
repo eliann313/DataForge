@@ -1,6 +1,6 @@
 # ADR-0010: Informes locales basados en snapshots
 
-- **Estado:** Propuesto
+- **Estado:** Aceptado — cierre de fase 5 (2026-11-05).
 - **Fecha:** 2026-11-04
 - **Contexto:** fase 5 requiere informes editables y exportables. Los datasets y versiones viven en memoria durante la sesión; los snapshots de análisis son resultados tipados, congelados y persistidos localmente.
 
@@ -19,11 +19,11 @@
 
 - Los informes son reproducibles respecto de los resultados congelados del snapshot, no respecto del archivo de origen. No conservan datos fuente, una copia del proyecto ni imágenes rasterizadas de los gráficos; el SVG se reconstruye desde los puntos congelados.
 - CSV/Parquet procesado se exporta desde Transformaciones; el HTML no duplica ni incorpora archivos tabulares.
-- La importación/exportación portable del proyecto y adjuntos gráficos quedan pendientes. La decisión se revisará al cerrar fase 5.
+- La importación/exportación portable de metadatos se define en ADR-0011; la exportación opcional de versiones materializadas, en ADR-0012. Son archivos separados y no asocian automáticamente versiones restauradas con snapshots o informes. El HTML del informe reconstruye los gráficos soportados desde datos congelados; no transporta adjuntos gráficos independientes.
 - Este corte no importa definiciones de informes; la validación protege los datos cargados desde el almacenamiento local.
 - IndexedDB está sujeto a las cuotas y políticas del navegador.
 
 ## Verificación
 
 - Tests cubren el aislamiento por proyecto, referencias a snapshots, renderizado legible de resultados, SVG limitado y HTML escapado frente a etiquetas, atributos y texto hostil. El E2E comprueba navegación, guardado y descarga HTML imprimible.
-- Aún debe verificarse el recorrido integrado en navegador al apilar este corte sobre la persistencia de snapshots.
+- El recorrido integrado en navegador cubre navegación, guardado, resultados del snapshot y descarga HTML imprimible. La exportación refleja el snapshot congelado; no prueba reproducibilidad desde las fuentes originales.
