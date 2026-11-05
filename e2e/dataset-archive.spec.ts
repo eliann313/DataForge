@@ -168,5 +168,22 @@ test("restaura el linaje materializado de APPEND y JOIN con varias fuentes", asy
   await expect(page.locator('section[aria-labelledby="datasets-sesion"]')).toContainText("origen-a.csv");
   await expect(page.locator('section[aria-labelledby="datasets-sesion"]')).toContainText("origen-b.csv");
   await expect(page.locator("h3").filter({ hasText: /^Vista previa \(página 1 de 1 · 2 de 2 filas\)$/ })).toBeVisible();
-  await expect(page.locator("table.df-table").last().getByRole("cell", { name: "Norte", exact: true })).toBeVisible();
+  const restoredJoinPreview = page.locator("table.df-table").last();
+  await expect(restoredJoinPreview.getByRole("row")).toHaveCount(3);
+  await expect(restoredJoinPreview.getByRole("cell", { name: "10", exact: true })).toBeVisible();
+  await expect(restoredJoinPreview.getByRole("cell", { name: "Norte", exact: true })).toBeVisible();
+  await expect(restoredJoinPreview.getByRole("cell", { name: "20", exact: true })).toBeVisible();
+  await expect(restoredJoinPreview.getByRole("cell", { name: "Sur", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: /^transformaciones$/i }).click();
+  const restoredAppendRow = page.locator('section[aria-labelledby="pipeline-versiones"]').getByRole("row").filter({ hasText: "Anexar fuentes" });
+  await restoredAppendRow.getByRole("button", { name: "Usar versión" }).click();
+  await page.getByRole("button", { name: /^datos$/i }).click();
+  await expect(page.locator("h3").filter({ hasText: /^Vista previa \(página 1 de 1 · 4 de 4 filas\)$/ })).toBeVisible();
+  const restoredAppendPreview = page.locator("table.df-table").last();
+  await expect(restoredAppendPreview.getByRole("row")).toHaveCount(5);
+  const restoredAppendRows = (await restoredAppendPreview.getByRole("row").allTextContents()).join(" ");
+  for (const value of ["1", "2", "10", "20"]) {
+    expect(restoredAppendRows).toContain(value);
+  }
 });

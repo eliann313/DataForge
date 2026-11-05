@@ -1,9 +1,9 @@
 # DataForge — Plan de primeras entregas
 
-> **Estado:** E1–E6 y R2/fase 4 cerradas; fase activa R2/fase 5.
-> **Fecha:** 2026-10-11 (plan); **cierre de fase 4:** 2026-11-04 sobre `main` en `300fe47`.
-> **Base verificada:** pipelines tipados, definiciones por proyecto, versiones y fuentes de sesión, APPEND/JOIN validados, cálculos, agregaciones, comparación de períodos y exportación CSV/Parquet. Los archivos y resultados no sobreviven al cierre o recarga del motor.
-> **Fase activa:** R2/fase 5: snapshots, Report Builder y respaldo portable.
+> **Estado:** E1–E6, R2/fase 4 y fase 5 cerradas en este corte.
+> **Fecha:** 2026-10-11 (plan); **cierre de fase 4:** 2026-11-04 sobre `main` en `300fe47`; **cierre de fase 5:** 2026-11-05 en `codex/r2-phase5-close`.
+> **Base verificada:** pipelines tipados, definiciones por proyecto, versiones y fuentes de sesión, APPEND/JOIN validados, cálculos, agregaciones, comparación de períodos, snapshots, informes locales y dos formatos portables separados. Los archivos y resultados no sobreviven al cierre o recarga del motor.
+> **Fase activa:** siguiente trabajo según el roadmap; 0B/0C siguen como investigación opcional.
 > 0B/0C siguen como investigación pendiente y no bloquean.
 > Este plan divide las fases existentes en entregas; no agrega fases ni cambia
 > los criterios del MVP.
@@ -14,13 +14,21 @@ El objetivo original de llegar a **R1** mediante seis entregas demostrables ya s
 
 La primera entrega resolvió un recorrido completo con un CSV real. La segunda cerró la viabilidad de 0A antes de invertir en la interfaz definitiva. El MVP terminó con Finanzas Lite; la siguiente fase ya no es parte del MVP.
 
-El orden ejecutado fue **E1 → E2 → E3 → E4 → E5 → E6**. Las condiciones detalladas debajo conservan el alcance y la evidencia de esas entregas; ya no son backlog pendiente. R2/fase 4 está cerrada y la fase activa es 5.
+El orden ejecutado fue **E1 → E2 → E3 → E4 → E5 → E6**. Las condiciones detalladas debajo conservan el alcance y la evidencia de esas entregas; ya no son backlog pendiente. R2/fases 4 y 5 están cerradas en este corte.
 
 ### Fase 5 — Snapshots: primer corte
 
 El módulo Análisis guarda por proyecto un snapshot inmutable con parámetros, resultados ya calculados y referencia explícita a `versionId`, `sourceId`, nombre y esquema. El linaje copia de forma validada todos los padres y fuentes y los pasos ejecutados de pipelines, con un límite de 256 nodos. Metadatos y resultados se guardan en IndexedDB con límite de 2 MiB por snapshot; no persisten bytes del dataset ni versiones DuckDB.
 
 Después de recargar se puede consultar el resultado histórico, pero no repetir el cálculo. Reimportar el mismo archivo no lo vincula automáticamente. El respaldo portable conserva snapshots e informes y remapea sus IDs de proyecto; no contiene bytes fuente ni versiones DuckDB, así que la fuente debe importarse de nuevo para reanudar análisis. Al borrar un proyecto, un journal persistente registra la baja de metadatos y permite reintentar purges exactos de snapshots, definiciones e informes tras un fallo o recarga. Esta limpieza no coordina escrituras de otras pestañas: una pestaña abierta con estado obsoleto puede volver a guardar artefactos bajo el UUID eliminado después del purge; quedarían ocultos y huérfanos, sin atribuirse a otro proyecto. (ADR-0009, ADR-0011).
+
+### Fase 5 — Cierre: informes y respaldos separados
+
+El Report Builder guarda definiciones locales referidas a snapshots y exporta HTML imprimible escapando contenido dinámico; sus resultados son reproducibles respecto de los snapshots congelados, no de los archivos fuente. El JSON `dataforge-project-backup` v1 incluye metadatos de proyecto, definiciones, snapshots e informes; no incluye datasets. El `.dfdataset` opcional transporta versiones materializadas como Parquet con tope de 20 MiB por versión, 50 MiB total, 2 MiB de manifiesto y 64 versiones. La restauración Chromium cubre fuentes y combinaciones multifuente `APPEND`/`JOIN`, con verificación de filas/valores y linaje.
+
+Los formatos permanecen separados. La importación `.dfdataset` devuelve las versiones solo a la sesión DuckDB activa; no reanuda recetas ni vincula automáticamente esas versiones a snapshots/informes. Se mantiene la decisión de no persistir datasets en OPFS/IndexedDB en esta entrega. Los topes controlan buffers/archivo del flujo de la aplicación, no memoria total del proceso; no se afirma capacidad máxima. No se cubren todos los grafos: pipeline descendiente de una combinación y grafos con ramas quedan fuera de la evidencia actual. (ADR-0003, ADR-0010, ADR-0011, ADR-0012).
+
+**Verificación de cierre (2026-11-05):** `npm run typecheck`, `npm run lint` y `npm test` pasan (136/136). E2E Chromium 4/4 para `dataset-archive.spec.ts`, `portable-backup.spec.ts` y `reports.spec.ts`. La suite verifica exportación/importación JSON de snapshots/informes, informe HTML imprimible, roundtrip `.dfdataset`, checksum alterado rechazado antes de escribir y restauración de las vistas APPEND/JOIN con varias fuentes. Firefox no pudo lanzar en este entorno por ausencia de su directorio de perfil; no se declara compatibilidad verificada aquí. `git diff --check` también pasa.
 
 ## Entregas y condiciones de cierre
 
@@ -215,4 +223,4 @@ Los textos legales siguen siendo borradores no publicables. Preparar avisos sobr
 
 Fuentes revisadas: [README](../README.md), [AGENTS](../AGENTS.md), [MVP](MVP.md), [roadmap](roadmap.md), [roadmap técnico](roadmap-tecnico.md), [arquitectura](architecture.md), [ADR](adr/README.md), [diseño](design/README.md), las referencias visuales, [IA](ai-assistant.md), [autenticación](authentication.md), [integraciones](integrations.md) y borradores de [términos](legal/terms-of-use.md), [privacidad](legal/privacy-policy.md) y [avisos](legal/ai-financial-disclaimer.md).
 
-Al cerrar un corte, actualizar su estado en este documento y la fase correspondiente en el roadmap, adjuntar evidencia reproducible y revisar el siguiente alcance. R1 y R2/fase 4 están cerrados; la fase activa es **5 (R2)**.
+Al cerrar un corte, actualizar su estado en este documento y la fase correspondiente en el roadmap, adjuntar evidencia reproducible y revisar el siguiente alcance. R1 y R2/fases 4 y 5 están cerrados en este corte; 0B/0C permanecen como investigación opcional.

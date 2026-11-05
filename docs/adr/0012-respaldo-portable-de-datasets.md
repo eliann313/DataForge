@@ -1,6 +1,6 @@
 # ADR-0012 — Respaldo portable opcional de datasets materializados
 
-- **Estado:** Propuesto; implementación experimental, no cierra fase 5.
+- **Estado:** Aceptado como respaldo opcional de sesión; no agrega persistencia durable ni reconexión a snapshots/informes.
 - **Fecha:** 2026-11-05
 - **Relacionado:** [ADR-0003](./0003-persistencia-opfs-diferido.md), [ADR-0007](./0007-combinaciones-append-y-join.md), [ADR-0009](./0009-respaldo-portable-v1-metadatos.md).
 
@@ -33,12 +33,18 @@ informes por nombre o por identificadores de una sesión anterior.
   reutilizaba el nombre virtual `df_upload.parquet` y DuckDB leyó 2 filas del
   asset anterior al importar otro que debía tener 3. Asignar un nombre virtual
   UUID distinto por asset hizo pasar la E2E completa en Chromium.
-- La cobertura todavía no valida restauración de grafos con `JOIN`, `APPEND` ni
-  resultados materializados de pipeline con múltiples fuentes. La importación
-  reatacha IDs del manifiesto mediante referencias explícitas, pero ese
-  contrato de grafo no se considera validado hasta cubrir esos casos.
+- `e2e/dataset-archive.spec.ts` restaura un archivo con dos fuentes y las
+  versiones `APPEND` y `JOIN`; comprueba sus dos fuentes y dos padres después
+  del remapeo, y después de recargar comprueba número de filas y valores de
+  ambas vistas previas restauradas. Esto valida las combinaciones multifuente
+  cubiertas por esos recorridos. No prueba un paso de pipeline aplicado sobre
+  una versión combinada, ni todos los grafos posibles.
+- `src/modules/portable/dataset-archive.test.ts` comprueba el mapeo explícito
+  de referencias y la preservación de proyecto activo durante la importación.
+  `e2e/portable-backup.spec.ts` cubre por separado el respaldo JSON de
+  metadatos, snapshots e informes, sin bytes ni versiones de dataset.
 
-## Decisión propuesta
+## Decisión
 
 Usar un formato binario autónomo `.dfdataset` que transporta Parquet
 materializado por versión junto a un manifiesto versionado. Cada asset tiene
@@ -69,17 +75,25 @@ checksums, esquema, conteo y referencias antes de aceptar el resultado. Si una
 versión no supera esa validación, se limpia el material recién importado en la
 medida disponible y se informa el error.
 
+El JSON `dataforge-project-backup` v1 de ADR-0011 continúa siendo el respaldo
+de metadatos y artefactos de análisis. `.dfdataset` es una exportación
+independiente de versiones materializadas; no se combinan formatos ni se
+reconectan automáticamente sus IDs con snapshots o informes.
+
 ## Consecuencias y trabajo pendiente
 
 - El archivo respalda versiones materializadas, no fuentes originales ni
   definiciones reejecutables. Los resultados se pueden consultar, pero no se
   afirma que sean reproducibles desde su receta.
-- Hay que agregar pruebas Chromium para resultados de `JOIN`, `APPEND` y
-  pipelines que combinen fuentes antes de declarar restauración de grafo
-  completa.
+- La cobertura Chromium existente valida valores y linaje de `JOIN` y
+  `APPEND` multifuente. Para afirmar restauración de grafos más amplia, falta
+  probar una versión de pipeline descendiente de una combinación y la
+  restauración de grafos con varias ramas/descendientes, si esos casos son
+  parte del alcance de producto.
 - Deben medirse límites prácticos de tamaño y memoria en navegadores objetivo;
   los topes actuales de bytes no garantizan memoria total acotada.
-- Debe decidirse si datos de sesión importados pasan a almacenamiento
-  persistente. El archivo no modifica el alcance de OPFS definido en ADR-0003.
+- Los datasets importados viven solo en el Worker hasta cerrar/recargar; la
+  decisión de no persistirlos durablemente en esta entrega queda registrada en
+  ADR-0003. `.dfdataset` no modifica el alcance de OPFS.
 - Snapshots e informes continúan en el formato de metadatos separado y no
   reciben asociaciones automáticas a los IDs nuevos.

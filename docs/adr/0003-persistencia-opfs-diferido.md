@@ -1,8 +1,8 @@
 # ADR-0003 — Persistencia local: IndexedDB sí, OPFS diferido
 
-- **Estado:** Aceptado (2026-10-12, cierra el punto de decisión de E3).
+- **Estado:** Aceptado; reafirmado al cerrar fase 5 (2026-11-05).
 - **Fecha:** 2026-10-12
-- **Relacionados:** [Arquitectura §7](../architecture.md), [primeras entregas](../primeras-entregas.md) (E3)
+- **Relacionados:** [Arquitectura §7](../architecture.md), [primeras entregas](../primeras-entregas.md) (E3), [ADR-0011](./0011-respaldo-portable-v1-metadatos.md), [ADR-0012](./0012-respaldo-portable-de-datasets.md)
 
 ## Contexto
 
@@ -31,8 +31,14 @@ comprometido); el Inspector muestra la cuota real vía `storage.estimate()`.
   dentro del Worker. La fuente permanece intacta; metadatos de versión y pasos
   duran únicamente en la sesión. No se agrega OPFS ni caché implícita. Ver
   [ADR-0004](./0004-versiones-derivadas-de-pipelines.md).
-- **Persistencia duradera:** se decidirá al diseñar respaldo/exportación
-  portable de fase 5, usando los requisitos y mediciones de los flujos R2.
+- **R2/fase 5:** se mantienen datasets y versiones analíticas en memoria del
+  Worker, sin persistencia durable en OPFS ni IndexedDB. La portabilidad se
+  ofrece mediante dos archivos explícitamente separados: el JSON v1 para
+  metadatos, snapshots e informes, y el `.dfdataset` opcional para versiones
+  Parquet materializadas de una sesión. La importación `.dfdataset` recupera
+  las versiones solo en la sesión activa; no las reconecta automáticamente
+  con snapshots ni informes. Ver [ADR-0011](./0011-respaldo-portable-v1-metadatos.md)
+  y [ADR-0012](./0012-respaldo-portable-de-datasets.md).
 
 ## Criterios y descarte
 
@@ -40,12 +46,18 @@ comprometido); el Inspector muestra la cuota real vía `storage.estimate()`.
   CSV/XLSX es explícito y barato según benchmarks 0A.5.
 - OPFS añade semántica de desalojo/cuota por navegador sin valor de usuario
   en R1; adoptarlo ahora sería infraestructura especulativa.
-- Se reconsiderará antes de cerrar fase 5 si un flujo de respaldo portable o
-  datasets grandes recurrentes lo justifica con mediciones.
+- La exportación portable opcional satisface la necesidad de mover versiones
+  materializadas sin hacer de OPFS una dependencia de persistencia. Un uso que
+  requiera conservar datasets después de cerrar el navegador queda fuera de
+  esta decisión y requerirá revisar este ADR con evidencia de capacidad y
+  cuotas.
 
 ## Consecuencias
 
-- La UI debe decir qué se conserva entre sesiones. El primer corte R2 no guarda
-  las versiones derivadas al recargar; el respaldo portable se resolverá en fase 5.
-  Fallos de cuota/escritura son visibles, nunca silenciosos.
-- No se escribe código OPFS hasta decidir el respaldo portable y la persistencia en la fase 5.
+- La UI debe explicar qué conserva cada respaldo y que los datos reimportados
+  viven solo durante la sesión. Las cotas del formato `.dfdataset` (20 MiB por
+  versión, 50 MiB totales) limitan buffers/archivo de la aplicación, no la
+  memoria total del proceso. No se afirma un máximo de memoria ni capacidad
+  garantizada; faltan mediciones de capacidad en navegadores objetivo.
+- No se implementa OPFS para datasets en esta entrega. Agregar persistencia
+  durable requiere una decisión posterior con evidencia de capacidad y cuotas.
