@@ -103,7 +103,7 @@ test("guarda un snapshot por proyecto y muestra resultados históricos tras reca
   const deletedProjectRow = page.getByRole("listitem").filter({ hasText: project });
   await deletedProjectRow.getByRole("button", { name: "Eliminar" }).click();
   const confirmDelete = page.getByRole("dialog", { name: "Eliminar proyecto" });
-  await expect(confirmDelete).toContainText(/sus snapshots locales se eliminarán/);
+  await expect(confirmDelete).toContainText(/sus artefactos guardados en este dispositivo se eliminarán/);
   await confirmDelete.getByRole("button", { name: "Eliminar" }).click();
   await expect(page.getByText(project, { exact: true })).toHaveCount(0);
   const remainingSnapshots = await page.evaluate(async () => new Promise<number>((resolve, reject) => {

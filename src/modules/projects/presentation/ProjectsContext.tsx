@@ -13,8 +13,9 @@ import { ProjectsService } from "../application/service";
 import { ProjectError } from "../domain/errors";
 import type { Folder } from "../domain/folder";
 import type { Project } from "../domain/project";
-import { IndexedDBFolderRepository, IndexedDBProjectRepository } from "../infrastructure/indexeddb";
+import { IndexedDBFolderRepository, IndexedDBProjectCleanupJournal, IndexedDBProjectRepository } from "../infrastructure/indexeddb";
 import { IndexedDBAnalysisSnapshotRepository } from "../../analysis";
+import { IndexedDBPipelineDefinitionRepository } from "../../pipelines";
 
 const ACTIVE_KEY = "df-active-project";
 
@@ -56,7 +57,11 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
       new ProjectsService({
         projects: new IndexedDBProjectRepository(),
         folders: new IndexedDBFolderRepository(),
-        deleteProjectArtifacts: (projectId) => new IndexedDBAnalysisSnapshotRepository().deleteProject(projectId),
+        cleanupJournal: new IndexedDBProjectCleanupJournal(),
+        deleteProjectArtifacts: async (projectId) => {
+          await new IndexedDBAnalysisSnapshotRepository().deleteProject(projectId);
+          await new IndexedDBPipelineDefinitionRepository().deleteProject(projectId);
+        },
       }),
     [],
   );
@@ -102,10 +107,12 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
           service.listProjects(),
           service.listFolders(),
         ]);
+        const cleanup = await service.recoverPendingProjectArtifactsCleanup();
         if (!cancelled) {
           setProjects(p);
           setFolders(f);
-          setError(null);
+          setCleanupPendingProjectIds(cleanup.projectIds);
+          setError(cleanup.errors.length > 0 ? cleanup.errors.join(" ") : null);
         }
       } catch (cause) {
         if (!cancelled) setError(messageOf(cause));

@@ -68,7 +68,7 @@ export default function ProjectsPanel() {
       {ctx.error || ctx.cleanupPendingProjectIds.length > 0 ? (
         <p role="alert" className="rounded border border-red-300 bg-red-50 p-2 text-sm">
           {ctx.error ?? "Quedó pendiente la limpieza local de un proyecto eliminado."}{" "}
-          {ctx.cleanupPendingProjectIds.map((id) => <button key={id} type="button" onClick={() => run(ctx.retryProjectCleanup(id))} className="mr-2 font-semibold underline">Reintentar limpieza de snapshots ({id})</button>)}
+          {ctx.cleanupPendingProjectIds.map((id) => <button key={id} type="button" onClick={() => run(ctx.retryProjectCleanup(id))} className="mr-2 font-semibold underline">Reintentar limpieza de datos ({id})</button>)}
           {ctx.cleanupPendingProjectIds.length === 0 ? <button type="button" onClick={ctx.dismissError} className="underline">Descartar</button> : null}
         </p>
       ) : null}
@@ -266,7 +266,7 @@ export default function ProjectsPanel() {
                     onClick={() =>
                       setConfirm({
                         title: "Eliminar proyecto",
-                        message: `«${p.name}» y sus snapshots locales se eliminarán. Los archivos importados en memoria no se ven afectados. Si falla la limpieza de snapshots, se informará y podrá reintentarse.`,
+                        message: `«${p.name}» y sus artefactos guardados en este dispositivo se eliminarán. Los archivos importados en memoria no se ven afectados. Si falla la limpieza, se informará y podrá reintentarse.`,
                         label: "Eliminar",
                         run: () => run(ctx.deleteProject(p.id)),
                       })

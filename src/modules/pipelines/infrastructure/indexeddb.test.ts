@@ -35,6 +35,9 @@ describe("adaptador IndexedDB de definiciones de pipelines", () => {
     expect(await second.list("project-2")).toEqual([definition]);
     await second.delete("project-1", definition.id);
     expect(await second.list("project-1")).toEqual([other]);
+    await second.deleteProject("project-1");
+    expect(await second.list("project-1")).toEqual([]);
+    expect(await second.list("project-2")).toEqual([definition]);
     second.close();
   });
 
