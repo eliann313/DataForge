@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createReport, isReport, renderReportHtml, updateReport, type ReportSnapshotView } from "./report";
+import { createReport, isReport, renderReportHtml, renderSnapshotChartSvg, updateReport, type ReportSnapshotView } from "./report";
 
 const snapshot: ReportSnapshotView = {
   id: "snapshot-1",
@@ -48,6 +48,39 @@ describe("reports", () => {
     expect(html).toContain("no está disponible en este proyecto");
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("<iframe");
+  });
+
+  it("renders readable frozen results and a safe chart with an accessible value table", () => {
+    const report = createReport("p1", "Reporte", "2026-11-04T12:00:00.000Z");
+    report.sections = [{ id: "a", kind: "snapshot", title: "Evidencia", snapshotId: snapshot.id }];
+    const frozen = {
+      ...snapshot,
+      results: {
+        description: { column: "Ingresos", total: 2, valid: 2, missing: 0, mean: 3 },
+        findings: [{ rule: "nulos-altos", column: "<img src=x>", text: "Revise <script>dato</script>" }],
+        chart: { title: 'Barras "Q4" <ventas>', kind: "bar", points: [
+          { label: "A<&", value: 4 }, { label: "B", value: -2 }, { label: "C", value: null },
+        ] },
+      },
+    };
+    const html = renderReportHtml(report, new Map([[snapshot.id, frozen]]));
+    expect(html).toContain("Estadística descriptiva");
+    expect(html).toContain("Media</th><td>3");
+    expect(html).toContain("<span>&lt;img src=x&gt;: </span>Revise &lt;script&gt;dato");
+    expect(html).toContain("<svg");
+    expect(html).toContain('aria-label="Barras &quot;Q4&quot; &lt;ventas&gt;"');
+    expect(html).toContain("A&lt;&amp;");
+    expect(html).toContain("Ver valores del gráfico");
+    expect(html).not.toContain("<script>");
+    expect(html).not.toContain("<img src=x>");
+  });
+
+  it("bounds chart output and rejects unsupported chart shapes", () => {
+    const output = renderSnapshotChartSvg({ title: "Many points", kind: "line", points: Array.from({ length: 501 }, (_, index) => ({ label: `p${index}`, value: index })) });
+    expect(output).toContain("Se muestran los primeros 500 puntos; se omitieron 1.");
+    expect(output).not.toContain("p500");
+    expect(renderSnapshotChartSvg({ title: "bad", kind: "pie", points: [] })).toBeNull();
+    expect(renderSnapshotChartSvg({ title: "bad", kind: "bar", points: [{ label: "NaN", value: Number.NaN }] })).toContain("no tiene valores numéricos");
   });
 
   it("limits HTML export size instead of creating an oversized local file", () => {
