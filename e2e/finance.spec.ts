@@ -22,6 +22,27 @@ test.beforeEach(async ({ page }) => {
   await cleanFinance(page);
 });
 
+test("migra movimientos previos y presenta sus categorías históricas", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase("dataforge-finance"); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); request.onblocked = () => reject(new Error("La base quedó abierta")); });
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("dataforge-finance", 3);
+      request.onupgradeneeded = () => { request.result.createObjectStore("transactions", { keyPath: "id" }); request.result.createObjectStore("accounts", { keyPath: "id" }); };
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => { const tx = db.transaction("transactions", "readwrite"); tx.objectStore("transactions").put({ id: "historic", date: "2024-03-01", description: "Café antiguo", kind: "gasto", amountMinor: 100, currency: "ARS", category: "  Café  ", notes: "", createdAt: "2024-03-01", updatedAt: "2024-03-01" }); tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+    db.close();
+  });
+  await page.reload();
+  await page.getByRole("button", { name: /^finanzas$/i }).click();
+  const row = view(page).locator("tr", { hasText: "Café antiguo" });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("  Café  ");
+  await view(page).getByLabel("Descripción").fill("Nuevo gasto");
+  await expect(view(page).locator('#categorias option[value="Café"]')).toHaveCount(1);
+});
+
 const view = (page: Page) => page.locator("main");
 
 async function addMovement(
@@ -157,6 +178,25 @@ test("edita y elimina con confirmación", async ({ page }) => {
   await row2.getByRole("button", { name: /eliminar/i }).click();
   await view(page).getByRole("button", { name: /^eliminar$/i }).last().click();
   await expect(view(page).getByText("Viejo", { exact: true })).toHaveCount(0);
+});
+
+test("duplica como alta nueva y permite marcar movimientos destacados", async ({ page }) => {
+  await addMovement(page, { description: "Original", kind: "Gasto", amount: "12,50", currency: "ARS", category: "Café" });
+  const original = view(page).locator("tr", { hasText: "Original" });
+  await original.getByRole("button", { name: "Duplicar" }).click();
+  await expect(view(page).getByRole("heading", { name: "Nuevo movimiento" })).toBeVisible();
+  await expect(view(page).getByLabel("Descripción")).toHaveValue("Original");
+  await view(page).getByLabel("Descripción").fill("Copia");
+  await view(page).getByRole("button", { name: /guardar movimiento/i }).click();
+  await expect(view(page).getByRole("status").filter({ hasText: "Movimiento guardado correctamente." })).toBeVisible();
+  const copy = view(page).locator("tr", { hasText: "Copia" });
+  await copy.getByRole("button", { name: "Destacar Copia" }).click();
+  await expect(view(page).locator('section[aria-labelledby="destacados"]')).toContainText("Copia");
+  await page.reload();
+  await page.getByRole("button", { name: /^finanzas$/i }).click();
+  await expect(view(page).locator('section[aria-labelledby="destacados"]')).toContainText("Copia");
+  await copy.getByRole("button", { name: "Quitar destacado Copia" }).click();
+  await expect(view(page).locator('section[aria-labelledby="destacados"]')).toContainText("Marca movimientos");
 });
 
 test("rechaza importes inválidos con mensaje", async ({ page }) => {

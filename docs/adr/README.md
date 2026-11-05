@@ -19,6 +19,7 @@ Cada ADR documenta una decisión técnica con su contexto, alternativas y criter
 | [0013](./0013-finance-accounts-and-transfer-migration.md) | Cuentas financieras locales, transferencias propias y migración v2 | Aceptado — primer corte de fase 6 |
 | [0014](./0014-finance-local-file-import.md) | Importación local CSV/XLSX con preview, duplicados y lote atómico | Aceptado — segundo corte de fase 6 |
 | [0015](./0015-finance-card-accounts-and-refunds.md) | Tarjetas como pasivo y reintegros enlazados | Aceptado para validación — corte siguiente de fase 6 |
+| [0016](./0016-finance-category-catalog-and-highlights.md) | Catálogo local de categorías y movimientos destacados | Propuesto — siguiente corte de fase 6 |
 
 ## Estados
 

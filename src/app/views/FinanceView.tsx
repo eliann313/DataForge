@@ -16,7 +16,7 @@ import {
 } from "@/modules/finance";
 import { IndexedDBTransactionRepository } from "@/modules/finance";
 import FinanceImportPanel from "@/app/components/FinanceImportPanel";
-import { WalletCards, Plus, Tag } from "lucide-react";
+import { WalletCards, Plus, Tag, Star } from "lucide-react";
 
 const ChartView = dynamic(() => import("@/app/components/ChartView"), {
   ssr: false,
@@ -73,6 +73,7 @@ export default function FinanceView() {
     [],
   );
   const [list, setList] = useState<FinancialTransaction[]>([]);
+  const [categories, setCategories] = useState<Array<{id:string;name:string;createdAt:string}>>([]);
   const [listPage, setListPage] = useState(0);
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [accountBalances, setAccountBalances] = useState<Array<FinancialAccount & { balanceMinor: number }>>([]);
@@ -92,8 +93,9 @@ export default function FinanceView() {
 
   async function refresh(y = month.y, m = month.m) {
     // Nunca "Guardado" antes de confirmar: todo pasa por await + refresh.
-    const [l, a, ab, s, b, e] = await Promise.all([
+    const [l, cats, a, ab, s, b, e] = await Promise.all([
       service.list(),
+      service.categories(),
       service.accounts(),
       service.accountBalances(),
       service.monthlySummary(y, m),
@@ -101,6 +103,7 @@ export default function FinanceView() {
       service.evolution(y, m, 6),
     ]);
     setList(l);
+    setCategories(cats);
     setAccounts(a);
     setAccountBalances(ab);
     setSummary(s);
@@ -169,6 +172,19 @@ export default function FinanceView() {
     setError(null);
   }
 
+  function duplicate(tx: FinancialTransaction) {
+    setEditingId(null);
+    setForm({ date: tx.date, description: tx.description, kind: tx.kind, amount: String(tx.amountMinor / 100).replace(".", ","), currency: tx.currency, category: tx.category, notes: tx.notes, accountId: tx.accountId ?? "", destinationAccountId: tx.destinationAccountId ?? "", linkedTransactionId: tx.linkedTransactionId ?? "" });
+    setSaved(false); setError(null);
+  }
+
+  async function toggleHighlighted(tx: FinancialTransaction) {
+    setBusy(true);
+    try { await service.setHighlighted(tx.id, !tx.highlighted); await refresh(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo actualizar el destacado"); }
+    finally { setBusy(false); }
+  }
+
   async function changeMonth(ym: string) {
     const [y, m] = ym.split("-").map(Number);
     if (!y || !m) return;
@@ -181,7 +197,6 @@ export default function FinanceView() {
     }
   }
 
-  const categories = [...new Set(list.map((t) => t.category))].sort();
   const eligibleAccounts = accounts
     .filter((account) => account.currency === form.currency)
     .sort((left, right) => Number(left.type === "card") - Number(right.type === "card"));
@@ -254,7 +269,7 @@ export default function FinanceView() {
               {form.kind === "reintegro" ? <label className="text-sm font-medium sm:col-span-2">Gasto asociado<select required value={form.linkedTransactionId} disabled={busy} onChange={(e) => setForm({ ...form, linkedTransactionId: e.target.value })} className={input}><option value="">Selecciona un gasto</option>{eligibleRefundExpenses.map((tx) => <option key={tx.id} value={tx.id}>{tx.date} · {tx.description} · {formatMoney(tx.amountMinor, tx.currency)}</option>)}</select></label> : null}
               {form.kind !== "transferencia" && form.kind !== "reintegro" ? <label className="text-sm font-medium sm:col-span-2">Categoría<input type="text" required maxLength={60} list="categorias"
                 value={form.category} disabled={busy} onChange={(e) => setForm({ ...form, category: e.target.value })}
-                placeholder="Ej.: Alimentos" className={input} /><datalist id="categorias">{categories.map((c) => <option key={c} value={c} />)}</datalist></label> : null}
+                placeholder="Ej.: Alimentos" className={input} /><datalist id="categorias">{categories.map((c) => <option key={c.id} value={c.name} />)}</datalist></label> : null}
               <label className="text-sm font-medium sm:col-span-2">Notas <span className="font-normal text-slate-500">(opcional)</span>
                 <textarea maxLength={500} rows={2} value={form.notes} disabled={busy} onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   placeholder="Agrega una nota" className={input} /></label>
@@ -302,6 +317,10 @@ export default function FinanceView() {
                   <div className="mt-3 flex justify-between gap-3 rounded-lg bg-violet-100 px-3 py-2 text-violet-900"><dt className="font-bold">Saldo</dt><dd className="font-bold tabular-nums">{formatMoney(s.balance, s.currency)}</dd></div></dl>
               </article>))}</div>
           </section>
+          <section aria-labelledby="destacados" className={card}>
+            <h2 id="destacados" className="text-lg font-bold">Movimientos destacados</h2>
+            {list.filter((tx) => tx.highlighted).length ? <ul className="mt-3 space-y-2">{list.filter((tx) => tx.highlighted).slice(0, 5).map((tx) => <li key={tx.id} className="flex justify-between rounded-lg bg-amber-50 px-3 py-2 text-sm"><span>{tx.date} · {tx.description}</span><span className="font-semibold">{formatMoney(tx.amountMinor, tx.currency)}</span></li>)}</ul> : <p className="mt-2 text-sm text-slate-500">Marca movimientos para tenerlos a mano.</p>}
+          </section>
           <section aria-labelledby="por-categoria" className={card}>
             <h2 id="por-categoria" className="text-lg font-bold">Gastos por categoría</h2>
             {gastosARS.length ? <div className="mt-3"><h3 className="mb-2 text-sm font-semibold">ARS</h3><ChartView title={`Gastos por categoría ARS ${month.y}-${month.m}`} kind="bar" points={gastosARS.map((g) => ({ label: g.category, value: g.total / 100 }))} /></div> : null}
@@ -337,9 +356,11 @@ export default function FinanceView() {
                   <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums">{formatMoney(t.amountMinor, t.currency)}</td>
                   <td className="px-3 py-3 text-slate-600">{t.category}</td>
                   <td className="whitespace-nowrap px-3 py-3">
+                    <button type="button" disabled={busy} onClick={() => void toggleHighlighted(t)} aria-label={t.highlighted ? `Quitar destacado ${t.description}` : `Destacar ${t.description}`} aria-pressed={Boolean(t.highlighted)} className="mr-3 font-medium text-amber-700"><Star aria-hidden="true" className={`inline size-4 ${t.highlighted ? "fill-amber-400" : ""}`} /></button>
                     <button type="button" disabled={busy} onClick={() => startEdit(t)} className="mr-3 font-medium text-violet-700 underline-offset-2 hover:underline">
                       Editar
                     </button>
+                    <button type="button" disabled={busy} onClick={() => duplicate(t)} className="mr-3 font-medium text-violet-700 underline-offset-2 hover:underline">Duplicar</button>
                     <button type="button" disabled={busy} onClick={() => setConfirmId(t.id)}
                       className="font-medium text-red-700 underline-offset-2 hover:underline">
                       Eliminar

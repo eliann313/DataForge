@@ -64,6 +64,20 @@ describe("FinanceService", () => {
     expect((await svc.monthlySummary(2024, 3))[0].expense).toBe(15);
   });
 
+  it("mantiene categorías con clave es-AR sin acentos y administra destacados", async () => {
+    const svc = service();
+    const a = await svc.create({ date: "2024-03-01", description: "A", kind: "gasto", amount: "1", currency: "ARS", category: "  Café  " });
+    await svc.create({ date: "2024-03-02", description: "B", kind: "gasto", amount: "1", currency: "ARS", category: "CAFÉ" });
+    expect(await svc.categories()).toHaveLength(1);
+    expect((await svc.categories())[0].id).toBe("café");
+    expect((await svc.categories())[0].name).toBe("Café");
+    expect(await svc.highlights()).toEqual([]);
+    await svc.setHighlighted(a.id, true);
+    expect((await svc.highlights()).map((tx) => tx.id)).toEqual([a.id]);
+    await svc.setHighlighted(a.id, false);
+    expect(await svc.highlights()).toEqual([]);
+  });
+
   it("resume el mes por moneda sin mezclar", async () => {
     const svc = service();
     await svc.create({ date: "2024-03-03", description: "Sueldo", kind: "ingreso", amount: "1000", currency: "ARS", category: "trabajo" });
@@ -207,6 +221,7 @@ describe("FinanceService", () => {
         saveAccount: () => Promise.resolve(),
         listAccounts: () => Promise.resolve([]),
         findAccountById: () => Promise.resolve(null),
+        listCategories: () => Promise.resolve([]),
       },
       now: () => "2024-03-15T12:00:00.000Z",
     });

@@ -123,6 +123,19 @@ export class FinanceService {
     );
   }
 
+  async categories() { return this.transactions.listCategories(); }
+
+  async setHighlighted(id: string, highlighted: boolean): Promise<FinancialTransaction> {
+    const current = await this.require(id);
+    const updated = { ...current, highlighted, updatedAt: this.now() };
+    await this.transactions.save(updated);
+    return updated;
+  }
+
+  async highlights(): Promise<FinancialTransaction[]> {
+    return (await this.list()).filter((tx) => tx.highlighted === true);
+  }
+
   async accounts(): Promise<FinancialAccount[]> {
     const accounts = await this.transactions.listAccounts();
     const defaults: FinancialAccount[] = [

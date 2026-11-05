@@ -78,6 +78,22 @@ describe("adaptador IndexedDB de finanzas", () => {
     finally { repo.close(); }
   });
 
+  it("migra v3 al catálogo y conserva el texto histórico", async () => {
+    const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("dataforge-finance", 3);
+      req.onupgradeneeded = () => { req.result.createObjectStore("transactions", { keyPath: "id" }); req.result.createObjectStore("accounts", { keyPath: "id" }); };
+      req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
+    });
+    const tx = legacy.transaction("transactions", "readwrite");
+    tx.objectStore("transactions").put({ id: "old", date: "2024-01-01", description: "A", kind: "gasto", amountMinor: 100, currency: "ARS", category: "  Café  ", notes: "", createdAt: "2024-01-01", updatedAt: "2024-01-01" });
+    await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); }); legacy.close();
+    const repo = new IndexedDBTransactionRepository();
+    try {
+      expect((await repo.list())[0].category).toBe("  Café  ");
+      expect(await repo.listCategories()).toMatchObject([{ id: "café", name: "Café" }]);
+    } finally { repo.close(); }
+  });
+
   it("guarda un lote completo en una transacción y conserva centavos tras reabrir", async () => {
     const repo = new IndexedDBTransactionRepository();
     const service = new FinanceImportService(repo, (() => { let i = 0; return () => `batch-${++i}`; })(), () => "2024-03-01T00:00:00Z");
@@ -89,6 +105,16 @@ describe("adaptador IndexedDB de finanzas", () => {
     finally { reopened.close(); }
   });
 
+  it("deduplica categorías de un lote sin perder el primer nombre sugerido", async () => {
+    const repo = new IndexedDBTransactionRepository();
+    const movement = (id: string, category: string) => ({ id, date: "2024-03-01", description: id, kind: "gasto" as const, amountMinor: 100, currency: "ARS" as const, category, notes: "", accountId: "account-default", createdAt: "2024-03-01", updatedAt: "2024-03-01" });
+    try {
+      await repo.saveMany([movement("one", "  Café  "), movement("two", "CAFÉ")]);
+      expect(await repo.listCategories()).toMatchObject([{ id: "café", name: "Café" }]);
+      expect((await repo.list()).map((row) => row.category)).toEqual(["  Café  ", "CAFÉ"]);
+    } finally { repo.close(); }
+  });
+
   it("revierte el lote entero si una inserción falla", async () => {
     const repo = new IndexedDBTransactionRepository();
     const service = new FinanceImportService(repo, (() => { let i = 0; return () => `same-${i++}`; })(), () => "2024-03-01T00:00:00Z");
@@ -97,7 +123,7 @@ describe("adaptador IndexedDB de finanzas", () => {
     const second = { ...preview.rows[1].transaction!, id: first.id };
     preview.rows[1].transaction = second;
     await expect(service.confirm(preview)).rejects.toThrow(/almacenamiento|importación/i);
-    try { expect(await repo.list()).toEqual([]); }
+    try { expect(await repo.list()).toEqual([]); expect(await repo.listCategories()).toEqual([]); }
     finally { repo.close(); }
   });
 });

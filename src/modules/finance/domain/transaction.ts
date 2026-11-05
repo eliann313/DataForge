@@ -19,6 +19,7 @@ export interface FinancialTransaction {
   linkedTransactionId?: string;
   createdAt: string;
   updatedAt: string;
+  highlighted?: boolean;
 }
 
 export const MAX_TEXT = { description: 200, category: 60, notes: 500 } as const;

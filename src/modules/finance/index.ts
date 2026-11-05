@@ -13,6 +13,7 @@ export type {
   CurrencyTotal,
   CategoryTotal,
   MonthPoint,
+  FinanceCategory,
 } from "./application/ports";
 export { FinanceService, type FinanceDeps } from "./application/service";
 export { MemoryTransactionRepository } from "./infrastructure/memory";

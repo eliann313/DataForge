@@ -15,7 +15,10 @@ export interface TransactionRepository {
   saveAccount(account: FinancialAccount): Promise<void>;
   listAccounts(): Promise<FinancialAccount[]>;
   findAccountById(id: string): Promise<FinancialAccount | null>;
+  listCategories(): Promise<FinanceCategory[]>;
 }
+
+export interface FinanceCategory { id: string; name: string; createdAt: string }
 
 export interface CreateInput {
   date: string;
