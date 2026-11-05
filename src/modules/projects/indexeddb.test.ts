@@ -175,6 +175,9 @@ describe("adaptador IndexedDB", () => {
       expect(cleaned).toEqual([target.id, target.id]);
       expect(await reopenedJournal.listPending()).toEqual([]);
       expect(await reopenedProjects.findById(other.id)).not.toBeNull();
+      const rollbackProject = await reopenedService.createProject({ name: "Import rollback" });
+      await reopenedProjects.delete(rollbackProject.id);
+      expect(await reopenedJournal.listPending()).toEqual([]);
     } finally { connections.forEach((connection) => connection.close()); }
   });
 

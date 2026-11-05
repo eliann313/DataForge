@@ -88,6 +88,7 @@ class MemorySnapshotRepository implements AnalysisSnapshotRepository {
   async list(projectId: string) { return [...this.records.values()].filter((row) => row.projectId === projectId).map((row) => structuredClone(row)); }
   async findById(projectId: string, id: string) { return this.records.get(`${projectId}:${id}`) ?? null; }
   async delete(projectId: string, id: string) { this.records.delete(`${projectId}:${id}`); }
+  async deleteProject(projectId: string) { for (const key of this.records.keys()) if (key.startsWith(`${projectId}:`)) this.records.delete(key); }
 }
 
 class MemoryReportRepository implements ReportRepository {

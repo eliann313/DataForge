@@ -16,6 +16,7 @@ import type { Project } from "../domain/project";
 import { IndexedDBFolderRepository, IndexedDBProjectCleanupJournal, IndexedDBProjectRepository } from "../infrastructure/indexeddb";
 import { IndexedDBAnalysisSnapshotRepository } from "../../analysis";
 import { IndexedDBPipelineDefinitionRepository } from "../../pipelines";
+import { IndexedDBReportRepository } from "../../reports/infrastructure/indexeddb";
 
 const ACTIVE_KEY = "df-active-project";
 
@@ -61,6 +62,7 @@ export function ProjectsProvider({ children }: { children: ReactNode }) {
         deleteProjectArtifacts: async (projectId) => {
           await new IndexedDBAnalysisSnapshotRepository().deleteProject(projectId);
           await new IndexedDBPipelineDefinitionRepository().deleteProject(projectId);
+          await new IndexedDBReportRepository().deleteProject(projectId);
         },
       }),
     [],

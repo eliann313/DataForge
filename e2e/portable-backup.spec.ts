@@ -9,7 +9,7 @@ test("exporta e importa snapshots e informes sin incluir ni asociar la fuente", 
   await expect(page.getByText(`Proyecto: ${projectName}`)).toBeVisible({ timeout: 15_000 });
   const sourceProjectId = await page.evaluate(async (name) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("dataforge", 1);
+      const request = indexedDB.open("dataforge", 2);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -110,7 +110,7 @@ test("exporta e importa snapshots e informes sin incluir ni asociar la fuente", 
   await expect(page.getByText(`Proyecto: ${projectName}`).last()).toBeVisible({ timeout: 15_000 });
   const projectIds = await page.evaluate(async (name) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("dataforge", 1);
+      const request = indexedDB.open("dataforge", 2);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
@@ -155,4 +155,54 @@ test("exporta e importa snapshots e informes sin incluir ni asociar la fuente", 
   await expect(page.getByRole("heading", { name: "Informes" })).toBeVisible();
   await expect(page.getByText("Linaje de 2 versiones y todas sus fuentes")).toBeVisible();
   await expect(page.getByText("Ventas por canal")).toBeVisible();
+
+  await page.getByRole("button", { name: "Inicio", exact: true }).click();
+  const activeProjectId = await page.evaluate(() => localStorage.getItem("df-active-project"));
+  expect(activeProjectId).toBe(importedProjectId);
+  const importedProjectRow = page.locator("li").filter({ has: page.locator('input[type="radio"]:checked') });
+  await expect(importedProjectRow).toContainText(projectName);
+  await importedProjectRow.getByRole("button", { name: "Eliminar" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Eliminar proyecto" });
+  await expect(confirmation).toContainText(/artefactos guardados en este dispositivo se eliminarán/);
+  await confirmation.getByRole("button", { name: "Eliminar" }).click();
+  await expect(page.getByRole("heading", { name: "Proyectos (1)" })).toBeVisible({ timeout: 15_000 });
+  const remaining = await page.evaluate(async (projectId) => {
+    const keys = async (dbName: string, storeName: string) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(dbName, 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const result = await new Promise<number>((resolve, reject) => {
+        const tx = db.transaction(storeName, "readonly");
+        const request = tx.objectStore(storeName).index("by-project").getAllKeys(IDBKeyRange.only(projectId));
+        request.onsuccess = () => resolve(request.result.length);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      return result;
+    };
+    return {
+      snapshots: await keys("dataforge-analysis-snapshots", "snapshots"),
+      reports: await keys("dataforge-reports", "reports"),
+      definitions: await keys("dataforge-pipelines", "definitions"),
+    };
+  }, importedProjectId!);
+  expect(remaining).toEqual({ snapshots: 0, reports: 0, definitions: 0 });
+  const sourceStillIntact = await page.evaluate(async (projectId) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("dataforge-reports", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const count = await new Promise<number>((resolve, reject) => {
+      const tx = db.transaction("reports", "readonly");
+      const request = tx.objectStore("reports").index("by-project").getAllKeys(IDBKeyRange.only(projectId));
+      request.onsuccess = () => resolve(request.result.length);
+      request.onerror = () => reject(request.error);
+    });
+    db.close();
+    return count;
+  }, sourceProjectId!);
+  expect(sourceStillIntact).toBe(1);
 });

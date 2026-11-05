@@ -27,6 +27,12 @@ describe("IndexedDBReportRepository", () => {
     await repo.delete("project-a", report.id);
     expect(await repo.list("project-a")).toEqual([]);
     expect(await repo.list("project-b")).toEqual([sameIdOtherProject]);
+
+    const more = createReport("project-a", "Otra página");
+    await repo.save(more);
+    await repo.deleteProject("project-a");
+    expect(await repo.list("project-a")).toEqual([]);
+    expect(await repo.list("project-b")).toEqual([sameIdOtherProject]);
   });
 
   it("rejects malformed records instead of returning a partial list", async () => {
