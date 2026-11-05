@@ -2,48 +2,61 @@
 
 > **Estado:** dirección visual aprobada para planificación. Los PNG siguientes son **mockups conceptuales generados**, no capturas de pantallas implementadas ni especificaciones pixel-perfect. El estado funcional real está documentado en el [README principal](../../README.md) y el [roadmap](../roadmap.md).
 
-## 1. Galería de mockups originales
+## 1. Galería de referencias visuales
 
-Los **tres PNG originales están versionados en GitHub** y constituyen la referencia estética primaria para desarrollar DataForge. Se conservan sus nombres originales para no duplicar archivos ni romper enlaces.
+Las siete pantallas siguientes son la referencia visual para la futura renovación de la interfaz. Los textos, valores y funciones visibles son ilustrativos; la documentación y el estado real de la aplicación definen el alcance.
 
-### Concepto 1 — Recorrido completo del producto
+### Inicio
 
-![Concepto 1: landing, importación, exploración, perfilado, análisis, visualización, pipelines, series temporales e informes](./mockups/a_wide_clean_dark_light_modern_ui_mockup_collage.png)
+![Referencia conceptual de Inicio](./mockups/01-Inicio.png)
 
-[Ver imagen completa](./mockups/a_wide_clean_dark_light_modern_ui_mockup_collage.png)
+[Ver imagen completa](./mockups/01-Inicio.png)
 
-**Referencia:** presentación del producto y secuencia de trabajo, desde cargar un archivo hasta obtener un informe. Útil para diseñar landing, onboarding, importación y pasos del flujo analítico.
+### Datos
 
-### Concepto 2 — Módulos y navegación del workspace
+![Referencia conceptual de Datos](./mockups/02-Datos.png)
 
-![Concepto 2: inicio, importación, exploración, visualizaciones, predicciones, SQL, informes y proyectos](./mockups/a_wide_clean_modern_ui_ux_mockup_collage_of_a_da.png)
+[Ver imagen completa](./mockups/02-Datos.png)
 
-[Ver imagen completa](./mockups/a_wide_clean_modern_ui_ux_mockup_collage_of_a_da.png)
+### Análisis
 
-**Referencia:** coherencia entre pantallas, sidebar, gestión de proyectos, laboratorio SQL, informes y herramientas avanzadas. Útil para definir layouts, navegación, menús y componentes reutilizables.
+![Referencia conceptual de Análisis](./mockups/03-Analisis.png)
 
-### Concepto 3 — Dashboard analítico y composición visual
+[Ver imagen completa](./mockups/03-Analisis.png)
 
-![Concepto 3: dashboard, perfilado, análisis exploratorio, transformaciones, series temporales, SQL e informes](./mockups/a_wide_clean_ui_ux_mockup_collage_on_a_dark_to_li.png)
+### Finanzas
 
-[Ver imagen completa](./mockups/a_wide_clean_ui_ux_mockup_collage_on_a_dark_to_li.png)
+![Referencia conceptual de Finanzas](./mockups/04-Finanzas.png)
 
-**Referencia:** jerarquía visual de métricas, tarjetas, tablas, gráficos, formularios de configuración y pipelines. Útil para implementar el área de análisis.
+[Ver imagen completa](./mockups/04-Finanzas.png)
 
-**Galería detallada, nombres originales y pautas para agentes:** [`mockups/README.md`](./mockups/README.md).
+### Transformaciones
+
+![Referencia conceptual de Transformaciones](./mockups/05-Transformaciones.png)
+
+[Ver imagen completa](./mockups/05-Transformaciones.png)
+
+### Laboratorio
+
+![Referencia conceptual de Laboratorio](./mockups/06-Laboratorio.png)
+
+[Ver imagen completa](./mockups/06-Laboratorio.png)
+
+### Informes
+
+![Referencia conceptual de Informes](./mockups/07-Informes.png)
+
+[Ver imagen completa](./mockups/07-Informes.png)
+
+**Índice y pautas para agentes:** [`mockups/README.md`](./mockups/README.md).
 
 ### Referencia vectorial secundaria
 
-![Referencia complementaria del workspace en formato vectorial](./workspace-reference.svg)
-
-El [SVG del workspace](./workspace-reference.svg) es una guía complementaria creada para documentar la composición general. **En caso de diferencias estéticas, priorizar los tres PNG originales y las decisiones explícitas de este documento.**
+El [SVG del workspace](./workspace-reference.svg) es una referencia complementaria. Ante diferencias estéticas, priorizar las siete pantallas y las decisiones explícitas de este documento.
 
 ### Precedencia entre mockups y documentación
 
-Los PNG definen la dirección **estética**. En navegación y alcance funcional **prevalece la documentación**:
-
-- La sidebar documentada (§3) agrupa SQL, Python, series temporales, forecasting, Rust y optimización dentro de **Laboratorio**. Los mockups muestran algunos de esos módulos (Series temporales, Machine Learning, SQL / Workspace) como entradas separadas de la barra lateral. Es un concepto exploratorio, no la navegación definitiva.
-- Los mockups incluyen un módulo de Machine Learning (clasificación, clustering, detección de anomalías, Random Forest, curva ROC), Prophet, importación de XML y gráficos de mapa. **Ninguno forma parte de una fase del roadmap**; que aparezcan en una imagen no los incorpora al alcance. Ver [ADR-0002](../adr/0002-motores-analiticos-y-criterios-de-corte.md).
+Las imágenes muestran una dirección estética; su contenido no determina qué funciones están implementadas. El roadmap y la implementación prevalecen para el alcance y la disponibilidad de cada sección.
 
 ---
 
@@ -69,6 +82,7 @@ Mantener una barra lateral **breve y consistente**:
 | **Inicio** | Proyectos/carpetas, archivos recientes, plantillas y ejemplos |
 | **Datos** | Importación, explorador tabular, perfilado y esquema |
 | **Análisis** | Estadísticas, visualizaciones, correlaciones y hallazgos |
+| **Finanzas** | Movimientos manuales y resumen por moneda |
 | **Transformaciones** | Limpieza, pasos de pipelines, joins y composición |
 | **Laboratorio** | SQL, Python, series temporales, forecasting, Rust y optimización, según fase |
 | **Informes** | Report Builder, vista previa, metodología y exportación |
@@ -77,7 +91,7 @@ Las herramientas y algoritmos individuales se organizan mediante **pestañas o c
 
 ### Layout del workspace
 
-1. **Sidebar izquierda:** identidad DataForge, módulos, navegación y estado del proyecto.
+1. **Sidebar izquierda:** identidad DataForge, módulos, navegación y estado del proyecto. Debe permanecer fija al desplazar el contenido y permitir expandirse y contraerse; adaptar el comportamiento a pantallas angostas y teclado.
 2. **Barra superior:** proyecto/dataset activo, breadcrumb, acciones y estado de guardado.
 3. **Panel central:** tablas, dashboard, canvas de pipeline o editor/informe.
 4. **Inspector contextual derecho:** variables, métricas, filtros y opciones del elemento seleccionado.
@@ -142,7 +156,7 @@ El módulo financiero, las plantillas nuevas y el chatbot pueden necesitar vista
 
 Las reglas generales de trabajo están en [AGENTS.md](../../AGENTS.md). Las específicas de interfaz son:
 
-1. **Mirar los tres PNG originales** antes de proponer una nueva pantalla.
+1. **Revisar las siete referencias visuales** antes de proponer una nueva pantalla.
 2. Consultar el [roadmap](../roadmap.md) y desarrollar solo la fase actual.
 3. Mantener navegación, tokens visuales, spacing, estados y nomenclatura consistentes.
 4. Extraer componentes reutilizables cuando haya reutilización real; evitar un archivo global monolítico de estilos.
@@ -164,4 +178,4 @@ Las reglas generales de trabajo están en [AGENTS.md](../../AGENTS.md). Las espe
 
 ---
 
-**Documentos relacionados:** [Galería de PNG originales](./mockups/README.md) · [Roadmap](../roadmap.md) · [Arquitectura](../architecture.md) · [README principal](../../README.md).
+**Documentos relacionados:** [Galería de referencias visuales](./mockups/README.md) · [Roadmap](../roadmap.md) · [Arquitectura](../architecture.md) · [README principal](../../README.md).

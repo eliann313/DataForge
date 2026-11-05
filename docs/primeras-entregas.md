@@ -213,6 +213,6 @@ Los textos legales siguen siendo borradores no publicables. Preparar avisos sobr
 
 ## Referencias y mantenimiento
 
-Fuentes revisadas: [README](../README.md), [AGENTS](../AGENTS.md), [MVP](MVP.md), [roadmap](roadmap.md), [roadmap técnico](roadmap-tecnico.md), [arquitectura](architecture.md), [ADR](adr/README.md), [diseño](design/README.md), los tres PNG originales, [IA](ai-assistant.md), [autenticación](authentication.md), [integraciones](integrations.md) y borradores de [términos](legal/terms-of-use.md), [privacidad](legal/privacy-policy.md) y [avisos](legal/ai-financial-disclaimer.md).
+Fuentes revisadas: [README](../README.md), [AGENTS](../AGENTS.md), [MVP](MVP.md), [roadmap](roadmap.md), [roadmap técnico](roadmap-tecnico.md), [arquitectura](architecture.md), [ADR](adr/README.md), [diseño](design/README.md), las referencias visuales, [IA](ai-assistant.md), [autenticación](authentication.md), [integraciones](integrations.md) y borradores de [términos](legal/terms-of-use.md), [privacidad](legal/privacy-policy.md) y [avisos](legal/ai-financial-disclaimer.md).
 
 Al cerrar un corte, actualizar su estado en este documento y la fase correspondiente en el roadmap, adjuntar evidencia reproducible y revisar el siguiente alcance. R1 y R2/fase 4 están cerrados; la fase activa es **5 (R2)**.

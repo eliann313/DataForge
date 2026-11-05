@@ -287,7 +287,7 @@ Las consultas asistidas (text-to-SQL) serían de solo lectura y con aprobación 
 
 ![Mockup vectorial del workspace de DataForge](docs/design/workspace-reference.svg)
 
-> **Referencia visual**, no captura de una aplicación ya implementada. [Guía de UI y mockups](docs/design/README.md). Los [tres PNG originales](docs/design/mockups/README.md) ya están incorporados y documentados en el repositorio como referencias visuales, no capturas de la aplicación.
+> **Referencia visual**, no captura de una aplicación ya implementada. [Guía de UI y mockups](docs/design/README.md). Las [siete referencias visuales](docs/design/mockups/README.md) están documentadas en el repositorio como propuestas, no capturas de la aplicación.
 
 Se elaboraron **borradores no publicables**, sujetos a completar identidad/contacto y revisión jurídica antes del lanzamiento con cuentas o procesamiento remoto:
 

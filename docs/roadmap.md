@@ -475,5 +475,5 @@ Fase 10 no bloquea R5.
 ### Diseño aprobado
 
 - Guía UI versionada: [Mockup y decisiones de interfaz](design/README.md).
-- La maqueta vectorial y los tres PNG originales están versionados en [`design/mockups`](design/mockups/README.md).
+- La maqueta vectorial y las siete referencias visuales están versionadas en [`design/mockups`](design/mockups/README.md).
 - La navegación documentada en la guía de diseño prevalece sobre los textos de los mockups.

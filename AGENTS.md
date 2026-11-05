@@ -47,7 +47,7 @@ Proteger frente a archivos malformados o hostiles (ZIP/XML), inyección SQL, iny
 
 ## 6. Interfaz y diseño
 
-1. Mirar los tres PNG de [`docs/design/mockups`](./docs/design/mockups/README.md) antes de proponer una pantalla. Son referencias visuales, no especificaciones ni capturas de una aplicación implementada.
+1. Mirar las siete referencias visuales de [`docs/design/mockups`](./docs/design/mockups/README.md) antes de proponer una pantalla. Son referencias visuales, no especificaciones ni capturas de una aplicación implementada.
 2. **La navegación documentada prevalece sobre los textos de los mockups.** Ver la [guía de diseño](./docs/design/README.md).
 3. Idioma de la interfaz: **español neutro** («Importar archivo», «Crear proyecto», «Guardar cambios»). Configuración regional `es-AR` por defecto para números, fechas y moneda. No es un producto multilingüe.
 4. No copiar textos defectuosos ni cifras inventadas de las imágenes generadas.

@@ -324,9 +324,9 @@ Este flujo completo pertenece a **R2**; el MVP cubre importación, profiling y v
 
 **Español neutro** en textos; configuración inicial es-AR para números/fechas, ARS/USD según campo. La UI debe presentar estados de vacío, carga, progreso, errores y recuperación, con navegación accesible de teclado, contraste y alternativa tabular a cifras gráficas.
 
-**Precedencia:** los PNG originales definen **dirección estética**, no alcance ni navegación definitiva. Las apariciones de Prophet, Machine Learning, XML, mapas, etc., no implican funcionalidades prometidas.
+**Precedencia:** las referencias visuales definen **dirección estética**, no alcance ni navegación definitiva. Las apariciones de Prophet, Machine Learning, XML, mapas, etc., no implican funcionalidades prometidas.
 
-Referencias: [guía de diseño](./design/README.md) y [tres PNG originales](./design/mockups/README.md).
+Referencias: [guía de diseño](./design/README.md) y [siete referencias visuales](./design/mockups/README.md).
 
 ---
 
@@ -730,7 +730,7 @@ El objetivo es hacer **análisis útiles, correctos y reproducibles con mínima 
 **Diseño y cumplimiento:**
 
 - [Guía UI](./design/README.md)
-- [Mockups PNG originales](./design/mockups/README.md)
+- [Referencias visuales](./design/mockups/README.md)
 - [Términos — borrador](./legal/terms-of-use.md)
 - [Privacidad — borrador](./legal/privacy-policy.md)
 - [IA y finanzas — borrador](./legal/ai-financial-disclaimer.md)
