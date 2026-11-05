@@ -29,7 +29,18 @@ function fmtCell(v: unknown): string {
   return String(v);
 }
 
-const ANALYSIS_SESSION_ID = globalThis.crypto?.randomUUID?.() ?? `session-${Math.random().toString(36).slice(2)}`;
+const ANALYSIS_SESSION_ID =
+  globalThis.crypto?.randomUUID?.() ??
+  (() => {
+    const c = globalThis.crypto;
+    if (c?.getRandomValues) {
+      const bytes = new Uint8Array(16);
+      c.getRandomValues(bytes);
+      const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+      return `session-${hex}`;
+    }
+    return "session-unavailable-crypto";
+  })();
 
 // Vista Análisis (E5): descriptivos verificables, frecuencias, gráficos sobre
 // agregados, correlación justificada y hallazgos por reglas transparentes.
