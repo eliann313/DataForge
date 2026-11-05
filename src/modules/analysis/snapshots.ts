@@ -127,10 +127,10 @@ export function captureSnapshotLineage(rootVersionId: string, projectId: string,
   const visit = (versionId: string): void => {
     if (visited.has(versionId)) return;
     if (visiting.has(versionId)) throw new Error("El linaje de la versión contiene un ciclo.");
+    if (visited.size + visiting.size >= 256) throw new Error("El linaje supera el límite de 256 versiones.");
     const version = byId.get(versionId);
     if (!version) throw new Error(`No se encontró la versión padre ${versionId} en este proyecto.`);
     visiting.add(versionId);
-    if (ordered.length >= 256) throw new Error("El linaje supera el límite de 256 versiones.");
     for (const parentId of version.parentIds) visit(parentId);
     visiting.delete(versionId);
     visited.add(versionId);

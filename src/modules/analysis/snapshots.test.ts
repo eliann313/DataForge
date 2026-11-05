@@ -64,4 +64,12 @@ describe("analysis snapshots", () => {
     invalid.source.lineage.nodes[2].parentIds = ["missing"];
     expect(validateAnalysisSnapshot(invalid)).toBe(false);
   });
+
+  it("aplica el límite de linaje durante el recorrido de cadenas largas", () => {
+    const chain: SnapshotVersionReference[] = [sourceNode("v0", "a")];
+    for (let index = 1; index <= 257; index += 1) {
+      chain.push({ ...sourceNode(`v${index}`, "a"), operationType: "pipeline", parentIds: [`v${index - 1}`], stepCount: 1 });
+    }
+    expect(() => captureSnapshotLineage("v257", "p1", chain)).toThrow(/256 versiones/);
+  });
 });
