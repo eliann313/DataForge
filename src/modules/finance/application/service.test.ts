@@ -110,6 +110,17 @@ describe("FinanceService", () => {
     expect((await svc.accountBalances()).filter((account) => account.currency === "ARS").map(({ name, balanceMinor }) => [name, balanceMinor])).toEqual([["Billetera", 7450], ["Banco", 2550]]);
   });
 
+  it("rechaza transferencias a la misma cuenta o entre monedas y no las persiste", async () => {
+    const svc = service();
+    const ars = await svc.createAccount("Cuenta ARS", "ARS");
+    const usd = await svc.createAccount("Cuenta USD", "USD");
+    const base = { date: "2024-03-02", description: "Transferencia inválida", kind: "transferencia" as const, amount: "25,50", currency: "ARS" as const, category: "Transferencias", accountId: ars.id };
+
+    await expect(svc.create({ ...base, destinationAccountId: ars.id })).rejects.toThrow(/cuentas distintas/);
+    await expect(svc.create({ ...base, destinationAccountId: usd.id })).rejects.toThrow(/misma moneda/);
+    expect(await svc.list()).toEqual([]);
+  });
+
   it("asigna una cuenta USD inicial y al editar una transferencia como gasto limpia el destino", async () => {
     const svc = service();
     const usd = await svc.create({ date: "2024-03-01", description: "USD", kind: "ingreso", amount: "10", currency: "USD", category: "Trabajo" });
