@@ -237,7 +237,11 @@ export class FinanceService {
 
   private async resolveAccount(id: string | undefined, currency: Currency): Promise<FinancialAccount> {
     const accounts = await this.accounts();
-    const account = id ? await this.requireAccount(id) : accounts.find((item) => item.currency === currency) ?? accounts[0];
+    const account = id
+      ? await this.requireAccount(id)
+      : accounts.find((item) => item.currency === currency && item.type === "bank")
+        ?? accounts.find((item) => item.currency === currency)
+        ?? accounts[0];
     if (account.currency !== currency) throw new FinanceError("validation", "La moneda del movimiento debe coincidir con la cuenta.");
     return account;
   }

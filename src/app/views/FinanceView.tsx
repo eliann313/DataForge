@@ -134,10 +134,11 @@ export default function FinanceView() {
     setError(null);
     setSaved(false);
     try {
+      const movement = { ...form, accountId: form.accountId || selectedAccount?.id || "" };
       if (editingId) {
-        await service.update({ id: editingId, ...form });
+        await service.update({ id: editingId, ...movement });
       } else {
-        await service.create(form);
+        await service.create(movement);
       }
       await refresh();
       setSaved(true);
@@ -181,7 +182,9 @@ export default function FinanceView() {
   }
 
   const categories = [...new Set(list.map((t) => t.category))].sort();
-  const eligibleAccounts = accounts.filter((account) => account.currency === form.currency);
+  const eligibleAccounts = accounts
+    .filter((account) => account.currency === form.currency)
+    .sort((left, right) => Number(left.type === "card") - Number(right.type === "card"));
   const selectedAccount = accounts.find((account) => account.id === form.accountId) ?? eligibleAccounts[0];
   const refundTotals = useMemo(() => {
     const totals = new Map<string, number>();

@@ -146,6 +146,16 @@ describe("FinanceService", () => {
     expect((await svc.monthlySummary(2024, 3))[0]).toEqual({ currency: "ARS", income: 20000, expense: 10000, refunds: 2000, balance: 12000 });
   });
 
+  it("usa una cuenta bancaria como predeterminada aunque una tarjeta aparezca primero", async () => {
+    const svc = service();
+    await svc.accounts();
+    await svc.createAccount("Visa", "ARS", "card");
+
+    const income = await svc.create({ date: "2024-03-01", description: "Sueldo", kind: "ingreso", amount: "200", currency: "ARS", category: "Trabajo" });
+
+    expect(income.accountId).toBe("account-default");
+  });
+
   it("presenta crédito positivo si un pago supera la deuda registrada", async () => {
     const svc = service();
     const bank = await svc.createAccount("Banco", "ARS");

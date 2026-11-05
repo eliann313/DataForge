@@ -99,6 +99,7 @@ test("pago de tarjeta reduce deuda y reintegro parcial queda separado de ingreso
   await cuentas.getByRole("button", { name: "Agregar" }).click();
   await expect(cuentas.getByText("Visa · Tarjeta · ARS")).toBeVisible();
   const addForm = view(page).locator('section[aria-labelledby="movimiento"]');
+  await expect(addForm.getByRole("combobox", { name: "Cuenta", exact: true })).toHaveValue("account-default");
   await addForm.getByLabel("Descripción").fill("Sueldo");
   await addForm.getByRole("combobox").nth(0).selectOption("ingreso");
   await addForm.getByLabel("Importe").fill("200");

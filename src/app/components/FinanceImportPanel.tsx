@@ -21,7 +21,9 @@ export default function FinanceImportPanel({ accounts, onImported }: { accounts:
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const eligible = accounts.filter((account) => account.currency === currency);
+  const eligible = accounts
+    .filter((account) => account.currency === currency)
+    .sort((left, right) => Number(left.type === "card") - Number(right.type === "card"));
   async function chooseFile(file?: File) {
     setError(null); setMessage(null); setPreview(null); setHeaders([]); setRows([]); setMapping(baseMapping);
     if (!file) return;
