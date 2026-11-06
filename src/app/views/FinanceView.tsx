@@ -12,9 +12,11 @@ import {
   type FinancialTransaction,
   type MonthPoint,
   type MovementKind,
+  type FinancialAccount,
 } from "@/modules/finance";
 import { IndexedDBTransactionRepository } from "@/modules/finance";
-import { WalletCards, Plus, Tag } from "lucide-react";
+import FinanceImportPanel from "@/app/components/FinanceImportPanel";
+import { WalletCards, Plus, Tag, Star } from "lucide-react";
 
 const ChartView = dynamic(() => import("@/app/components/ChartView"), {
   ssr: false,
@@ -45,6 +47,9 @@ interface FormState {
   currency: Currency;
   category: string;
   notes: string;
+  accountId: string;
+  destinationAccountId: string;
+  linkedTransactionId: string;
 }
 
 const emptyForm = (): FormState => ({
@@ -55,16 +60,26 @@ const emptyForm = (): FormState => ({
   currency: "ARS",
   category: "",
   notes: "",
+  accountId: "",
+  destinationAccountId: "",
+  linkedTransactionId: "",
 });
 
-// Finanzas Lite (E6 / 3B): registro manual, resumen mensual por moneda
-// (ARS y USD por separado, sin conversión) y gráficos básicos.
+// Finanzas: registro local de movimientos, cuentas propias y resumen mensual
+// por moneda (ARS y USD por separado, sin conversión) y gráficos básicos.
 export default function FinanceView() {
   const service = useMemo(
     () => new FinanceService({ transactions: new IndexedDBTransactionRepository() }),
     [],
   );
   const [list, setList] = useState<FinancialTransaction[]>([]);
+  const [categories, setCategories] = useState<Array<{id:string;name:string;createdAt:string}>>([]);
+  const [listPage, setListPage] = useState(0);
+  const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
+  const [accountBalances, setAccountBalances] = useState<Array<FinancialAccount & { balanceMinor: number }>>([]);
+  const [accountName, setAccountName] = useState("");
+  const [accountCurrency, setAccountCurrency] = useState<Currency>("ARS");
+  const [accountType, setAccountType] = useState<"bank" | "card">("bank");
   const [month, setMonth] = useState(currentMonth);
   const [summary, setSummary] = useState<CurrencyTotal[]>([]);
   const [breakdown, setBreakdown] = useState<CategoryTotal[]>([]);
@@ -78,13 +93,19 @@ export default function FinanceView() {
 
   async function refresh(y = month.y, m = month.m) {
     // Nunca "Guardado" antes de confirmar: todo pasa por await + refresh.
-    const [l, s, b, e] = await Promise.all([
+    const [l, cats, a, ab, s, b, e] = await Promise.all([
       service.list(),
+      service.categories(),
+      service.accounts(),
+      service.accountBalances(),
       service.monthlySummary(y, m),
       service.categoryBreakdown(y, m),
       service.evolution(y, m, 6),
     ]);
     setList(l);
+    setCategories(cats);
+    setAccounts(a);
+    setAccountBalances(ab);
     setSummary(s);
     setBreakdown(b);
     setEvolution(e);
@@ -116,10 +137,11 @@ export default function FinanceView() {
     setError(null);
     setSaved(false);
     try {
+      const movement = { ...form, accountId: form.accountId || selectedAccount?.id || "" };
       if (editingId) {
-        await service.update({ id: editingId, ...form });
+        await service.update({ id: editingId, ...movement });
       } else {
-        await service.create(form);
+        await service.create(movement);
       }
       await refresh();
       setSaved(true);
@@ -142,9 +164,25 @@ export default function FinanceView() {
       currency: tx.currency,
       category: tx.category,
       notes: tx.notes,
+      accountId: tx.accountId ?? "",
+      destinationAccountId: tx.destinationAccountId ?? "",
+      linkedTransactionId: tx.linkedTransactionId ?? "",
     });
     setSaved(false);
     setError(null);
+  }
+
+  function duplicate(tx: FinancialTransaction) {
+    setEditingId(null);
+    setForm({ date: tx.date, description: tx.description, kind: tx.kind, amount: String(tx.amountMinor / 100).replace(".", ","), currency: tx.currency, category: tx.category, notes: tx.notes, accountId: tx.accountId ?? "", destinationAccountId: tx.destinationAccountId ?? "", linkedTransactionId: tx.linkedTransactionId ?? "" });
+    setSaved(false); setError(null);
+  }
+
+  async function toggleHighlighted(tx: FinancialTransaction) {
+    setBusy(true);
+    try { await service.setHighlighted(tx.id, !tx.highlighted); await refresh(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo actualizar el destacado"); }
+    finally { setBusy(false); }
   }
 
   async function changeMonth(ym: string) {
@@ -159,7 +197,22 @@ export default function FinanceView() {
     }
   }
 
-  const categories = [...new Set(list.map((t) => t.category))].sort();
+  const eligibleAccounts = accounts
+    .filter((account) => account.currency === form.currency)
+    .sort((left, right) => Number(left.type === "card") - Number(right.type === "card"));
+  const selectedAccount = accounts.find((account) => account.id === form.accountId) ?? eligibleAccounts[0];
+  const refundTotals = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const tx of list) {
+      if (tx.kind !== "reintegro" || !tx.linkedTransactionId || tx.id === editingId) continue;
+      totals.set(tx.linkedTransactionId, (totals.get(tx.linkedTransactionId) ?? 0) + tx.amountMinor);
+    }
+    return totals;
+  }, [list, editingId]);
+  const eligibleRefundExpenses = list.filter((tx) => tx.kind === "gasto" && tx.accountId === selectedAccount?.id && tx.currency === form.currency && (tx.amountMinor > (refundTotals.get(tx.id) ?? 0) || tx.id === form.linkedTransactionId));
+  const movementPages = Math.max(1, Math.ceil(list.length / 50));
+  const currentMovementPage = Math.min(listPage, movementPages - 1);
+  const visibleMovements = list.slice(currentMovementPage * 50, (currentMovementPage + 1) * 50);
   const gastosARS = breakdown.filter((b) => b.kind === "gasto" && b.currency === "ARS");
   const gastosUSD = breakdown.filter((b) => b.kind === "gasto" && b.currency === "USD");
   const evoARS = evolution.filter((p) => p.currency === "ARS");
@@ -176,7 +229,7 @@ export default function FinanceView() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-sm font-medium text-violet-700">Finanzas personales</p>
           <h1 className="mt-1 text-3xl font-bold tracking-tight">Finanzas</h1>
-          <p className="mt-1 text-sm text-slate-600">Registra y consulta tus ingresos y gastos en este dispositivo.</p></div>
+          <p className="mt-1 text-sm text-slate-600">Registra movimientos y consulta tus cuentas en este dispositivo.</p></div>
         <label className="text-sm font-medium text-slate-600">Mes
           <input id="mes" type="month" disabled={busy} value={`${month.y}-${String(month.m).padStart(2, "0")}`}
             onChange={(e) => void changeMonth(e.target.value)} className={`${input} mt-1 w-auto`} />
@@ -196,8 +249,8 @@ export default function FinanceView() {
               <label className="text-sm font-medium">Fecha<input type="date" required value={form.date} disabled={busy}
                 onChange={(e) => setForm({ ...form, date: e.target.value })} className={input} /></label>
               <label className="text-sm font-medium">Tipo<select value={form.kind} disabled={busy}
-                onChange={(e) => setForm({ ...form, kind: e.target.value as MovementKind })} className={input}>
-                <option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select></label>
+                onChange={(e) => { const kind = e.target.value as MovementKind; setForm({ ...form, kind, category: kind === "transferencia" && !form.category ? "Transferencias" : form.category }); }} className={input}>
+                <option value="gasto">Gasto</option><option value="ingreso" disabled={selectedAccount?.type === "card"}>Ingreso</option><option value="transferencia" disabled={selectedAccount?.type === "card"}>Transferencia propia</option><option value="reintegro">Reintegro</option></select></label>
               <label className="text-sm font-medium sm:col-span-2">Descripción<input type="text" required maxLength={200}
                 value={form.description} disabled={busy} onChange={(e) => setForm({ ...form, description: e.target.value })}
                 placeholder="Ej.: Supermercado" className={input} /></label>
@@ -205,11 +258,18 @@ export default function FinanceView() {
                 disabled={busy} onChange={(e) => setForm({ ...form, amount: e.target.value })} placeholder="1.234,56"
                 aria-describedby="formato-importe" className={input} /><span id="formato-importe" className="mt-1 block text-xs font-normal text-slate-500">Formato es-AR: 1234,56 o 1.234,56.</span></label>
               <label className="text-sm font-medium">Moneda<select value={form.currency} disabled={busy}
-                onChange={(e) => setForm({ ...form, currency: e.target.value as Currency })} className={input}>
+                onChange={(e) => setForm({ ...form, currency: e.target.value as Currency, accountId: "", destinationAccountId: "" })} className={input}>
                 <option value="ARS">ARS · Peso argentino</option><option value="USD">USD · Dólar estadounidense</option></select></label>
-              <label className="text-sm font-medium sm:col-span-2">Categoría<input type="text" required maxLength={60} list="categorias"
+              <label className="text-sm font-medium">Cuenta<select required value={form.accountId || eligibleAccounts[0]?.id || ""} disabled={busy}
+                onChange={(e) => { const account = accounts.find((item) => item.id === e.target.value); setForm({ ...form, accountId: e.target.value, kind: account?.type === "card" && (form.kind === "ingreso" || form.kind === "transferencia") ? "gasto" : form.kind }); }} className={input}>
+                {eligibleAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
+              {form.kind === "transferencia" ? <label className="text-sm font-medium">Cuenta destino<select required value={form.destinationAccountId} disabled={busy}
+                onChange={(e) => setForm({ ...form, destinationAccountId: e.target.value })} className={input}>
+                <option value="">Selecciona una cuenta</option>{eligibleAccounts.filter((account) => account.id !== (form.accountId || eligibleAccounts[0]?.id)).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label> : null}
+              {form.kind === "reintegro" ? <label className="text-sm font-medium sm:col-span-2">Gasto asociado<select required value={form.linkedTransactionId} disabled={busy} onChange={(e) => setForm({ ...form, linkedTransactionId: e.target.value })} className={input}><option value="">Selecciona un gasto</option>{eligibleRefundExpenses.map((tx) => <option key={tx.id} value={tx.id}>{tx.date} · {tx.description} · {formatMoney(tx.amountMinor, tx.currency)}</option>)}</select></label> : null}
+              {form.kind !== "transferencia" && form.kind !== "reintegro" ? <label className="text-sm font-medium sm:col-span-2">Categoría<input type="text" required maxLength={60} list="categorias"
                 value={form.category} disabled={busy} onChange={(e) => setForm({ ...form, category: e.target.value })}
-                placeholder="Ej.: Alimentos" className={input} /><datalist id="categorias">{categories.map((c) => <option key={c} value={c} />)}</datalist></label>
+                placeholder="Ej.: Alimentos" className={input} /><datalist id="categorias">{categories.map((c) => <option key={c.id} value={c.name} />)}</datalist></label> : null}
               <label className="text-sm font-medium sm:col-span-2">Notas <span className="font-normal text-slate-500">(opcional)</span>
                 <textarea maxLength={500} rows={2} value={form.notes} disabled={busy} onChange={(e) => setForm({ ...form, notes: e.target.value })}
                   placeholder="Agrega una nota" className={input} /></label>
@@ -220,6 +280,17 @@ export default function FinanceView() {
                   className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium">Cancelar</button> : null}</div>
             </form>
           </section>
+          <section aria-labelledby="cuentas" className={card}>
+            <h2 id="cuentas" className="text-lg font-bold">Cuentas</h2>
+            <ul className="my-3 space-y-2 text-sm">{accountBalances.map((account) => <li key={account.id} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>{account.name} · {account.type === "card" ? "Tarjeta" : "Cuenta"} · {account.currency}</span><span className="font-semibold">{account.type === "card" ? account.balanceMinor < 0 ? "Crédito " + formatMoney(-account.balanceMinor, account.currency) : "Deuda " + formatMoney(account.balanceMinor, account.currency) : "Saldo " + formatMoney(account.balanceMinor, account.currency)}</span></li>)}</ul>
+            <form className="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]" onSubmit={(event) => { event.preventDefault(); setBusy(true); service.createAccount(accountName, accountCurrency, accountType).then(() => { setAccountName(""); return refresh(); }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "No se pudo crear la cuenta")).finally(() => setBusy(false)); }}>
+              <label className="sr-only" htmlFor="nueva-cuenta">Nombre de la cuenta</label><input id="nueva-cuenta" required maxLength={80} value={accountName} onChange={(event) => setAccountName(event.target.value)} placeholder="Nombre de la cuenta" className={input} />
+              <label className="sr-only" htmlFor="moneda-cuenta">Divisa de la cuenta</label><select id="moneda-cuenta" value={accountCurrency} onChange={(event) => setAccountCurrency(event.target.value as Currency)} className={input}><option value="ARS">ARS</option><option value="USD">USD</option></select>
+              <label className="sr-only" htmlFor="tipo-cuenta">Tipo de cuenta</label><select id="tipo-cuenta" value={accountType} onChange={(event) => setAccountType(event.target.value as "bank" | "card")} className={input}><option value="bank">Cuenta bancaria</option><option value="card">Tarjeta</option></select>
+              <button disabled={busy} className="rounded-lg bg-violet-700 px-3 py-2 text-sm font-semibold text-white">Agregar</button>
+            </form>
+          </section>
+          <FinanceImportPanel accounts={accounts} onImported={() => refresh()} />
           <section aria-labelledby="evolucion" className={card}>
             <h2 id="evolucion" className="text-lg font-bold">Evolución del saldo</h2>
             <p className="mb-3 text-sm text-slate-500">Últimos seis meses · ARS y USD por separado</p>
@@ -242,8 +313,13 @@ export default function FinanceView() {
                 <h3 className="mb-3 flex items-center gap-2 border-b border-slate-200 pb-3 text-sm font-bold"><span className="grid size-8 place-items-center rounded-full bg-sky-100 text-[10px] font-bold text-sky-800">{s.currency}</span>{s.currency === "ARS" ? "Pesos argentinos" : "Dólares"}</h3>
                 <dl className="space-y-2 text-sm"><div className="flex justify-between gap-3"><dt className="text-slate-600">Ingresos</dt><dd className="font-semibold tabular-nums">{formatMoney(s.income, s.currency)}</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-slate-600">Gastos</dt><dd className="font-semibold tabular-nums">{formatMoney(s.expense, s.currency)}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-slate-600">Reintegros</dt><dd className="font-semibold tabular-nums">{formatMoney(s.refunds, s.currency)}</dd></div>
                   <div className="mt-3 flex justify-between gap-3 rounded-lg bg-violet-100 px-3 py-2 text-violet-900"><dt className="font-bold">Saldo</dt><dd className="font-bold tabular-nums">{formatMoney(s.balance, s.currency)}</dd></div></dl>
               </article>))}</div>
+          </section>
+          <section aria-labelledby="destacados" className={card}>
+            <h2 id="destacados" className="text-lg font-bold">Movimientos destacados</h2>
+            {list.filter((tx) => tx.highlighted).length ? <ul className="mt-3 space-y-2">{list.filter((tx) => tx.highlighted).slice(0, 5).map((tx) => <li key={tx.id} className="flex justify-between rounded-lg bg-amber-50 px-3 py-2 text-sm"><span>{tx.date} · {tx.description}</span><span className="font-semibold">{formatMoney(tx.amountMinor, tx.currency)}</span></li>)}</ul> : <p className="mt-2 text-sm text-slate-500">Marca movimientos para tenerlos a mano.</p>}
           </section>
           <section aria-labelledby="por-categoria" className={card}>
             <h2 id="por-categoria" className="text-lg font-bold">Gastos por categoría</h2>
@@ -257,6 +333,7 @@ export default function FinanceView() {
       <section aria-labelledby="movimientos" className={card}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2"><div><h2 id="movimientos" className="text-lg font-bold">Movimientos recientes</h2>
           <p className="text-sm text-slate-500">{list.length} movimiento{list.length === 1 ? "" : "s"}</p></div></div>
+        {movementPages > 1 ? <nav aria-label="Paginación de movimientos" className="mb-3 flex items-center justify-end gap-3 text-sm"><button type="button" disabled={currentMovementPage === 0} onClick={() => setListPage(currentMovementPage - 1)} className="rounded border px-3 py-1.5 disabled:opacity-50">Movimientos anteriores</button><span aria-live="polite">Página {currentMovementPage + 1} de {movementPages}</span><button type="button" disabled={currentMovementPage + 1 >= movementPages} onClick={() => setListPage(currentMovementPage + 1)} className="rounded border px-3 py-1.5 disabled:opacity-50">Movimientos siguientes</button></nav> : null}
         {list.length === 0 ? (
           <div role="status" className="rounded-xl bg-slate-50 px-5 py-10 text-center"><WalletCards aria-hidden="true" className="mx-auto mb-2 size-7 text-violet-700" />
             <p className="font-semibold">Todavía no registraste movimientos</p><p className="mt-1 text-sm text-slate-500">Cuando agregues un ingreso o un gasto, lo verás aquí.</p></div>
@@ -265,22 +342,25 @@ export default function FinanceView() {
             <thead>
               <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <th scope="col" className="px-3 py-3">Fecha</th><th scope="col" className="px-3 py-3">Descripción</th>
-                <th scope="col" className="px-3 py-3">Tipo</th><th scope="col" className="px-3 py-3 text-right">Importe</th>
+                <th scope="col" className="px-3 py-3">Tipo</th><th scope="col" className="px-3 py-3">Cuenta</th><th scope="col" className="px-3 py-3 text-right">Importe</th>
                 <th scope="col" className="px-3 py-3">Categoría</th><th scope="col" className="px-3 py-3">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {list.map((t) => (
+              {visibleMovements.map((t) => (
                 <tr key={t.id} className="border-b border-slate-100 last:border-0">
                   <td className="whitespace-nowrap px-3 py-3 text-slate-600"><time dateTime={t.date}>{formatDate(t.date)}</time></td>
                   <td className="px-3 py-3 font-medium">{t.description}</td>
-                  <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${t.kind === "ingreso" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>{t.kind === "ingreso" ? "Ingreso" : "Gasto"}</span></td>
+                  <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${t.kind === "ingreso" ? "bg-emerald-50 text-emerald-800" : t.kind === "transferencia" ? "bg-sky-50 text-sky-800" : t.kind === "reintegro" ? "bg-teal-50 text-teal-800" : "bg-amber-50 text-amber-800"}`}>{t.kind === "ingreso" ? "Ingreso" : t.kind === "transferencia" ? "Transferencia propia" : t.kind === "reintegro" ? "Reintegro" : "Gasto"}</span></td>
+                  <td className="px-3 py-3 text-slate-600">{accounts.find((account) => account.id === t.accountId)?.name ?? "Cuenta principal"}{t.kind === "transferencia" ? ` → ${accounts.find((account) => account.id === t.destinationAccountId)?.name ?? "Cuenta destino"}` : ""}</td>
                   <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums">{formatMoney(t.amountMinor, t.currency)}</td>
                   <td className="px-3 py-3 text-slate-600">{t.category}</td>
                   <td className="whitespace-nowrap px-3 py-3">
+                    <button type="button" disabled={busy} onClick={() => void toggleHighlighted(t)} aria-label={t.highlighted ? `Quitar destacado ${t.description}` : `Destacar ${t.description}`} aria-pressed={Boolean(t.highlighted)} className="mr-3 font-medium text-amber-700"><Star aria-hidden="true" className={`inline size-4 ${t.highlighted ? "fill-amber-400" : ""}`} /></button>
                     <button type="button" disabled={busy} onClick={() => startEdit(t)} className="mr-3 font-medium text-violet-700 underline-offset-2 hover:underline">
                       Editar
                     </button>
+                    <button type="button" disabled={busy} onClick={() => duplicate(t)} className="mr-3 font-medium text-violet-700 underline-offset-2 hover:underline">Duplicar</button>
                     <button type="button" disabled={busy} onClick={() => setConfirmId(t.id)}
                       className="font-medium text-red-700 underline-offset-2 hover:underline">
                       Eliminar

@@ -1,8 +1,8 @@
 import { FinanceError, type Currency } from "./money";
 
-// Movimiento de Finanzas Lite (E6): registro manual, sin cuentas ni
-// transferencias (fases 6–7). El signo lo da `kind`; el importe es exacto.
-export type MovementKind = "ingreso" | "gasto";
+// Movimiento financiero manual asociado a una cuenta; las transferencias
+// conservan origen/destino sin convertirse en ingreso o gasto. El importe es exacto.
+export type MovementKind = "ingreso" | "gasto" | "transferencia" | "reintegro";
 
 export interface FinancialTransaction {
   id: string;
@@ -14,8 +14,12 @@ export interface FinancialTransaction {
   currency: Currency;
   category: string;
   notes: string;
+  accountId?: string;
+  destinationAccountId?: string;
+  linkedTransactionId?: string;
   createdAt: string;
   updatedAt: string;
+  highlighted?: boolean;
 }
 
 export const MAX_TEXT = { description: 200, category: 60, notes: 500 } as const;

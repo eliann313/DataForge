@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { FinanceService } from "./service";
 import { IndexedDBTransactionRepository } from "../infrastructure/indexeddb";
+import { FinanceImportService } from "./import-service";
 
 async function reset(): Promise<void> {
   await new Promise<void>((resolve, reject) => {
@@ -34,5 +35,95 @@ describe("adaptador IndexedDB de finanzas", () => {
     } finally {
       repo2.close();
     }
+  });
+
+  it("migra v1 creando cuentas por moneda y conserva movimientos existentes", async () => {
+    const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("dataforge-finance", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("transactions", { keyPath: "id" });
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    const tx = legacy.transaction("transactions", "readwrite");
+    tx.objectStore("transactions").put({ id: "legacy-usd", date: "2024-03-01", description: "A", kind: "ingreso", amountMinor: 1000, currency: "USD", category: "c", notes: "", createdAt: "2024-03-01", updatedAt: "2024-03-01" });
+    await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+    legacy.close();
+    const repo = new IndexedDBTransactionRepository();
+    try {
+      const rows = await repo.list();
+      const accounts = await repo.listAccounts();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].accountId).toBe("account-default-usd");
+      expect(accounts.map((account) => account.currency).sort()).toEqual(["ARS", "USD"]);
+      expect(accounts.every((account) => account.type === "bank")).toBe(true);
+    } finally { repo.close(); }
+  });
+
+  it("migra las cuentas v2 asignando tipo bancaria en v3", async () => {
+    const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("dataforge-finance", 2);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore("transactions", { keyPath: "id" });
+        req.result.createObjectStore("accounts", { keyPath: "id" });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    const tx = legacy.transaction("accounts", "readwrite");
+    tx.objectStore("accounts").put({ id: "legacy", name: "Cuenta antigua", currency: "ARS", createdAt: "2024-01-01" });
+    await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); });
+    legacy.close();
+    const repo = new IndexedDBTransactionRepository();
+    try { expect(await repo.findAccountById("legacy")).toMatchObject({ id: "legacy", type: "bank" }); }
+    finally { repo.close(); }
+  });
+
+  it("migra v3 al catálogo y conserva el texto histórico", async () => {
+    const legacy = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open("dataforge-finance", 3);
+      req.onupgradeneeded = () => { req.result.createObjectStore("transactions", { keyPath: "id" }); req.result.createObjectStore("accounts", { keyPath: "id" }); };
+      req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error);
+    });
+    const tx = legacy.transaction("transactions", "readwrite");
+    tx.objectStore("transactions").put({ id: "old", date: "2024-01-01", description: "A", kind: "gasto", amountMinor: 100, currency: "ARS", category: "  Café  ", notes: "", createdAt: "2024-01-01", updatedAt: "2024-01-01" });
+    await new Promise<void>((resolve, reject) => { tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error); }); legacy.close();
+    const repo = new IndexedDBTransactionRepository();
+    try {
+      expect((await repo.list())[0].category).toBe("  Café  ");
+      expect(await repo.listCategories()).toMatchObject([{ id: "café", name: "Café" }]);
+    } finally { repo.close(); }
+  });
+
+  it("guarda un lote completo en una transacción y conserva centavos tras reabrir", async () => {
+    const repo = new IndexedDBTransactionRepository();
+    const service = new FinanceImportService(repo, (() => { let i = 0; return () => `batch-${++i}`; })(), () => "2024-03-01T00:00:00Z");
+    const preview = await service.preview([["2024-03-01", "A", "ingreso", "0,10", "Trabajo"], ["2024-03-02", "B", "gasto", "0,20", "Comida"]], { date: 0, description: 1, kind: 2, amount: 3, category: 4 }, "ARS", { id: "account-default", name: "Cuenta principal", currency: "ARS", type: "bank", createdAt: "2024-01-01" });
+    await expect(service.confirm(preview)).resolves.toBe(2);
+    repo.close();
+    const reopened = new IndexedDBTransactionRepository();
+    try { expect((await reopened.list()).map((tx) => tx.amountMinor).sort((a, b) => a - b)).toEqual([10, 20]); }
+    finally { reopened.close(); }
+  });
+
+  it("deduplica categorías de un lote sin perder el primer nombre sugerido", async () => {
+    const repo = new IndexedDBTransactionRepository();
+    const movement = (id: string, category: string) => ({ id, date: "2024-03-01", description: id, kind: "gasto" as const, amountMinor: 100, currency: "ARS" as const, category, notes: "", accountId: "account-default", createdAt: "2024-03-01", updatedAt: "2024-03-01" });
+    try {
+      await repo.saveMany([movement("one", "  Café  "), movement("two", "CAFÉ")]);
+      expect(await repo.listCategories()).toMatchObject([{ id: "café", name: "Café" }]);
+      expect((await repo.list()).map((row) => row.category)).toEqual(["  Café  ", "CAFÉ"]);
+    } finally { repo.close(); }
+  });
+
+  it("revierte el lote entero si una inserción falla", async () => {
+    const repo = new IndexedDBTransactionRepository();
+    const service = new FinanceImportService(repo, (() => { let i = 0; return () => `same-${i++}`; })(), () => "2024-03-01T00:00:00Z");
+    const preview = await service.preview([["2024-03-01", "A", "ingreso", "1", "Trabajo"], ["2024-03-02", "B", "gasto", "2", "Comida"]], { date: 0, description: 1, kind: 2, amount: 3, category: 4 }, "ARS", { id: "account-default", name: "Cuenta principal", currency: "ARS", type: "bank", createdAt: "2024-01-01" });
+    const first = preview.rows[0].transaction!;
+    const second = { ...preview.rows[1].transaction!, id: first.id };
+    preview.rows[1].transaction = second;
+    await expect(service.confirm(preview)).rejects.toThrow(/almacenamiento|importación/i);
+    try { expect(await repo.list()).toEqual([]); expect(await repo.listCategories()).toEqual([]); }
+    finally { repo.close(); }
   });
 });

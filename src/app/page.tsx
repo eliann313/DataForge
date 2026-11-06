@@ -9,6 +9,7 @@ import TopBar from "./components/TopBar";
 import DatosView from "./views/DatosView";
 import AnalysisView from "./views/AnalysisView";
 import FinanceView from "./views/FinanceView";
+import FinanceReportView from "@/modules/finance/presentation/FinanceReportView";
 import LaboratoryView from "./views/LaboratoryView";
 import InicioView, { EXAMPLES, type ExampleDataset } from "./views/InicioView";
 import TransformationsView from "./views/TransformationsView";
@@ -141,7 +142,10 @@ function WorkspaceHome() {
                   onTryExample={() => tryExample(EXAMPLES[0]!)}
                 />
               ) : view === "finanzas" ? (
-                <FinanceView />
+                <>
+                  <FinanceView />
+                  <FinanceReportView />
+                </>
               ) : view === "transformaciones" ? (
                 <TransformationsView onImportData={() => navigate("datos")} />
               ) : view === "laboratorio" ? (
