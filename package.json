@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.33.1-dev57.0",
-    "@tailwindcss/postcss": "4.3.3",
+    "@tailwindcss/postcss": "4.3.4",
     "@vercel/analytics": "^2.0.1",
     "apache-arrow": "17.0.0",
     "echarts": "6.1.0",
